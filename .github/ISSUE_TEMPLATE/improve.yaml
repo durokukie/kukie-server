@@ -1,0 +1,31 @@
+name: 🛠️ 개선/수정
+description: 이미 있는 기능을 수정하거나 리팩토링, 성능 개선, 버전업, 문서화 등을 진행합니다.
+title: "[개선] "
+type: "Task"
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: current
+    attributes:
+      label: ⚠️ 현재 동작 / 문제점
+      description: 지금은 어떻게 동작하는지, 어떤 점이 아쉽거나 불편한지 적어 주세요.
+      placeholder: 구체적으로 적을수록 좋습니다!
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 🛠️ 개선 방향
+      description: 개선 방향을 구체적으로 적어주세요.
+      placeholder: 구체적으로 적을수록 좋습니다!
+    validations:
+      required: true
+
+  - type: textarea
+    id: etc
+    attributes:
+      label: 📝 참고 사항
+      description: 관련 이슈, 참고 자료 등 추가로 공유할 내용이 있다면 적어 주세요.
+    validations:
+      required: false

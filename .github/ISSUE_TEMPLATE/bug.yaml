@@ -1,0 +1,54 @@
+name: 🐞 버그 리포트
+description: 버그나 예상치 못한 동작을 제보합니다.
+title: "[버그] "
+type: "Bug"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 🐞 버그 설명
+      description: 어떤 문제가 발생했는지 명확하고 간결하게 설명해 주세요.
+      placeholder: 무슨 일이 일어났나요?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 🕒 재현 방법
+      description: 버그를 재현할 수 있는 단계를 순서대로 적어 주세요.
+      placeholder: |
+        1. '...'로 이동
+        2. '...' 클릭
+        3. '...'에서 오류 발생
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 🎯 예상 동작
+      description: 원래 어떤 동작을 기대했는지 명확하고 간결하게 설명해주세요.
+      placeholder: 어떤 결과를 기대했나요?
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 💻 실행 환경
+      description: OS, 터미널, 버전 등 관련 환경 정보를 적어 주세요.
+      placeholder: |
+        - OS: macOS Tahoe 26.5.2
+        - 터미널: zsh 5.9
+    validations:
+      required: true
+
+  - type: textarea
+    id: etc
+    attributes:
+      label: 📝 참고 사항
+      description: 스크린샷, 로그 등 추가로 공유할 내용이 있다면 적어 주세요.
+    validations:
+      required: false
