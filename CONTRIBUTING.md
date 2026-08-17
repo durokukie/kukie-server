@@ -81,5 +81,4 @@ hotfix/crash-on-agent-78
 - 스코프가 필요하면 괄호 안에 변경된 모듈명을 적습니다. (예: `feat(auth): GitHub OAuth2 기능 추가`)
 
 ## 🎨 코드 스타일
-
-<!-- 이 섹션은 프로젝트마다 사용하는 언어/프레임워크에 맞게 작성해주세요. -->
+[Kotlin Coding Convention](https://kotlinlang.org/docs/coding-conventions.html#class-headers)을 따릅니다.
