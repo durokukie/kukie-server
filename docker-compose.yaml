@@ -1,0 +1,11 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: kukie
+      POSTGRES_USER: kukie
+      POSTGRES_PASSWORD: kukie
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql
