@@ -5,7 +5,7 @@
 
 * [브랜치 전략](#-브랜치-전략)
 * [작업 흐름](#-작업-흐름)
-* [브랜치 네이밍](#️-브랜치-네이밍)
+* [브랜치 네이밍](#-브랜치-네이밍)
 * [커밋 메시지 컨벤션](#-커밋-메시지-컨벤션)
 * [코드 스타일](#-코드-스타일)
 
@@ -13,14 +13,14 @@
 
 [Git Flow](https://techblog.woowahan.com/2553/)를 기반으로 하되, **`release` 브랜치는 사용하지 않습니다.**
 
-| 브랜치 | 설명 |
-| --- | --- |
-| `main` | 배포 가능한 안정 브랜치. 항상 동작하는 상태를 유지합니다. |
-| `develop` | 개발 통합 브랜치. 기능·개선 작업이 모이는 곳입니다. |
-| `feature/*` | 새 기능 개발. `develop`에서 분기해 `develop`으로 병합합니다. |
-| `fix/*` | 버그 수정. `develop`에서 분기해 `develop`으로 병합합니다. |
-| `improve/*` | 개선·리팩토링·문서화 등. `develop`에서 분기해 `develop`으로 병합합니다. |
-| `hotfix/*` | 배포된 버전의 긴급 수정. `main`에서 분기해 `main`과 `develop`에 함께 병합합니다. |
+| 브랜치       | 설명 |
+|--------------| --- |
+| `main`       | 배포 가능한 안정 브랜치. 항상 동작하는 상태를 유지합니다. |
+| `develop`    | 개발 통합 브랜치. 기능·개선 작업이 모이는 곳입니다. |
+| `feat/*`     | 새 기능 개발. `develop`에서 분기해 `develop`으로 병합합니다. |
+| `fix/*`      | 버그 수정. `develop`에서 분기해 `develop`으로 병합합니다. |
+| `refactor/*` | 개선·리팩토링·문서화 등. `develop`에서 분기해 `develop`으로 병합합니다. |
+| `hotfix/*`   | 배포된 버전의 긴급 수정. `main`에서 분기해 `main`과 `develop`에 함께 병합합니다. |
 
 ## 🔧 작업 흐름
 
@@ -31,7 +31,7 @@
    ```bash
    git switch develop
    git pull
-   git switch -c feature/chat-session-12
+   git switch -c feat/chat-session-12
    ```
 3. **작업 & 커밋** — 커밋 메시지 컨벤션에 맞춰 작업 내용을 커밋합니다.
 4. **PR 생성** — 작업이 끝나면 `develop`을 대상으로 Pull Request를 올립니다.
@@ -44,16 +44,16 @@
 <타입>/<간단한-설명>-<이슈번호>
 ```
 
-- 타입은 이슈 성격에 맞춰 `feature`, `fix`, `improve`, `hotfix` 중 하나를 사용합니다.
+- 타입은 이슈 성격에 맞춰 `feat`, `fix`, `refactor`, `hotfix` 중 하나를 사용합니다.
 - 설명은 kebab-case를 사용합니다.
 - 끝에 이슈 번호를 붙여 어떤 이슈의 작업인지 알 수 있게 합니다.
 
 예시:
 
 ```
-feature/chat-session-12
+feat/chat-session-12
 fix/token-expired-error-34
-improve/refactor-login-56
+refactor/refactor-login-56
 hotfix/crash-on-agent-78
 ```
 
