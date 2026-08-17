@@ -1,3 +1,6 @@
 spring:
   application:
     name: kukie
+  jpa:
+    hibernate:
+      ddl-auto: validate
