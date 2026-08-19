@@ -27,6 +27,7 @@ dependencies {
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
@@ -35,6 +36,12 @@ dependencies {
     // Database
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
+
+    // Security
+    implementation("org.springframework.security:spring-security-crypto")
+
+    // UUID
+    implementation("com.github.f4b6a3:uuid-creator:6.1.1")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
