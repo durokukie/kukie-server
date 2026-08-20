@@ -16,7 +16,7 @@ class User private constructor(
     email: String,
     password: String,
 ) : BaseTimeEntity() {
-    constructor(name: String, email: String, rawPassword: String, passwordEncoder: PasswordEncoder) :this(
+    constructor(name: String, email: String, rawPassword: String, passwordEncoder: PasswordEncoder) : this(
         name = name,
         email = email,
         password = checkNotNull(passwordEncoder.encode(rawPassword))
