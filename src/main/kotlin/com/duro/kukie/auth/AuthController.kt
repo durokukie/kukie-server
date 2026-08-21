@@ -16,7 +16,9 @@ class AuthController(
     private val logInService: LogInService,
 ) {
     @PostMapping("/login")
-    fun logIn(@RequestBody @Valid request: LogInRequest): ResponseEntity<TokenResponse> {
+    fun logIn(
+        @RequestBody @Valid request: LogInRequest,
+    ): ResponseEntity<TokenResponse> {
         return ResponseEntity.ok(logInService.logIn(request))
     }
 }
