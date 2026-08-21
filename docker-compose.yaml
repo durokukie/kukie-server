@@ -9,3 +9,10 @@ services:
       - "5432:5432"
     volumes:
       - ./.data/postgres:/var/lib/postgresql
+
+  redis:
+    image: redis:8
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.data/redis:/data

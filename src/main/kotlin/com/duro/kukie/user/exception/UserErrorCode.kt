@@ -7,7 +7,8 @@ enum class UserErrorCode(
     override val status: HttpStatus,
     override val message: String,
 ) : ErrorCode {
-    DUPLICATED_EMAIL(HttpStatus.CONFLICT, "이미 가입된 이메일입니다.");
+    DUPLICATED_EMAIL(HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
+    ;
 
     override val code: String
         get() = name
