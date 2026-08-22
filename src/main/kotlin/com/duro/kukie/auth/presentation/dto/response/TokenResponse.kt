@@ -1,4 +1,4 @@
-package com.duro.kukie.auth.dto.response
+package com.duro.kukie.auth.presentation.dto.response
 
 data class TokenResponse(
     val accessToken: String,

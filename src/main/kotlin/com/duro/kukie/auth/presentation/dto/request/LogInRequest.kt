@@ -1,4 +1,4 @@
-package com.duro.kukie.auth.dto.request
+package com.duro.kukie.auth.presentation.dto.request
 
 import jakarta.validation.constraints.NotBlank
 
