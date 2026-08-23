@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:18
+    container_name: kukie-postgres
     environment:
       POSTGRES_DB: kukie
       POSTGRES_USER: kukie
@@ -12,6 +13,7 @@ services:
 
   redis:
     image: redis:8
+    container_name: kukie-redis
     ports:
       - "6379:6379"
     volumes:

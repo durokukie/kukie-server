@@ -30,7 +30,8 @@ class JwtTokenProvider(
     fun getUserIdFromAccessToken(token: String): UUID? =
         parseClaims(token)
             .takeIf { it[TOKEN_TYPE] == ACCESS_TOKEN }
-            ?.let { UUID.fromString(it.subject) }
+            ?.subject
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     private fun generateToken(userId: UUID, tokenType: String, expiration: Duration): String {
         val now = Instant.now()
@@ -53,9 +54,7 @@ class JwtTokenProvider(
                 .payload
         } catch (_: ExpiredJwtException) {
             throw ExpiredTokenException()
-        } catch (_: JwtException) {
-            throw InvalidTokenException()
-        } catch (_: IllegalArgumentException) {
+        } catch (_: Exception) {
             throw InvalidTokenException()
         }
 

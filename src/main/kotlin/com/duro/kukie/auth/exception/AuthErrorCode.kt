@@ -11,7 +11,6 @@ enum class AuthErrorCode(
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 토큰입니다."),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
-    FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     ;
 
     override val code: String

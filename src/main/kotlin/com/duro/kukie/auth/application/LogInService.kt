@@ -1,8 +1,8 @@
 package com.duro.kukie.auth.application
 
 import com.duro.kukie.auth.domain.RefreshTokenRepository
-import com.duro.kukie.auth.dto.request.LogInRequest
-import com.duro.kukie.auth.dto.response.TokenResponse
+import com.duro.kukie.auth.presentation.dto.request.LogInRequest
+import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.auth.exception.InvalidCredentialsException
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.domain.UserRepository

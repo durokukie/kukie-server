@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: kukie
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+jwt:
+  secret: jwt-secret-key-must-be-at-least-32-bytes
+  access-token-expiration: 30m
+  refresh-token-expiration: 30d
