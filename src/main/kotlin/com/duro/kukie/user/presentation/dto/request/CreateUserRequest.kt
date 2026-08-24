@@ -17,4 +17,7 @@ data class CreateUserRequest(
     @field:NotBlank
     @field:Size(min = 8, max = 72)
     val password: String,
+
+    @field:NotBlank
+    val verificationCode: String,
 )

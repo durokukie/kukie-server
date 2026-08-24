@@ -1,8 +1,10 @@
 package com.duro.kukie.user.application
 
+import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.exception.DuplicatedEmailException
+import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional
 class CreateUserService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
+    private val verificationCodeRepository: VerificationCodeRepository,
 ) {
 
     @Transactional
@@ -20,6 +23,12 @@ class CreateUserService(
             throw DuplicatedEmailException()
         }
 
+        val code = verificationCodeRepository.get(request.email)
+        if (code == null || code != request.verificationCode) {
+            throw InvalidVerificationCodeException()
+        }
+        verificationCodeRepository.delete(request.email)
+
         val user = User(
             name = request.name,
             email = request.email,
@@ -27,5 +36,6 @@ class CreateUserService(
             passwordEncoder = passwordEncoder,
         )
         userRepository.save(user)
+
     }
 }

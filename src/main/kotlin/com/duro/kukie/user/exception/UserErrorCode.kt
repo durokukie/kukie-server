@@ -9,6 +9,7 @@ enum class UserErrorCode(
 ) : ErrorCode {
     DUPLICATED_EMAIL(HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자입니다."),
+    INVALID_VERIFICATION_CODE(HttpStatus.BAD_REQUEST, "잘못된 인증 번호이거나 만료되었습니다."),
     ;
 
     override val code: String

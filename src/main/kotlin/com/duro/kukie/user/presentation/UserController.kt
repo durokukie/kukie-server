@@ -4,7 +4,9 @@ import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
 import com.duro.kukie.user.application.CreateUserService
 import com.duro.kukie.user.application.GetUserService
+import com.duro.kukie.user.application.SendVerificationCodeService
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
+import com.duro.kukie.user.presentation.dto.request.SendVerificationCodeRequest
 import com.duro.kukie.user.presentation.dto.response.UserResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -21,6 +23,7 @@ import java.util.UUID
 class UserController(
     private val createUserService: CreateUserService,
     private val getUserService: GetUserService,
+    private val sendVerificationCodeService: SendVerificationCodeService,
 ) {
     @PostMapping
     fun createUser(
@@ -29,6 +32,15 @@ class UserController(
         createUserService.createUser(request)
 
         return ResponseEntity.status(HttpStatus.CREATED).build()
+    }
+
+    @PostMapping("/verification-code")
+    fun sendVerificationCode(
+        @RequestBody @Valid request: SendVerificationCodeRequest,
+    ): ResponseEntity<Unit> {
+        sendVerificationCodeService(request.email)
+
+        return ResponseEntity.noContent().build()
     }
 
     @Authenticated
