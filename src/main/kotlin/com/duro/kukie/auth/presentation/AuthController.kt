@@ -29,14 +29,14 @@ class AuthController(
     fun logIn(
         @RequestBody @Valid request: LogInRequest,
     ): ResponseEntity<TokenResponse> {
-        return ResponseEntity.ok(logInService.logIn(request))
+        return ResponseEntity.ok(logInService(request))
     }
 
     @PostMapping("/refresh")
     fun refresh(
         @RequestBody @Valid request: RefreshTokenRequest,
     ): ResponseEntity<TokenResponse> {
-        return ResponseEntity.ok(refreshTokenService.refresh(request))
+        return ResponseEntity.ok(refreshTokenService(request))
     }
 
     @Authenticated
@@ -44,7 +44,7 @@ class AuthController(
     fun logOut(
         @AuthUser userId: UUID,
     ): ResponseEntity<Unit> {
-        logOutService.logOut(userId)
+        logOutService(userId)
 
         return ResponseEntity.noContent().build()
     }

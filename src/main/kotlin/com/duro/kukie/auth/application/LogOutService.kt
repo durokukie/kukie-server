@@ -8,7 +8,7 @@ import java.util.UUID
 class LogOutService(
     private val refreshTokenRepository: RefreshTokenRepository,
 ) {
-    fun logOut(userId: UUID) {
+    operator fun invoke(userId: UUID) {
         refreshTokenRepository.delete(userId)
     }
 }

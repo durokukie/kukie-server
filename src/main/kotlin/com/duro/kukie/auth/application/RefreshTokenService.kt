@@ -12,7 +12,7 @@ class RefreshTokenService(
     private val jwtTokenProvider: JwtTokenProvider,
     private val refreshTokenRepository: RefreshTokenRepository,
 ) {
-    fun refresh(request: RefreshTokenRequest): TokenResponse {
+    operator fun invoke(request: RefreshTokenRequest): TokenResponse {
         val userId = jwtTokenProvider.getUserIdFromRefreshToken(request.refreshToken)
             ?: throw InvalidTokenException()
 

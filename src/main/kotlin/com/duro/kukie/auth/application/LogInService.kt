@@ -19,7 +19,7 @@ class LogInService(
 ) {
 
     @Transactional(readOnly = true)
-    fun logIn(request: LogInRequest): TokenResponse {
+    operator fun invoke(request: LogInRequest): TokenResponse {
         val user = userRepository.findByEmail(request.email)
             ?.takeIf { passwordEncoder.matches(request.password, it.password) }
             ?: throw InvalidCredentialsException()
