@@ -14,11 +14,16 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
+import com.duro.kukie.auth.application.RefreshTokenService
+import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.global.security.Authenticated
+
 @RestController
 @RequestMapping("/auth")
 class AuthController(
     private val logInService: LogInService,
     private val logOutService: LogOutService,
+    private val refreshTokenService: RefreshTokenService,
 ) {
     @PostMapping("/login")
     fun logIn(
@@ -27,6 +32,14 @@ class AuthController(
         return ResponseEntity.ok(logInService.logIn(request))
     }
 
+    @PostMapping("/refresh")
+    fun refresh(
+        @RequestBody @Valid request: RefreshTokenRequest,
+    ): ResponseEntity<TokenResponse> {
+        return ResponseEntity.ok(refreshTokenService.refresh(request))
+    }
+
+    @Authenticated
     @DeleteMapping("/logout")
     fun logOut(
         @AuthUser userId: UUID,

@@ -5,7 +5,6 @@ import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.global.config.properties.JwtProperties
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.ExpiredJwtException
-import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import org.springframework.stereotype.Component
@@ -22,23 +21,29 @@ class JwtTokenProvider(
     private val secretKey: SecretKey = Keys.hmacShaKeyFor(jwtProperties.secret.toByteArray())
 
     fun generateAccessToken(userId: UUID): String =
-        generateToken(userId, ACCESS_TOKEN, jwtProperties.accessTokenExpiration)
+        generateToken(userId, TokenType.ACCESS, jwtProperties.accessTokenExpiration)
 
     fun generateRefreshToken(userId: UUID): String =
-        generateToken(userId, REFRESH_TOKEN, jwtProperties.refreshTokenExpiration)
+        generateToken(userId, TokenType.REFRESH, jwtProperties.refreshTokenExpiration)
 
     fun getUserIdFromAccessToken(token: String): UUID? =
         parseClaims(token)
-            .takeIf { it[TOKEN_TYPE] == ACCESS_TOKEN }
+            .takeIf { it[TOKEN_TYPE] == TokenType.ACCESS.value }
             ?.subject
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
-    private fun generateToken(userId: UUID, tokenType: String, expiration: Duration): String {
+    fun getUserIdFromRefreshToken(token: String): UUID? =
+        parseClaims(token)
+            .takeIf { it[TOKEN_TYPE] == TokenType.REFRESH.value }
+            ?.subject
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+
+    private fun generateToken(userId: UUID, tokenType: TokenType, expiration: Duration): String {
         val now = Instant.now()
 
         return Jwts.builder()
             .subject(userId.toString())
-            .claim(TOKEN_TYPE, tokenType)
+            .claim(TOKEN_TYPE, tokenType.value)
             .issuedAt(Date.from(now))
             .expiration(Date.from(now.plus(expiration)))
             .signWith(secretKey, Jwts.SIG.HS256)
@@ -60,7 +65,5 @@ class JwtTokenProvider(
 
     companion object {
         private const val TOKEN_TYPE = "type"
-        private const val ACCESS_TOKEN = "access"
-        private const val REFRESH_TOKEN = "refresh"
     }
 }

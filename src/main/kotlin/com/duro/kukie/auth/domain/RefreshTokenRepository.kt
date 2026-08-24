@@ -16,6 +16,10 @@ class RefreshTokenRepository(
             .set(key(userId), refreshToken, jwtProperties.refreshTokenExpiration)
     }
 
+    fun get(userId: UUID): String? {
+        return redisTemplate.opsForValue().get(key(userId))
+    }
+
     fun delete(userId: UUID) {
         redisTemplate.delete(key(userId))
     }
