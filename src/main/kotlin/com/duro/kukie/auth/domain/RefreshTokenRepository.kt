@@ -16,6 +16,10 @@ class RefreshTokenRepository(
             .set(key(userId), refreshToken, jwtProperties.refreshTokenExpiration)
     }
 
+    fun delete(userId: UUID) {
+        redisTemplate.delete(key(userId))
+    }
+
     private fun key(userId: UUID) = "$KEY_PREFIX$userId"
 
     companion object {
