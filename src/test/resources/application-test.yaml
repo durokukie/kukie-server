@@ -1,0 +1,7 @@
+spring:
+  mail:
+    username: test
+    password: test
+
+jwt:
+  secret: jwt-secret-key-must-be-at-least-32-bytes
