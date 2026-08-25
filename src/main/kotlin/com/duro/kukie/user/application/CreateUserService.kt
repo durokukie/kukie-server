@@ -36,6 +36,5 @@ class CreateUserService(
             passwordEncoder = passwordEncoder,
         )
         userRepository.save(user)
-
     }
 }
