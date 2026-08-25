@@ -9,6 +9,6 @@ class LogOutService(
     private val refreshTokenRepository: RefreshTokenRepository,
 ) {
     operator fun invoke(userId: UUID) {
-        refreshTokenRepository.delete(userId)
+        refreshTokenRepository.deleteByUserId(userId)
     }
 }

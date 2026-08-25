@@ -23,11 +23,11 @@ class CreateUserService(
             throw DuplicatedEmailException()
         }
 
-        val code = verificationCodeRepository.get(request.email)
+        val code = verificationCodeRepository.findByEmail(request.email)
         if (code == null || code != request.verificationCode) {
             throw InvalidVerificationCodeException()
         }
-        verificationCodeRepository.delete(request.email)
+        verificationCodeRepository.deleteByEmail(request.email)
 
         val user = User(
             name = request.name,

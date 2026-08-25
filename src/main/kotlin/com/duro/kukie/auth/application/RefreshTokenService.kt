@@ -16,10 +16,10 @@ class RefreshTokenService(
         val userId = jwtTokenProvider.getUserIdFromRefreshToken(request.refreshToken)
             ?: throw InvalidTokenException()
 
-        val savedRefreshToken = refreshTokenRepository.get(userId)
+        val savedRefreshToken = refreshTokenRepository.findByUserId(userId)
 
         if (savedRefreshToken != request.refreshToken) {
-            refreshTokenRepository.delete(userId)
+            refreshTokenRepository.deleteByUserId(userId)
             throw InvalidTokenException()
         }
 
