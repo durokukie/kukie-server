@@ -1,6 +1,7 @@
 package com.duro.kukie.global.security
 
-import org.assertj.core.api.Assertions.assertThat
+import io.kotest.assertions.withClue
+import io.kotest.matchers.collections.shouldBeEmpty
 import org.junit.jupiter.api.Test
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider
 import org.springframework.core.annotation.AnnotatedElementUtils
@@ -18,9 +19,9 @@ class AuthAnnotationConventionTest {
             .filterNot { it.requiresAuthentication() }
             .map { it.toGenericString() }
 
-        assertThat(violations)
-            .withFailMessage { "@AuthUser 파라미터는 @Authenticated가 선언된 핸들러에서만 사용할 수 있습니다: $violations" }
-            .isEmpty()
+        withClue("@AuthUser 파라미터는 @Authenticated가 선언된 핸들러에서만 사용할 수 있습니다") {
+            violations.shouldBeEmpty()
+        }
     }
 
     private fun findControllerClasses(): List<Class<*>> =
