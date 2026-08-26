@@ -45,7 +45,7 @@ Not Spring Security — a custom interceptor-based mechanism:
 
 ## Testing
 
-- Test method names are Korean sentences in bac성kticks (`` fun `로그인에 성공하면 토큰을 발급하고 리프레시 토큰을 저장한다`() ``) with `// given` / `// when` / `// then` comments.
+- Test method names are Korean sentences in backticks (`` fun `로그인에 성공하면 토큰을 발급하고 리프레시 토큰을 저장한다`() ``) with `// given` / `// when` / `// then` comments.
 - **Unit tests** (`*ServiceTest`, `JwtTokenProviderTest`): no Spring context — MockK (`@ExtendWith(MockKExtension::class)` with `@MockK`/`@SpyK`/`@InjectMockKs`) plus kotest assertions (`shouldBe`, `shouldThrow`).
 - **Integration tests** (`*IntegrationTest`): extend `support/IntegrationTest`, which boots the full app (`@SpringBootTest` + MockMvc) against Testcontainers and replaces the SMTP sender with `FakeVerificationCodeSender` (`@Primary`; read sent codes via `lastCodeFor(email)`). The base class provides `mockMvc`, `loggedInUser()` (persists a user and issues real tokens), `Any.toJson()`, and an `authorization(accessToken)` DSL helper, and after each test truncates all tables and flushes Redis — individual tests never clean up. Use the MockMvc Kotlin DSL (`mockMvc.post("/users") { ... }.andExpect { ... }`).
 - Entity test data comes from fixture objects with overridable defaults (`UserFixture.user()`).
