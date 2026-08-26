@@ -42,6 +42,7 @@ class JwtTokenProvider(
         val now = Instant.now()
 
         return Jwts.builder()
+            .id(UUID.randomUUID().toString())
             .subject(userId.toString())
             .claim(TOKEN_TYPE, tokenType.value)
             .issuedAt(Date.from(now))
