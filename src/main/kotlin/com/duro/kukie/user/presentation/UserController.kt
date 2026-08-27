@@ -29,7 +29,7 @@ class UserController(
     fun createUser(
         @RequestBody @Valid request: CreateUserRequest,
     ): ResponseEntity<Unit> {
-        createUserService.createUser(request)
+        createUserService(request)
 
         return ResponseEntity.status(HttpStatus.CREATED).build()
     }
@@ -48,6 +48,6 @@ class UserController(
     fun getMe(
         @AuthUser userId: UUID,
     ): ResponseEntity<UserResponse> {
-        return ResponseEntity.ok(getUserService.getUser(userId))
+        return ResponseEntity.ok(getUserService(userId))
     }
 }

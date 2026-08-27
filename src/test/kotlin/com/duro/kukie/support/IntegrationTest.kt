@@ -51,12 +51,12 @@ abstract class IntegrationTest {
     private lateinit var redisTemplate: StringRedisTemplate
 
     protected fun loggedInUser(user: User = UserFixture.user()): LoggedInUser {
-        val saved = userRepository.save(user)
-        val accessToken = jwtTokenProvider.generateAccessToken(saved.id)
-        val refreshToken = jwtTokenProvider.generateRefreshToken(saved.id)
-        refreshTokenRepository.save(saved.id, refreshToken)
+        val savedUser = userRepository.save(user)
+        val accessToken = jwtTokenProvider.generateAccessToken(savedUser.id)
+        val refreshToken = jwtTokenProvider.generateRefreshToken(savedUser.id)
+        refreshTokenRepository.save(savedUser.id, refreshToken)
 
-        return LoggedInUser(saved, accessToken, refreshToken)
+        return LoggedInUser(savedUser, accessToken, refreshToken)
     }
 
     protected fun Any.toJson(): String = objectMapper.writeValueAsString(this)

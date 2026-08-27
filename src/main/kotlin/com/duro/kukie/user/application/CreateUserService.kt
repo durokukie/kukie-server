@@ -1,8 +1,8 @@
 package com.duro.kukie.user.application
 
-import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
+import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
@@ -20,7 +20,7 @@ class CreateUserService(
 ) {
 
     @Transactional
-    fun createUser(request: CreateUserRequest) {
+    operator fun invoke(request: CreateUserRequest) {
         if (userRepository.existsByEmail(request.email)) {
             throw DuplicatedEmailException()
         }

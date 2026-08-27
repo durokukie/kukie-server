@@ -28,7 +28,7 @@ class RefreshTokenServiceTest {
     private lateinit var refreshTokenService: RefreshTokenService
 
     private val userId: UUID = UUID.randomUUID()
-    private val request = RefreshTokenRequest(refreshToken = "refresh-token")
+    private val request = RefreshTokenRequest("refresh-token")
 
     @Test
     fun `재발급에 성공하면 새 토큰을 발급하고 리프레시 토큰을 교체한다`() {

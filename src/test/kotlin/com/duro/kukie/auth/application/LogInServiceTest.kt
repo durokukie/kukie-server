@@ -36,7 +36,7 @@ class LogInServiceTest {
     @InjectMockKs
     private lateinit var logInService: LogInService
 
-    private val request = LogInRequest("test@example.com", "password123")
+    private val request = LogInRequest(UserFixture.DEFAULT_EMAIL, UserFixture.DEFAULT_PASSWORD)
 
     @Test
     fun `로그인에 성공하면 토큰을 발급하고 리프레시 토큰을 저장한다`() {

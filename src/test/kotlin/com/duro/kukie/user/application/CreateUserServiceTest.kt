@@ -9,7 +9,6 @@ import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
@@ -55,7 +54,7 @@ class CreateUserServiceTest {
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
 
         // when
-        createUserService.createUser(request)
+        createUserService(request)
 
         // then
         verify(exactly = 1) { userRepository.saveAndFlush(any()) }
@@ -73,7 +72,7 @@ class CreateUserServiceTest {
         every { userRepository.existsByEmail(request.email) } returns true
 
         // when & then
-        shouldThrow<DuplicatedEmailException> { createUserService.createUser(request) }
+        shouldThrow<DuplicatedEmailException> { createUserService(request) }
 
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
         verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
@@ -86,7 +85,7 @@ class CreateUserServiceTest {
         every { verificationCodeRepository.findByEmail(request.email) } returns null
 
         // when & then
-        shouldThrow<InvalidVerificationCodeException> { createUserService.createUser(request) }
+        shouldThrow<InvalidVerificationCodeException> { createUserService(request) }
 
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
         verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
@@ -99,7 +98,7 @@ class CreateUserServiceTest {
         every { verificationCodeRepository.findByEmail(request.email) } returns "654321"
 
         // when & then
-        shouldThrow<InvalidVerificationCodeException> { createUserService.createUser(request) }
+        shouldThrow<InvalidVerificationCodeException> { createUserService(request) }
 
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
         verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
@@ -116,7 +115,7 @@ class CreateUserServiceTest {
         )
 
         // when & then
-        shouldThrow<DuplicatedEmailException> { createUserService.createUser(request) }
+        shouldThrow<DuplicatedEmailException> { createUserService(request) }
 
         verify(exactly = 1) { userRepository.saveAndFlush(any()) }
         verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }

@@ -1,14 +1,10 @@
 package com.duro.kukie.user
 
-import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.support.IntegrationTest
-import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.exception.UserErrorCode
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import com.duro.kukie.user.presentation.dto.request.SendVerificationCodeRequest
-import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
@@ -16,34 +12,16 @@ import org.springframework.test.web.servlet.post
 
 class UserIntegrationTest : IntegrationTest() {
 
-    @Autowired
-    private lateinit var verificationCodeRepository: VerificationCodeRepository
+    private val email = UserFixture.DEFAULT_EMAIL
 
     @Test
-    fun `인증 코드 발송부터 회원가입, 내 정보 조회까지 성공한다`() {
-        sendVerificationCode().andExpect { status { isNoContent() } }
-        signUp().andExpect { status { isCreated() } }
+    fun `정상적으로 인증 코드를 전송한다`() {
+        val request = SendVerificationCodeRequest(email)
 
-        val accessToken = logInAccessToken()
-
-        mockMvc.get("/users/me") {
-            authorization(accessToken)
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.email") { value(UserFixture.DEFAULT_EMAIL) }
-            jsonPath("$.name") { value(UserFixture.DEFAULT_NAME) }
-        }
-    }
-
-    @Test
-    fun `잘못된 인증 코드로는 회원가입할 수 없다`() {
-        val email = UserFixture.DEFAULT_EMAIL
-        verificationCodeRepository.save(email, "123456")
-
-        signUp(email = email, code = "000000").andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value(UserErrorCode.INVALID_VERIFICATION_CODE.code) }
-        }
+        mockMvc.post("/users/verification-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect { status { isNoContent() } }
     }
 
     @Test
@@ -53,6 +31,49 @@ class UserIntegrationTest : IntegrationTest() {
         sendVerificationCode(user.email).andExpect {
             status { isConflict() }
             jsonPath("$.code") { value(UserErrorCode.DUPLICATED_EMAIL.code) }
+        }
+    }
+
+    @Test
+    fun `인증을 성공하고 정상적으로 회원 가입을 한다`() {
+        sendVerificationCode().andExpect { status { isNoContent() } }
+        val code = fakeVerificationCodeSender.lastCodeFor(email)
+        val request = CreateUserRequest(
+            name = UserFixture.DEFAULT_NAME,
+            email = email,
+            password = UserFixture.DEFAULT_PASSWORD,
+            verificationCode = code,
+        )
+
+        mockMvc.post("/users") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `잘못된 인증 코드로는 회원가입할 수 없다`() {
+        sendVerificationCode().andExpect { status { isNoContent() } }
+        val actualCode = fakeVerificationCodeSender.lastCodeFor(email)
+        val wrongCode = if (actualCode != "000000") "000000" else "999999"
+
+        signUp(code = wrongCode).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(UserErrorCode.INVALID_VERIFICATION_CODE.code) }
+        }
+    }
+
+    @Test
+    fun `로그인 한 유저가 정상적으로 정보를 조회한다`() {
+        val user = loggedInUser()
+
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(user.user.id.toString()) }
+            jsonPath("$.name") { value(user.user.name) }
+            jsonPath("$.email") { value(user.user.email) }
         }
     }
 
@@ -80,15 +101,5 @@ class UserIntegrationTest : IntegrationTest() {
             contentType = MediaType.APPLICATION_JSON
             content = request.toJson()
         }
-    }
-
-    private fun logInAccessToken(email: String = UserFixture.DEFAULT_EMAIL): String {
-        val response = mockMvc.post("/auth/login") {
-            contentType = MediaType.APPLICATION_JSON
-            content = LogInRequest(email, UserFixture.DEFAULT_PASSWORD).toJson()
-        }.andExpect { status { isOk() } }
-            .andReturn().response.contentAsString
-
-        return JsonPath.read(response, "$.accessToken")
     }
 }

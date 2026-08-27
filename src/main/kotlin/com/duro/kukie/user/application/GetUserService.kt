@@ -13,7 +13,7 @@ class GetUserService(
 ) {
 
     @Transactional(readOnly = true)
-    fun getUser(userId: UUID): UserResponse {
+    operator fun invoke(userId: UUID): UserResponse {
         val user = userRepository.findByIdOrThrow(userId)
 
         return UserResponse.from(user)
