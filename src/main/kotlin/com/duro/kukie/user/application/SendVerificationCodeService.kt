@@ -5,7 +5,6 @@ import com.duro.kukie.user.application.port.VerificationCodeSender
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import kotlin.random.Random
 
 @Service
@@ -15,7 +14,6 @@ class SendVerificationCodeService(
     private val verificationCodeSender: VerificationCodeSender,
 ) {
 
-    @Transactional(readOnly = true)
     operator fun invoke(email: String) {
         if (userRepository.existsByEmail(email)) {
             throw DuplicatedEmailException()
