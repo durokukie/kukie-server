@@ -1,8 +1,8 @@
 package com.duro.kukie.user.application
 
-import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.application.port.VerificationCodeSender
 import com.duro.kukie.user.domain.UserRepository
+import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import org.springframework.stereotype.Service
 import kotlin.random.Random
@@ -26,6 +26,6 @@ class SendVerificationCodeService(
     }
 
     private fun generateCode(): String {
-        return Random.nextInt(100000, 1000000).toString()
+        return Random.nextInt(0, 1000000).toString().padStart(6, '0')
     }
 }
