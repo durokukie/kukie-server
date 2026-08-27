@@ -3,8 +3,10 @@ package com.duro.kukie
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.test.context.ActiveProfiles
 
-@Import(TestcontainersConfiguration::class)
+@ActiveProfiles("test")
+@Import(TestcontainersConfig::class)
 @SpringBootTest
 class KukieApplicationTests {
 
