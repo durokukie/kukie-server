@@ -34,6 +34,7 @@ class User private constructor(
     var email = email
         protected set
 
+    @Column(nullable = false)
     var password = password
         protected set
 }
