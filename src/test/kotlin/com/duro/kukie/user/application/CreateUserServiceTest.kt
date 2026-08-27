@@ -1,5 +1,6 @@
 package com.duro.kukie.user.application
 
+import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
@@ -16,9 +17,12 @@ import io.mockk.impl.annotations.SpyK
 import io.mockk.junit5.MockKExtension
 import io.mockk.slot
 import io.mockk.verify
+import org.hibernate.exception.ConstraintViolationException
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import java.sql.SQLException
 
 @ExtendWith(MockKExtension::class)
 class CreateUserServiceTest {
@@ -36,11 +40,32 @@ class CreateUserServiceTest {
     private lateinit var createUserService: CreateUserService
 
     private val request = CreateUserRequest(
-        name = "쿠키",
-        email = "kukie@example.com",
-        password = "password123",
+        name = UserFixture.DEFAULT_NAME,
+        email = UserFixture.DEFAULT_EMAIL,
+        password = UserFixture.DEFAULT_PASSWORD,
         verificationCode = "123456",
     )
+
+    @Test
+    fun `올바른 인증코드를 입력하고 회원가입에 성공한다`() {
+        // given
+        val savedUser = slot<User>()
+        every { userRepository.existsByEmail(request.email) } returns false
+        every { verificationCodeRepository.findByEmail(request.email) } returns request.verificationCode
+        every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
+
+        // when
+        createUserService.createUser(request)
+
+        // then
+        verify(exactly = 1) { userRepository.saveAndFlush(any()) }
+        verify(exactly = 1) { verificationCodeRepository.deleteByEmail(request.email) }
+        with(savedUser.captured) {
+            name shouldBe request.name
+            email shouldBe request.email
+            passwordEncoder.matches(request.password, password) shouldBe true
+        }
+    }
 
     @Test
     fun `이미 가입된 이메일이면 예외가 발생한다`() {
@@ -50,7 +75,8 @@ class CreateUserServiceTest {
         // when & then
         shouldThrow<DuplicatedEmailException> { createUserService.createUser(request) }
 
-        verify(exactly = 0) { userRepository.save(any()) }
+        verify(exactly = 0) { userRepository.saveAndFlush(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
     }
 
     @Test
@@ -62,7 +88,8 @@ class CreateUserServiceTest {
         // when & then
         shouldThrow<InvalidVerificationCodeException> { createUserService.createUser(request) }
 
-        verify(exactly = 0) { userRepository.save(any()) }
+        verify(exactly = 0) { userRepository.saveAndFlush(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
     }
 
     @Test
@@ -74,27 +101,24 @@ class CreateUserServiceTest {
         // when & then
         shouldThrow<InvalidVerificationCodeException> { createUserService.createUser(request) }
 
-        verify(exactly = 0) { userRepository.save(any()) }
+        verify(exactly = 0) { userRepository.saveAndFlush(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
     }
 
     @Test
-    fun `인증 코드가 일치하면 비밀번호를 인코딩해 저장하고 코드를 삭제한다`() {
+    fun `동시 가입으로 저장 시점에 이메일이 중복되면 예외가 발생한다`() {
         // given
-        val savedUser = slot<User>()
         every { userRepository.existsByEmail(request.email) } returns false
         every { verificationCodeRepository.findByEmail(request.email) } returns request.verificationCode
-        every { userRepository.save(capture(savedUser)) } answers { savedUser.captured }
+        every { userRepository.saveAndFlush(any()) } throws DataIntegrityViolationException(
+            "could not execute statement",
+            ConstraintViolationException("duplicate key", SQLException(), "tbl_user_email_key"),
+        )
 
-        // when
-        createUserService.createUser(request)
+        // when & then
+        shouldThrow<DuplicatedEmailException> { createUserService.createUser(request) }
 
-        // then
-        verify { verificationCodeRepository.deleteByEmail(request.email) }
-        with(savedUser.captured) {
-            name shouldBe request.name
-            email shouldBe request.email
-            password shouldNotBe request.password
-            passwordEncoder.matches(request.password, password) shouldBe true
-        }
+        verify(exactly = 1) { userRepository.saveAndFlush(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
     }
 }

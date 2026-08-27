@@ -6,6 +6,8 @@ import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
+import org.hibernate.exception.ConstraintViolationException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -27,7 +29,6 @@ class CreateUserService(
         if (code == null || code != request.verificationCode) {
             throw InvalidVerificationCodeException()
         }
-        verificationCodeRepository.deleteByEmail(request.email)
 
         val user = User(
             name = request.name,
@@ -35,6 +36,21 @@ class CreateUserService(
             rawPassword = request.password,
             passwordEncoder = passwordEncoder,
         )
-        userRepository.save(user)
+
+        try {
+            userRepository.saveAndFlush(user)
+        } catch (e: DataIntegrityViolationException) {
+            val cause = e.cause
+            if (cause is ConstraintViolationException && cause.constraintName == EMAIL_UNIQUE_CONSTRAINT) {
+                throw DuplicatedEmailException()
+            }
+            throw e
+        }
+
+        verificationCodeRepository.deleteByEmail(request.email)
+    }
+
+    companion object {
+        private const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
     }
 }
