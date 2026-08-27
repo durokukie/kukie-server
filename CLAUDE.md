@@ -23,7 +23,7 @@ Kukie server — Kotlin 2.3 / Spring Boot 4.1 / Java 25 REST API backed by Postg
 Package layout is **feature-first** (`user`, `auth`) with a shared `global` package. Each feature follows the same three layers:
 
 - `presentation/` — `@RestController` + request/response DTOs (`dto/request`, `dto/response`). DTOs carry Bean Validation annotations (`@field:NotBlank` etc.) with **no custom messages** — the global handler surfaces the default message.
-- `application/` — one service class **per use case** (e.g. `LogInService`, `CreateUserService`), invoked via the `operator fun invoke(...)` convention (called like `logInService(request)`).
+일- `application/` — one service class **per use case** (e.g. `LogInService`, `CreateUserService`). Every service exposes exactly one public entry point, and it **must** be `operator fun invoke(...)` (called like `logInService(request)`) — never a named method like `createUser()`. Helper functions stay `private`.
 - `domain/` — JPA entities and repository **abstractions** only. Spring Data interfaces (e.g. `UserRepository`) live here; Redis-backed stores are declared here as plain interfaces (`RefreshTokenRepository`, `VerificationCodeRepository`).
 - `infrastructure/` — implementations of the domain repository interfaces (e.g. `RedisVerificationCodeRepository`, `RedisRefreshTokenRepository`): `@Repository` classes over `StringRedisTemplate` with key prefixes and TTLs. Technology details (Redis templates, TTLs) belong here, not in `domain/`.
 - `exception/` — per-feature `ErrorCode` enum (implements `global.exception.ErrorCode`; `code` = enum name, Korean messages) plus one `BusinessException` subclass per error. `GlobalExceptionHandler` converts these to `ErrorResponse(code, message)`.
@@ -46,6 +46,7 @@ Not Spring Security — a custom interceptor-based mechanism:
 ## Testing
 
 - Test method names are Korean sentences in backticks (`` fun `로그인에 성공하면 토큰을 발급하고 리프레시 토큰을 저장한다`() ``) with `// given` / `// when` / `// then` comments.
+- **Test ordering**: within each use case (API/service being tested), the success case comes first, followed by its exception cases.
 - **Unit tests** (`*ServiceTest`, `JwtTokenProviderTest`): no Spring context — MockK (`@ExtendWith(MockKExtension::class)` with `@MockK`/`@SpyK`/`@InjectMockKs`) plus kotest assertions (`shouldBe`, `shouldThrow`).
 - **Integration tests** (`*IntegrationTest`): extend `support/IntegrationTest`, which boots the full app (`@SpringBootTest` + MockMvc) against Testcontainers and replaces the SMTP sender with `FakeVerificationCodeSender` (`@Primary`; read sent codes via `lastCodeFor(email)`). The base class provides `mockMvc`, `loggedInUser()` (persists a user and issues real tokens), `Any.toJson()`, and an `authorization(accessToken)` DSL helper, and after each test truncates all tables and flushes Redis — individual tests never clean up. Use the MockMvc Kotlin DSL (`mockMvc.post("/users") { ... }.andExpect { ... }`).
 - Entity test data comes from fixture objects with overridable defaults (`UserFixture.user()`).
