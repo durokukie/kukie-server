@@ -27,14 +27,14 @@ class JwtTokenProvider(
         generateToken(userId, TokenType.REFRESH, jwtProperties.refreshTokenExpiration)
 
     fun getUserIdFromAccessToken(token: String): UUID? =
-        parseClaims(token)
-            .takeIf { it[TOKEN_TYPE] == TokenType.ACCESS.value }
-            ?.subject
-            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        getUserIdByTokenType(token, TokenType.ACCESS)
 
     fun getUserIdFromRefreshToken(token: String): UUID? =
+        getUserIdByTokenType(token, TokenType.REFRESH)
+
+    private fun getUserIdByTokenType(token: String, expectedType: TokenType): UUID? =
         parseClaims(token)
-            .takeIf { it[TOKEN_TYPE] == TokenType.REFRESH.value }
+            .takeIf { it[TOKEN_TYPE] == expectedType.value }
             ?.subject
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
