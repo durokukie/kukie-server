@@ -48,6 +48,9 @@ dependencies {
     // UUID
     implementation("com.github.f4b6a3:uuid-creator:6.1.1")
 
+    // Swagger UI
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
