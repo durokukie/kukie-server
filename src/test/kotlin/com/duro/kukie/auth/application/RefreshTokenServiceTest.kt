@@ -31,7 +31,7 @@ class RefreshTokenServiceTest {
     private val request = RefreshTokenRequest("refresh-token")
 
     @Test
-    fun `재발급에 성공하면 새 토큰을 발급하고 기존 리프레시 토큰을 삭제한다`() {
+    fun `재발급에 성공하면 새 토큰을 발급하고 리프레시 토큰을 교체한다`() {
         // given
         every { jwtTokenProvider.getUserIdFromRefreshToken(request.refreshToken) } returns userId
         every { refreshTokenRepository.findByUserId(userId) } returns request.refreshToken
@@ -57,7 +57,7 @@ class RefreshTokenServiceTest {
     }
 
     @Test
-    fun `만료된 리프레시 토큰의 재사용이 감지되면 현재 리프레시 토큰을 삭제해 로그아웃 시킨다`() {
+    fun `저장된 토큰과 일치하지 않으면 저장된 토큰을 삭제하고 예외가 발생한다`() {
         // given
         every { jwtTokenProvider.getUserIdFromRefreshToken(request.refreshToken) } returns userId
         every { refreshTokenRepository.findByUserId(userId) } returns "other-refresh-token"

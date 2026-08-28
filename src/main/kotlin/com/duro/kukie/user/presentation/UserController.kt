@@ -24,9 +24,9 @@ class UserController(
     private val createUserService: CreateUserService,
     private val getUserService: GetUserService,
     private val sendVerificationCodeService: SendVerificationCodeService,
-) : UserControllerDocs {
+) {
     @PostMapping
-    override fun createUser(
+    fun createUser(
         @RequestBody @Valid request: CreateUserRequest,
     ): ResponseEntity<Unit> {
         createUserService(request)
@@ -35,7 +35,7 @@ class UserController(
     }
 
     @PostMapping("/verification-code")
-    override fun sendVerificationCode(
+    fun sendVerificationCode(
         @RequestBody @Valid request: SendVerificationCodeRequest,
     ): ResponseEntity<Unit> {
         sendVerificationCodeService(request.email)
@@ -45,7 +45,7 @@ class UserController(
 
     @Authenticated
     @GetMapping("/me")
-    override fun getMe(
+    fun getMe(
         @AuthUser userId: UUID,
     ): ResponseEntity<UserResponse> {
         return ResponseEntity.ok(getUserService(userId))
