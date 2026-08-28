@@ -29,7 +29,7 @@ class AuthController(
     override fun logIn(
         @RequestBody @Valid request: LogInRequest,
     ): ResponseEntity<TokenResponse> {
-        logInService.invoke(request)
+        return ResponseEntity.ok(logInService(request))
         return ResponseEntity.ok(logInService(request))
     }
 
