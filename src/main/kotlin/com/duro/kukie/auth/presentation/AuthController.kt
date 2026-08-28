@@ -30,7 +30,6 @@ class AuthController(
         @RequestBody @Valid request: LogInRequest,
     ): ResponseEntity<TokenResponse> {
         return ResponseEntity.ok(logInService(request))
-        return ResponseEntity.ok(logInService(request))
     }
 
     @PostMapping("/refresh")
