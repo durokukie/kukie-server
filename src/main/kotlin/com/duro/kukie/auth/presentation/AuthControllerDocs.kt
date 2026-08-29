@@ -1,5 +1,6 @@
 package com.duro.kukie.auth.presentation
 
+import com.duro.kukie.auth.exception.ExpiredTokenException
 import com.duro.kukie.auth.exception.InvalidCredentialsException
 import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
@@ -21,7 +22,7 @@ interface AuthControllerDocs {
         summary = "토큰 재발급",
         description = "리프레시 토큰을 이용해 액세스 토큰과 리프레시 토큰을 재발급 받습니다. 사용한 리프레시 토큰은 삭제됩니다.",
     )
-    @ApiErrorResponses(InvalidTokenException::class)
+    @ApiErrorResponses(InvalidTokenException::class, ExpiredTokenException::class)
     fun refresh(request: RefreshTokenRequest): ResponseEntity<TokenResponse>
 
     @Operation(summary = "로그아웃", description = "로그아웃하고 리프레시 토큰을 삭제합니다.")
