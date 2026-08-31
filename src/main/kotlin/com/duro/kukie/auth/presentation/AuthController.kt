@@ -23,16 +23,17 @@ class AuthController(
     private val logInService: LogInService,
     private val logOutService: LogOutService,
     private val refreshTokenService: RefreshTokenService,
-) {
+) : AuthControllerDocs {
+
     @PostMapping("/login")
-    fun logIn(
+    override fun logIn(
         @RequestBody @Valid request: LogInRequest,
     ): ResponseEntity<TokenResponse> {
         return ResponseEntity.ok(logInService(request))
     }
 
     @PostMapping("/refresh")
-    fun refresh(
+    override fun refresh(
         @RequestBody @Valid request: RefreshTokenRequest,
     ): ResponseEntity<TokenResponse> {
         return ResponseEntity.ok(refreshTokenService(request))
@@ -40,7 +41,7 @@ class AuthController(
 
     @Authenticated
     @DeleteMapping("/logout")
-    fun logOut(
+    override fun logOut(
         @AuthUser userId: UUID,
     ): ResponseEntity<Unit> {
         logOutService(userId)

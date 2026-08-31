@@ -16,6 +16,9 @@ spring:
           starttls:
             enable: true
 
+springdoc:
+  default-produces-media-type: application/json
+
 jwt:
   secret: ${JWT_SECRET}
   access-token-expiration: 30m
