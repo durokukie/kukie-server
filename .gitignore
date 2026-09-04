@@ -42,3 +42,6 @@ out/
 
 ### Docker Compose Volume ###
 /.data
+
+### macOS ###
+.DS_Store
