@@ -2,8 +2,11 @@ package com.duro.kukie.auth.presentation
 
 import com.duro.kukie.auth.application.LogInService
 import com.duro.kukie.auth.application.LogOutService
+import com.duro.kukie.auth.application.OAuthLogInService
 import com.duro.kukie.auth.application.RefreshTokenService
+import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
+import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.security.AuthUser
@@ -11,6 +14,7 @@ import com.duro.kukie.global.security.Authenticated
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -21,6 +25,7 @@ import java.util.UUID
 @RequestMapping("/auth")
 class AuthController(
     private val logInService: LogInService,
+    private val oAuthLogInService: OAuthLogInService,
     private val logOutService: LogOutService,
     private val refreshTokenService: RefreshTokenService,
 ) : AuthControllerDocs {
@@ -30,6 +35,14 @@ class AuthController(
         @RequestBody @Valid request: LogInRequest,
     ): ResponseEntity<TokenResponse> {
         return ResponseEntity.ok(logInService(request))
+    }
+
+    @PostMapping("/oauth/{provider}")
+    override fun oAuthLogIn(
+        @PathVariable provider: OAuthProvider,
+        @RequestBody @Valid request: OAuthLogInRequest,
+    ): ResponseEntity<TokenResponse> {
+        return ResponseEntity.ok(oAuthLogInService(provider, request))
     }
 
     @PostMapping("/refresh")
