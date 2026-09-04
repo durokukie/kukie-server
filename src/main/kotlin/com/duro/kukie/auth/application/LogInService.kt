@@ -21,7 +21,7 @@ class LogInService(
     @Transactional(readOnly = true)
     operator fun invoke(request: LogInRequest): TokenResponse {
         val user = userRepository.findByEmail(request.email)
-            ?.takeIf { passwordEncoder.matches(request.password, it.password) }
+            ?.takeIf { it.matchesPassword(request.password, passwordEncoder) }
             ?: throw InvalidCredentialsException()
 
         val accessToken = jwtTokenProvider.generateAccessToken(user.id)
