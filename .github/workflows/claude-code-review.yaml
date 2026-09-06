@@ -34,6 +34,11 @@ jobs:
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
+        env:
+          # 워크어라운드(https://github.com/anthropics/claude-code-action/issues/1646):
+          # code-review 플러그인이 리뷰를 백그라운드 에이전트로 실행하면 Action이 완료 전에
+          # 세션을 종료해 리뷰가 유실된다. 포그라운드 실행을 강제해 이를 방지한다.
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: 1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
@@ -43,6 +48,6 @@ jobs:
             /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment
             모든 코멘트는 한국어로 남겨라.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
