@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -19,6 +20,15 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(errorCode.status)
             .body(ErrorResponse(errorCode.code, message))
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleTypeMismatchException(e: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
+        val errorCode = GlobalErrorCode.BAD_REQUEST
+
+        return ResponseEntity
+            .status(errorCode.status)
+            .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
     @ExceptionHandler(BusinessException::class)
