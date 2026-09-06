@@ -2,7 +2,7 @@ package com.duro.kukie.user.infrastructure
 
 import com.duro.kukie.global.config.properties.VerificationCodeProperties
 import com.duro.kukie.global.mail.MailClient
-import com.duro.kukie.user.application.port.VerificationCodeSender
+import com.duro.kukie.user.application.port.out.VerificationCodeSender
 import org.springframework.stereotype.Component
 
 @Component

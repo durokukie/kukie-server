@@ -1,6 +1,6 @@
 package com.duro.kukie.user.application
 
-import com.duro.kukie.user.application.port.VerificationCodeSender
+import com.duro.kukie.user.application.port.out.VerificationCodeSender
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.exception.DuplicatedEmailException
