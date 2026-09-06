@@ -1,16 +1,21 @@
 package com.duro.kukie.user
 
+import com.duro.kukie.support.FakeVerificationCodeSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.exception.UserErrorCode
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import com.duro.kukie.user.presentation.dto.request.SendVerificationCodeRequest
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 
 class UserIntegrationTest : IntegrationTest() {
+
+    @Autowired
+    private lateinit var fakeVerificationCodeSender: FakeVerificationCodeSender
 
     private val email = UserFixture.DEFAULT_EMAIL
 
