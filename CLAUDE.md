@@ -16,7 +16,7 @@ Kukie server — Kotlin 2.3 / Spring Boot 4.1 / Java 25 REST API backed by Postg
 ```
 
 - Integration tests use Testcontainers (PostgreSQL + Redis, wired via `TestcontainersConfig`) and the `test` profile (`src/test/resources/application-test.yaml`), so Docker must be running.
-- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`.
+- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
 
 ## Architecture
 
@@ -36,6 +36,12 @@ Not Spring Security — a custom interceptor-based mechanism:
 - `@AuthUser userId: UUID` handler parameters are resolved by `AuthUserArgumentResolver` (parameter must be `UUID`).
 - **Convention enforced by test**: `@AuthUser` may only appear on handlers covered by `@Authenticated` (`AuthAnnotationConventionTest`).
 - Access/refresh tokens are typed via a `type` claim; refresh tokens are stored in Redis and rotated on refresh. Expirations configured under `jwt.*` in `application.yaml`.
+
+### OAuth (auth feature)
+
+- **The client of this API is a desktop app.** OAuth uses the authorization code flow with loopback redirects: the app opens the provider's authorize URL in a browser, catches the redirect on `http://127.0.0.1:<any-port>`, then POSTs `code` + `redirectUri` (+ optional PKCE `codeVerifier`) to this server, which exchanges the code using the client secret.
+- The **Google** OAuth client is registered as the **"Desktop app" type** — it has no redirect-URI allowlist (Google auto-allows loopback on any port), which is why the console never asked for one. Do not switch it to "Web application" unless the client stops being a desktop app.
+- The **GitHub** OAuth App has no type distinction; its callback URL is a loopback address (GitHub ignores the port on loopback callbacks).
 
 ### Persistence
 

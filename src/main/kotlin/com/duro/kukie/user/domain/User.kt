@@ -14,27 +14,41 @@ import java.util.UUID
 class User private constructor(
     name: String,
     email: String,
-    password: String,
+    password: String?,
 ) : BaseTimeEntity() {
+
     constructor(name: String, email: String, rawPassword: String, passwordEncoder: PasswordEncoder) : this(
         name = name,
         email = email,
         password = checkNotNull(passwordEncoder.encode(rawPassword))
     )
 
+    constructor(name: String, email: String) : this(
+        name = name,
+        email = email,
+        password = null,
+    )
+
     @Id
     var id: UUID = UuidCreator.getTimeOrderedEpoch()
         protected set
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50)
     var name = name
         protected set
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 255)
     var email = email
         protected set
 
-    @Column(nullable = false)
+    @Column(nullable = true, length = 255)
     var password = password
         protected set
+
+    fun matchesPassword(rawPassword: String, passwordEncoder: PasswordEncoder): Boolean =
+        password?.let { passwordEncoder.matches(rawPassword, it) } ?: false
+
+    companion object {
+        const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
+    }
 }

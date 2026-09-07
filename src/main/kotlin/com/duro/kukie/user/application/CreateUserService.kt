@@ -41,16 +41,12 @@ class CreateUserService(
             userRepository.saveAndFlush(user)
         } catch (e: DataIntegrityViolationException) {
             val cause = e.cause
-            if (cause is ConstraintViolationException && cause.constraintName == EMAIL_UNIQUE_CONSTRAINT) {
+            if (cause is ConstraintViolationException && cause.constraintName == User.EMAIL_UNIQUE_CONSTRAINT) {
                 throw DuplicatedEmailException()
             }
             throw e
         }
 
         verificationCodeRepository.deleteByEmail(request.email)
-    }
-
-    companion object {
-        private const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
     }
 }

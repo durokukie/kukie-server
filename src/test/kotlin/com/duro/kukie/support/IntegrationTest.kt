@@ -21,7 +21,7 @@ import org.springframework.test.web.servlet.MockMvc
 import tools.jackson.databind.ObjectMapper
 
 @ActiveProfiles("test")
-@Import(TestcontainersConfig::class, FakeVerificationCodeSenderConfig::class)
+@Import(TestcontainersConfig::class, FakeBeansConfig::class)
 @AutoConfigureMockMvc
 @SpringBootTest
 abstract class IntegrationTest {
@@ -33,7 +33,7 @@ abstract class IntegrationTest {
     protected lateinit var userRepository: UserRepository
 
     @Autowired
-    protected lateinit var fakeVerificationCodeSender: FakeVerificationCodeSender
+    private lateinit var fakes: List<Resettable>
 
     @Autowired
     private lateinit var jwtTokenProvider: JwtTokenProvider
@@ -74,7 +74,7 @@ abstract class IntegrationTest {
             jdbcTemplate.execute("TRUNCATE ${tables.joinToString(", ")} CASCADE")
         }
         redisTemplate.requiredConnectionFactory.connection.use { it.serverCommands().flushAll() }
-        fakeVerificationCodeSender.clear()
+        fakes.forEach(Resettable::clear)
     }
 }
 

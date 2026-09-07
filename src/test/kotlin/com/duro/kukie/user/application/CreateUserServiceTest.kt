@@ -62,7 +62,7 @@ class CreateUserServiceTest {
         with(savedUser.captured) {
             name shouldBe request.name
             email shouldBe request.email
-            passwordEncoder.matches(request.password, password) shouldBe true
+            matchesPassword(request.password, passwordEncoder) shouldBe true
         }
     }
 

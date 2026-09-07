@@ -1,1 +1,1 @@
-rootProject.name = "kukie"
+rootProject.name = "kukie-server"
