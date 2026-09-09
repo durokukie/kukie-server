@@ -2,8 +2,10 @@ package com.duro.kukie.team
 
 import com.duro.kukie.notification.domain.NotificationKind
 import com.duro.kukie.notification.domain.NotificationRepository
+import com.duro.kukie.notification.exception.NotificationErrorCode
 import com.duro.kukie.support.FakeTeamInvitationSender
 import com.duro.kukie.support.IntegrationTest
+import com.duro.kukie.support.LoggedInUser
 import com.duro.kukie.team.domain.InvitationStatus
 import com.duro.kukie.team.domain.TeamInvitation
 import com.duro.kukie.team.domain.TeamInvitationRepository
@@ -15,6 +17,7 @@ import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import com.duro.kukie.user.UserFixture
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
@@ -404,6 +407,70 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         notificationRepository.findAllByUserIdOrderByCreatedAtDesc(member.user.id).isEmpty() shouldBe true
     }
 
+    // ── 알림 읽음 처리 ─────────────────────────────────────────
+
+    @Test
+    fun `알림을 읽으면 읽은 시각이 남는다`() {
+        // given
+        val member = memberWhoseRoleChanged()
+        val notification = notificationRepository.findAllByUserIdOrderByCreatedAtDesc(member.user.id).first()
+
+        // when
+        mockMvc.post("/inbox/notifications/${notification.id}/read") {
+            authorization(member.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        notificationRepository.findAllByUserIdOrderByCreatedAtDesc(member.user.id).first().readAt shouldNotBe null
+    }
+
+    @Test
+    fun `이미 읽은 알림을 다시 읽어도 처음 읽은 시각을 유지한다`() {
+        // given
+        val member = memberWhoseRoleChanged()
+        val notification = notificationRepository.findAllByUserIdOrderByCreatedAtDesc(member.user.id).first()
+        mockMvc.post("/inbox/notifications/${notification.id}/read") {
+            authorization(member.accessToken)
+        }.andExpect { status { isNoContent() } }
+        val firstReadAt = notificationRepository.findAllByUserIdOrderByCreatedAtDesc(member.user.id).first().readAt
+
+        // when
+        mockMvc.post("/inbox/notifications/${notification.id}/read") {
+            authorization(member.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        notificationRepository.findAllByUserIdOrderByCreatedAtDesc(member.user.id).first().readAt shouldBe firstReadAt
+    }
+
+    @Test
+    fun `남의 알림은 읽을 수 없다`() {
+        // given
+        val member = memberWhoseRoleChanged()
+        val other = loggedInUser(UserFixture.user(email = "other@example.com"))
+        val notification = notificationRepository.findAllByUserIdOrderByCreatedAtDesc(member.user.id).first()
+
+        // when & then
+        mockMvc.post("/inbox/notifications/${notification.id}/read") {
+            authorization(other.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(NotificationErrorCode.NOT_MY_NOTIFICATION.code) }
+        }
+    }
+
+    @Test
+    fun `없는 알림은 읽을 수 없다`() {
+        val me = loggedInUser()
+
+        mockMvc.post("/inbox/notifications/${UUID.randomUUID()}/read") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(NotificationErrorCode.NOTIFICATION_NOT_FOUND.code) }
+        }
+    }
+
     // ── 팀 삭제 ────────────────────────────────────────────────
 
     @Test
@@ -429,6 +496,20 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
 
         return TeamAdmin(teamId = team.id, userId = admin.user.id, accessToken = admin.accessToken)
+    }
+
+    /** 역할이 바뀌어 알림을 하나 받은 구성원. */
+    private fun memberWhoseRoleChanged(): LoggedInUser {
+        val admin = adminOfNewTeam()
+        val member = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        teamMembershipRepository.save(TeamFixture.membership(admin.teamId, member.user.id, TeamRole.MEMBER))
+        mockMvc.patch("/teams/${admin.teamId}/members/${member.user.id}") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateTeamMemberRoleRequest(TeamRole.ADMIN).toJson()
+        }.andExpect { status { isNoContent() } }
+
+        return member
     }
 
     private fun invite(admin: TeamAdmin, email: String) {

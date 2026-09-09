@@ -2,6 +2,8 @@ package com.duro.kukie.inbox.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.inbox.presentation.dto.response.InboxResponse
+import com.duro.kukie.notification.exception.NotMyNotificationException
+import com.duro.kukie.notification.exception.NotificationNotFoundException
 import com.duro.kukie.team.exception.AlreadyTeamMemberException
 import com.duro.kukie.team.exception.InvitationNotFoundException
 import com.duro.kukie.team.exception.InvitationNotPendingException
@@ -34,4 +36,9 @@ interface InboxControllerDocs {
         InvitationNotPendingException::class,
     )
     fun declineInvitation(invitationId: UUID, userId: UUID): ResponseEntity<Unit>
+
+    @Operation(summary = "알림 읽음 처리", description = "알림을 읽음으로 표시합니다. 자신의 알림만 처리할 수 있습니다.")
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(NotificationNotFoundException::class, NotMyNotificationException::class)
+    fun readNotification(notificationId: UUID, userId: UUID): ResponseEntity<Unit>
 }

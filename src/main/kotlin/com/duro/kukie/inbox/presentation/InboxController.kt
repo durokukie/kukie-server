@@ -4,6 +4,7 @@ import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
 import com.duro.kukie.inbox.application.GetInboxService
 import com.duro.kukie.inbox.presentation.dto.response.InboxResponse
+import com.duro.kukie.notification.application.ReadNotificationService
 import com.duro.kukie.team.application.AcceptTeamInvitationService
 import com.duro.kukie.team.application.DeclineTeamInvitationService
 import org.springframework.http.ResponseEntity
@@ -21,6 +22,7 @@ class InboxController(
     private val getInboxService: GetInboxService,
     private val acceptTeamInvitationService: AcceptTeamInvitationService,
     private val declineTeamInvitationService: DeclineTeamInvitationService,
+    private val readNotificationService: ReadNotificationService,
 ) : InboxControllerDocs {
 
     @GetMapping
@@ -46,6 +48,16 @@ class InboxController(
         @AuthUser userId: UUID,
     ): ResponseEntity<Unit> {
         declineTeamInvitationService(invitationId, userId)
+
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/notifications/{notificationId}/read")
+    override fun readNotification(
+        @PathVariable notificationId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        readNotificationService(notificationId, userId)
 
         return ResponseEntity.noContent().build()
     }

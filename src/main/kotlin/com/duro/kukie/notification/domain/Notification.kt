@@ -61,6 +61,13 @@ class Notification private constructor(
     var readAt: LocalDateTime? = null
         protected set
 
+    /** 이미 읽은 알림을 다시 읽어도 처음 읽은 시각을 유지한다. */
+    fun markRead() {
+        if (readAt == null) {
+            readAt = LocalDateTime.now()
+        }
+    }
+
     companion object {
         /** 역할이 바뀐 사람에게 알린다. 역할 변경에는 상대방 승인을 받지 않으므로 알림이 유일한 통지다. */
         fun roleChanged(userId: UUID, teamId: UUID, teamName: String, role: TeamRole) = Notification(
