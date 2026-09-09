@@ -6,12 +6,15 @@ import com.duro.kukie.team.application.CreateTeamService
 import com.duro.kukie.team.application.DeleteTeamService
 import com.duro.kukie.team.application.GetMyTeamsService
 import com.duro.kukie.team.application.GetTeamMembersService
+import com.duro.kukie.team.application.InviteTeamMemberService
 import com.duro.kukie.team.application.RemoveTeamMemberService
 import com.duro.kukie.team.application.UpdateTeamMemberRoleService
 import com.duro.kukie.team.application.UpdateTeamService
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
+import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamRequest
+import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
 import com.duro.kukie.team.presentation.dto.response.TeamMemberResponse
 import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import jakarta.validation.Valid
@@ -35,6 +38,7 @@ class TeamController(
     private val getMyTeamsService: GetMyTeamsService,
     private val getTeamMembersService: GetTeamMembersService,
     private val updateTeamService: UpdateTeamService,
+    private val inviteTeamMemberService: InviteTeamMemberService,
     private val updateTeamMemberRoleService: UpdateTeamMemberRoleService,
     private val removeTeamMemberService: RemoveTeamMemberService,
     private val deleteTeamService: DeleteTeamService,
@@ -70,6 +74,15 @@ class TeamController(
         @RequestBody @Valid request: UpdateTeamRequest,
     ): ResponseEntity<TeamResponse> {
         return ResponseEntity.ok(updateTeamService(teamId, userId, request))
+    }
+
+    @PostMapping("/{teamId}/invitations")
+    override fun inviteTeamMember(
+        @PathVariable teamId: UUID,
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: InviteTeamMemberRequest,
+    ): ResponseEntity<TeamInvitationResponse> {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(teamId, userId, request))
     }
 
     @PatchMapping("/{teamId}/members/{targetUserId}")
