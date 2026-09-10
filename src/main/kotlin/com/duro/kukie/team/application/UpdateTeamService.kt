@@ -1,6 +1,5 @@
 package com.duro.kukie.team.application
 
-import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamRequest

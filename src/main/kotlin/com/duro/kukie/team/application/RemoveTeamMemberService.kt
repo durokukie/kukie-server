@@ -1,7 +1,6 @@
 package com.duro.kukie.team.application
 
 import com.duro.kukie.team.domain.TeamMembershipRepository
-import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

@@ -1,7 +1,6 @@
 package com.duro.kukie.team.application
 
 import com.duro.kukie.team.domain.TeamMembershipRepository
-import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.presentation.dto.response.TeamMemberResponse
 import com.duro.kukie.user.domain.UserRepository
 import org.springframework.stereotype.Service

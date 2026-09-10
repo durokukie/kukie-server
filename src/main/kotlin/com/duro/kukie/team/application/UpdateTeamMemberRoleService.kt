@@ -3,7 +3,6 @@ package com.duro.kukie.team.application
 import com.duro.kukie.notification.domain.Notification
 import com.duro.kukie.notification.domain.NotificationRepository
 import com.duro.kukie.team.domain.TeamMembershipRepository
-import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow

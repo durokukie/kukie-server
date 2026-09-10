@@ -1,8 +1,8 @@
 package com.duro.kukie.team
 
 import com.duro.kukie.support.IntegrationTest
+import com.duro.kukie.team.application.TeamPermission
 import com.duro.kukie.team.domain.TeamMembershipRepository
-import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.exception.AdminRequiredException
 import com.duro.kukie.user.UserFixture

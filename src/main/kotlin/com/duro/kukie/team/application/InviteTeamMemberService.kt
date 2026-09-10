@@ -4,7 +4,6 @@ import com.duro.kukie.team.domain.InvitationStatus
 import com.duro.kukie.team.domain.TeamInvitation
 import com.duro.kukie.team.domain.TeamInvitationRepository
 import com.duro.kukie.team.domain.TeamMembershipRepository
-import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.AlreadyTeamMemberException
