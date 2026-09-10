@@ -1,5 +1,6 @@
 package com.duro.kukie.team.domain
 
+import com.duro.kukie.team.exception.AdminRequiredException
 import com.duro.kukie.team.exception.NotTeamAdminException
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -25,5 +26,19 @@ class TeamPermission(
         }
 
         return membership
+    }
+
+    /**
+     * ADMIN 을 하나 줄이는 변경 앞에서 부른다. 마지막 한 명이면 409 — 관리자가 없는 팀은 아무도
+     * 관리할 수 없고 삭제조차 못 한다 (제품기획서 02 §3).
+     *
+     * 세지 않고 **잠그고 읽는다.** 관리자 A·B 뿐인 팀에서 서로를 동시에 제거·강등하면, 세기만 해서는
+     * 두 트랜잭션이 모두 통과해 관리자 0명이 된다 (자동 리뷰 지적). 제거와 강등 두 곳에 흩어져 있던
+     * 같은 검사를 여기로 모았다.
+     */
+    fun requireNotLastAdmin(teamId: UUID) {
+        if (teamMembershipRepository.lockAllByTeamIdAndRole(teamId, TeamRole.ADMIN).size <= 1) {
+            throw AdminRequiredException()
+        }
     }
 }

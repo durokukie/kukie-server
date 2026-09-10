@@ -226,6 +226,26 @@ class TeamIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `역할 값이 잘못되면 400 이다`() {
+        // given — enum 역직렬화는 Bean Validation 보다 먼저라 @NotNull 이 잡을 기회가 없다.
+        // 핸들러가 없으면 클라이언트의 입력 실수가 500 으로 나간다 (자동 리뷰 지적).
+        val admin = loggedInUser()
+        val team = teamRepository.save(TeamFixture.team())
+        teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        teamMembershipRepository.save(TeamFixture.membership(team.id, member.user.id, TeamRole.MEMBER))
+
+        // when & then — 없는 값, null, 아예 빠진 경우 모두
+        listOf("""{"role":"OWNER"}""", """{"role":null}""", "{}").forEach { body ->
+            mockMvc.patch("/teams/${team.id}/members/${member.user.id}") {
+                authorization(admin.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }.andExpect { status { isBadRequest() } }
+        }
+    }
+
+    @Test
     fun `팀에 없는 사용자의 역할은 변경할 수 없다`() {
         // given
         val admin = loggedInUser()

@@ -15,6 +15,11 @@ spring:
           auth: true
           starttls:
             enable: true
+          # 타임아웃이 없으면 JavaMail 기본값은 사실상 무한이다. 메일 서버가 멈추면 발송 스레드가
+          # 영영 매달려 있게 되므로 상한을 둔다 (자동 리뷰 지적).
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 springdoc:
   default-produces-media-type: application/json

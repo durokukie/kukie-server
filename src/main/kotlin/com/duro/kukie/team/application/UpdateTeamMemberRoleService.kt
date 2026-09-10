@@ -5,10 +5,8 @@ import com.duro.kukie.notification.domain.NotificationRepository
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.TeamRepository
-import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.domain.findMembershipOrThrow
-import com.duro.kukie.team.exception.AdminRequiredException
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -36,8 +34,8 @@ class UpdateTeamMemberRoleService(
         if (target.role == request.role) {
             return
         }
-        if (demotesLastAdmin(teamId, target.role, request.role)) {
-            throw AdminRequiredException()
+        if (target.role.isAdmin && request.role.isAdmin.not()) {
+            teamPermission.requireNotLastAdmin(teamId)
         }
 
         target.changeRole(request.role)
@@ -47,7 +45,4 @@ class UpdateTeamMemberRoleService(
             Notification.roleChanged(userId = targetUserId, teamId = team.id, teamName = team.name, role = request.role),
         )
     }
-
-    private fun demotesLastAdmin(teamId: UUID, current: TeamRole, next: TeamRole): Boolean =
-        current.isAdmin && next.isAdmin.not() && teamMembershipRepository.countByTeamIdAndRole(teamId, TeamRole.ADMIN) <= 1
 }

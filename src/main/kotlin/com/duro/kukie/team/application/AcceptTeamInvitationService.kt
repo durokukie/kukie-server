@@ -1,5 +1,6 @@
 package com.duro.kukie.team.application
 
+import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.team.domain.TeamInvitationRepository
 import com.duro.kukie.team.domain.TeamMembership
 import com.duro.kukie.team.domain.TeamMembershipRepository
@@ -29,7 +30,7 @@ class AcceptTeamInvitationService(
     operator fun invoke(invitationId: UUID, userId: UUID) {
         val user = userRepository.findByIdOrThrow(userId)
         val invitation = teamInvitationRepository.findByIdOrThrow(invitationId)
-        if (invitation.email != user.email) {
+        if (invitation.email != user.email.normalizeEmail()) {
             throw NotMyInvitationException()
         }
         if (teamMembershipRepository.existsByTeamIdAndUserId(invitation.teamId, userId)) {

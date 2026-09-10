@@ -97,8 +97,8 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Test
     fun `메일 발송이 실패해도 초대는 남는다`() {
-        // given — 서비스가 @Transactional 이라 메일 예외가 나가면 방금 만든 초대까지 롤백된다.
-        // SMTP 가 잠깐 죽었다고 관리자가 초대를 못 하게 되면 안 된다.
+        // given — 메일은 커밋 뒤에 최선 노력으로 나간다. SMTP 가 잠깐 죽었다고 관리자가 초대를
+        // 아예 못 하게 되면 안 된다.
         val admin = adminOfNewTeam()
         invitationSender.shouldFail = true
 
@@ -111,6 +111,84 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
         // then
         teamInvitationRepository.findAll().size shouldBe 1
+    }
+
+    @Test
+    fun `초대가 실패하면 메일도 나가지 않는다`() {
+        // given — 메일을 트랜잭션 안에서 보내면 커밋이 실패했을 때 없는 초대의 메일이 나간다.
+        val admin = adminOfNewTeam()
+        invite(admin, INVITEE_EMAIL)
+        val before = invitationSender.sentCount()
+
+        // when — 같은 주소를 다시 초대해 실패시킨다
+        mockMvc.post("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = InviteTeamMemberRequest(INVITEE_EMAIL).toJson()
+        }.andExpect { status { isConflict() } }
+
+        // then
+        invitationSender.sentCount() shouldBe before
+    }
+
+    @Test
+    fun `대소문자만 다른 주소로 초대해도 자기 초대를 본다`() {
+        // given — 초대는 주소 문자열로 사람을 가리킨다. 대소문자가 어긋나면 그 초대는 초대함에도
+        // 안 뜨고 수락도 재초대도 막혀 영영 남는다 (자동 리뷰 지적).
+        val admin = adminOfNewTeam()
+        invite(admin, INVITEE_EMAIL.uppercase())
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+
+        // when & then — 초대함에 뜨고
+        mockMvc.get("/inbox") {
+            authorization(invitee.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.invitations.length()") { value(1) }
+        }
+
+        // 수락도 된다
+        val invitation = teamInvitationRepository.findAll().first()
+        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+            authorization(invitee.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        teamMembershipRepository.existsByTeamIdAndUserId(admin.teamId, invitee.user.id) shouldBe true
+    }
+
+    @Test
+    fun `대소문자만 다른 주소는 같은 주소로 본다`() {
+        // given
+        val admin = adminOfNewTeam()
+        invite(admin, INVITEE_EMAIL)
+
+        // when & then
+        mockMvc.post("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = InviteTeamMemberRequest(INVITEE_EMAIL.uppercase()).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(TeamErrorCode.INVITATION_ALREADY_SENT.code) }
+        }
+    }
+
+    @Test
+    fun `이미 팀에 있는 사람은 대소문자가 달라도 초대할 수 없다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val member = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        teamMembershipRepository.save(TeamFixture.membership(admin.teamId, member.user.id, TeamRole.MEMBER))
+
+        // when & then
+        mockMvc.post("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = InviteTeamMemberRequest(INVITEE_EMAIL.uppercase()).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(TeamErrorCode.ALREADY_TEAM_MEMBER.code) }
+        }
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.duro.kukie.team.application
 
+import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.team.domain.TeamInvitationRepository
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.NotMyInvitationException
@@ -20,7 +21,7 @@ class DeclineTeamInvitationService(
     operator fun invoke(invitationId: UUID, userId: UUID) {
         val user = userRepository.findByIdOrThrow(userId)
         val invitation = teamInvitationRepository.findByIdOrThrow(invitationId)
-        if (invitation.email != user.email) {
+        if (invitation.email != user.email.normalizeEmail()) {
             throw NotMyInvitationException()
         }
 

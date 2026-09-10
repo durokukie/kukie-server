@@ -2,9 +2,7 @@ package com.duro.kukie.team.application
 
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamPermission
-import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.domain.findMembershipOrThrow
-import com.duro.kukie.team.exception.AdminRequiredException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -21,8 +19,8 @@ class RemoveTeamMemberService(
         teamPermission.requireAdmin(teamId, userId)
 
         val target = teamMembershipRepository.findMembershipOrThrow(teamId, targetUserId)
-        if (target.role.isAdmin && teamMembershipRepository.countByTeamIdAndRole(teamId, TeamRole.ADMIN) <= 1) {
-            throw AdminRequiredException()
+        if (target.role.isAdmin) {
+            teamPermission.requireNotLastAdmin(teamId)
         }
 
         teamMembershipRepository.delete(target)
