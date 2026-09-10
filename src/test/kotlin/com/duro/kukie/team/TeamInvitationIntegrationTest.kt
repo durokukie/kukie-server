@@ -96,6 +96,24 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `메일 발송이 실패해도 초대는 남는다`() {
+        // given — 서비스가 @Transactional 이라 메일 예외가 나가면 방금 만든 초대까지 롤백된다.
+        // SMTP 가 잠깐 죽었다고 관리자가 초대를 못 하게 되면 안 된다.
+        val admin = adminOfNewTeam()
+        invitationSender.shouldFail = true
+
+        // when
+        mockMvc.post("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = InviteTeamMemberRequest(INVITEE_EMAIL).toJson()
+        }.andExpect { status { isCreated() } }
+
+        // then
+        teamInvitationRepository.findAll().size shouldBe 1
+    }
+
+    @Test
     fun `구성원은 초대할 수 없다`() {
         // given
         val team = teamRepository.save(TeamFixture.team())

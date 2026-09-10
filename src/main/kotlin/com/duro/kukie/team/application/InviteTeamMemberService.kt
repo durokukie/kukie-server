@@ -11,6 +11,7 @@ import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.AlreadyTeamMemberException
 import com.duro.kukie.team.exception.InvitationAlreadySentException
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
+import com.duro.kukie.global.util.logger
 import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.findByIdOrThrow
@@ -27,6 +28,8 @@ class InviteTeamMemberService(
     private val teamPermission: TeamPermission,
     private val teamInvitationSender: TeamInvitationSender,
 ) {
+
+    private val log = logger()
 
     /**
      * 초대는 Admin만 보낸다. 보냈다고 바로 멤버가 되지는 않는다 — 받는 사람이 수락해야 한다
@@ -52,9 +55,24 @@ class InviteTeamMemberService(
 
         val invitation = teamInvitationRepository.save(TeamInvitation(teamId = teamId, email = email, invitedBy = userId))
         if (invitee == null) {
-            teamInvitationSender.send(email, team.name, userRepository.findByIdOrThrow(userId).name)
+            notifyByMail(email, team.name, userId)
         }
 
         return TeamInvitationResponse.of(invitation)
+    }
+
+    /**
+     * 메일은 최선 노력이다.
+     *
+     * 이 서비스는 @Transactional 이라 여기서 예외가 나가면 **방금 만든 초대까지 롤백된다**. SMTP 가
+     * 잠깐 죽었다고 관리자가 초대를 아예 못 하게 되는 편이 더 나쁘다. 초대는 남으므로 상대가 가입하면
+     * 받은 초대함에서 보게 된다 (제품기획서 02 §4).
+     */
+    private fun notifyByMail(email: String, teamName: String, inviterId: UUID) {
+        try {
+            teamInvitationSender.send(email, teamName, userRepository.findByIdOrThrow(inviterId).name)
+        } catch (exception: Exception) {
+            log.error("초대 메일을 보내지 못했다 — 초대는 그대로 남는다: {} ({} 팀)", email, teamName, exception)
+        }
     }
 }
