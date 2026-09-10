@@ -1,7 +1,9 @@
 package com.duro.kukie.team.domain
 
 import com.duro.kukie.global.entity.BaseTimeEntity
+import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.team.exception.InvitationNotPendingException
+import com.duro.kukie.team.exception.NotMyInvitationException
 import com.github.f4b6a3.uuid.UuidCreator
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -45,6 +47,16 @@ class TeamInvitation(
     @Column(nullable = false, length = 10)
     var status = InvitationStatus.PENDING
         protected set
+
+    /**
+     * 초대는 회원 id 가 아니라 주소로 사람을 가리키므로 "내 주소로 온 초대인가" 가 본인 확인이다.
+     * 수락과 거절이 같은 규칙을 쓰므로 두 서비스에 복붙하지 않고 여기 둔다 (자동 리뷰 지적).
+     */
+    fun requireOwnedBy(email: String) {
+        if (this.email != email.normalizeEmail()) {
+            throw NotMyInvitationException()
+        }
+    }
 
     fun accept() {
         requirePending()

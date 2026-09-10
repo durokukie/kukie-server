@@ -319,6 +319,13 @@ class TeamIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `없는 팀을 지워도 예외가 나지 않는다`() {
+        // DeleteTeamService 가 조회 없이 deleteById 하나로 끝내는 근거. 삭제가 겹쳐 팀이 먼저 사라져도
+        // EmptyResultDataAccessException 으로 500 이 되지 않는다 (Spring Data 4.1 에서 확인).
+        teamRepository.deleteById(UUID.randomUUID())
+    }
+
+    @Test
     fun `구성원은 팀을 삭제할 수 없다`() {
         // given
         val member = loggedInUser()

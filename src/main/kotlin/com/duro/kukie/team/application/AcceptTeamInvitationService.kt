@@ -1,13 +1,11 @@
 package com.duro.kukie.team.application
 
-import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.team.domain.TeamInvitationRepository
 import com.duro.kukie.team.domain.TeamMembership
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.AlreadyTeamMemberException
-import com.duro.kukie.team.exception.NotMyInvitationException
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.findByIdOrThrow
 import org.springframework.stereotype.Service
@@ -30,9 +28,7 @@ class AcceptTeamInvitationService(
     operator fun invoke(invitationId: UUID, userId: UUID) {
         val user = userRepository.findByIdOrThrow(userId)
         val invitation = teamInvitationRepository.findByIdOrThrow(invitationId)
-        if (invitation.email != user.email.normalizeEmail()) {
-            throw NotMyInvitationException()
-        }
+        invitation.requireOwnedBy(user.email)
         if (teamMembershipRepository.existsByTeamIdAndUserId(invitation.teamId, userId)) {
             throw AlreadyTeamMemberException()
         }

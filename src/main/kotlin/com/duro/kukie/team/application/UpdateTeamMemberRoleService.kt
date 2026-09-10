@@ -6,7 +6,7 @@ import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.findByIdOrThrow
-import com.duro.kukie.team.domain.findMembershipOrThrow
+import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -30,7 +30,7 @@ class UpdateTeamMemberRoleService(
     operator fun invoke(teamId: UUID, targetUserId: UUID, userId: UUID, request: UpdateTeamMemberRoleRequest) {
         teamPermission.requireAdmin(teamId, userId)
 
-        val target = teamMembershipRepository.findMembershipOrThrow(teamId, targetUserId)
+        val target = teamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId, targetUserId)
         if (target.role == request.role) {
             return
         }

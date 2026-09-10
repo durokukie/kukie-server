@@ -31,5 +31,5 @@ interface TeamMembershipRepository : JpaRepository<TeamMembership, UUID> {
 }
 
 /** 그 팀의 멤버가 아니면 예외. 멤버 여부 확인과 역할 조회를 겸한다. */
-fun TeamMembershipRepository.findMembershipOrThrow(teamId: UUID, userId: UUID): TeamMembership =
+fun TeamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId: UUID, userId: UUID): TeamMembership =
     findByTeamIdAndUserId(teamId, userId) ?: throw NotTeamMemberException()

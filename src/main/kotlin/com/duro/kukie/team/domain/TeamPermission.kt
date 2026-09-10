@@ -16,7 +16,7 @@ class TeamPermission(
 
     /** 멤버가 아니면 403. 멤버면 그 역할을 돌려준다. */
     fun requireMember(teamId: UUID, userId: UUID): TeamMembership =
-        teamMembershipRepository.findMembershipOrThrow(teamId, userId)
+        teamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId, userId)
 
     /** Admin이 아니면 403. 팀·클러스터 관리 작업 앞에 둔다 (제품기획서 02·03). */
     fun requireAdmin(teamId: UUID, userId: UUID): TeamMembership {

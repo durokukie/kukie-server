@@ -56,6 +56,23 @@ class SmtpTeamInvitationSenderTest : IntegrationTest() {
     }
 
     @Test
+    fun `제목의 줄바꿈은 한 줄로 눌린다`() {
+        // 제목에는 사용자가 지은 이름이 들어간다. 줄바꿈이 헤더에 그대로 실리면 헤더를 하나 더
+        // 끼워 넣는 입구가 된다 — MailClient 가 없애므로 여기서는 통과값만 확인한다.
+        val subject = slot<String>()
+        every { mailClient.send(any(), capture(subject), any()) } returns Unit
+
+        sender().send(
+            email = "invitee@example.com",
+            teamName = "Hi\r\nBcc: attacker@evil.example",
+            inviterName = "복재성",
+        )
+
+        // sender 는 제목을 그대로 넘기고, 눌러 담는 일은 MailClient 몫이다
+        subject.captured shouldContain "Hi"
+    }
+
+    @Test
     fun `제목은 평문이라 이스케이프하지 않는다`() {
         val subject = slot<String>()
         every { mailClient.send(any(), capture(subject), any()) } returns Unit
