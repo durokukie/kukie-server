@@ -70,8 +70,6 @@ class TeamIntegrationTest : IntegrationTest() {
         }.andExpect { status { isBadRequest() } }
     }
 
-    // ── 내 팀 목록 ─────────────────────────────────────────────
-
     @Test
     fun `팀 이름에 줄바꿈을 넣을 수 없다`() {
         // 팀 이름은 초대 메일의 제목·본문에 실린다. 줄바꿈이 정상인 이름은 없으므로 입구에서 막는다.
@@ -85,6 +83,8 @@ class TeamIntegrationTest : IntegrationTest() {
 
         teamRepository.findAll().isEmpty() shouldBe true
     }
+
+    // ── 내 팀 목록 ─────────────────────────────────────────────
 
     @Test
     fun `내가 속한 팀과 역할을 조회한다`() {
