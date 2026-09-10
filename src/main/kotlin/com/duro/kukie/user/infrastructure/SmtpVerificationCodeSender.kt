@@ -2,25 +2,33 @@ package com.duro.kukie.user.infrastructure
 
 import com.duro.kukie.global.config.properties.VerificationCodeProperties
 import com.duro.kukie.global.mail.MailClient
+import com.duro.kukie.global.mail.MailTemplate
 import com.duro.kukie.user.application.port.out.VerificationCodeSender
 import org.springframework.stereotype.Component
 
 @Component
 class SmtpVerificationCodeSender(
     private val mailClient: MailClient,
+    private val mailTemplate: MailTemplate,
     private val verificationCodeProperties: VerificationCodeProperties,
 ) : VerificationCodeSender {
 
+    /** 여기 들어가는 값은 서버가 만든 것뿐이라 주입 여지가 없지만, 메일 본문은 한 방식으로 만든다. */
     override fun send(email: String, code: String) {
         mailClient.send(
             to = email,
             subject = "[kukie] 이메일 인증 번호입니다.",
-            htmlBody = """
-                <h1>이메일 인증 번호</h1>
-                <p>아래 인증 번호를 입력하여 가입을 완료해 주세요.</p>
-                <h2>$code</h2>
-                <p>※ 인증 번호는 ${verificationCodeProperties.expiration.toMinutes()}분 동안만 유효합니다.</p>
-            """.trimIndent(),
+            htmlBody = mailTemplate.render(
+                TEMPLATE,
+                mapOf(
+                    "code" to code,
+                    "expirationMinutes" to verificationCodeProperties.expiration.toMinutes(),
+                ),
+            ),
         )
+    }
+
+    companion object {
+        private const val TEMPLATE = "mail/verification-code"
     }
 }
