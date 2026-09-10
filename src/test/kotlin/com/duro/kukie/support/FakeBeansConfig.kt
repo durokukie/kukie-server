@@ -14,4 +14,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeOAuthClient(): FakeOAuthClient = FakeOAuthClient()
+
+    @Bean
+    @Primary
+    fun fakeTeamInvitationSender(): FakeTeamInvitationSender = FakeTeamInvitationSender()
 }
