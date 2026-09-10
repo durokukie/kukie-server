@@ -4,7 +4,6 @@ import com.duro.kukie.team.domain.TeamInvitationRepository
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamPermission
 import com.duro.kukie.team.domain.TeamRepository
-import com.duro.kukie.team.domain.findByIdOrThrow
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -22,16 +21,17 @@ class DeleteTeamService(
      *
      * 알림은 팀을 참조하지 않고 팀 이름을 그때 값으로 적어 두므로 그대로 남는다.
      *
-     * 클러스터·활동 기록의 보존 정책은 아직 정해지지 않았다(제품기획서 02 §5) — 지금은 팀에 딸린
-     * 다른 데이터가 없어 이대로 지운다. 클러스터가 생기면 여기서 함께 다뤄야 한다.
+     * **클러스터는 여기서 지울 수 없다.** 클러스터 접속 정보는 agent DB(`tbl_cluster`)가 갖기로
+     * 정해졌고(기획 04 §8, DB 구조 문서 합의 2026-09-10), 그쪽 `team_id` 는 이 서버를 향한 FK 가
+     * 아니다. 팀을 지우면 agent 에 주인 없는 클러스터가 남는다 — agent 가 팀 목록을 이 서버에 물어
+     * 판단하므로 아무도 쓸 수는 없지만, 지우려면 이 서버가 agent 에 알려 줘야 한다 (후속 과제).
      */
     @Transactional
     operator fun invoke(teamId: UUID, userId: UUID) {
         teamPermission.requireAdmin(teamId, userId)
 
-        val team = teamRepository.findByIdOrThrow(teamId)
         teamInvitationRepository.deleteAllByTeamId(teamId)
         teamMembershipRepository.deleteAllByTeamId(teamId)
-        teamRepository.delete(team)
+        teamRepository.deleteById(teamId)
     }
 }

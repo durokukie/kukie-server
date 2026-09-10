@@ -6,7 +6,6 @@ import com.duro.kukie.team.exception.AlreadyTeamMemberException
 import com.duro.kukie.team.exception.InvitationAlreadySentException
 import com.duro.kukie.team.exception.NotTeamAdminException
 import com.duro.kukie.team.exception.NotTeamMemberException
-import com.duro.kukie.team.exception.TeamNotFoundException
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -19,6 +18,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
 import java.util.UUID
 
+/**
+ * 없는 teamId 로 부르면 404 가 아니라 **403** 이다. 모든 팀 API 가 먼저 `TeamPermission` 을 거치는데,
+ * 멤버십의 `team_id` FK 가 팀 존재를 보장하므로 없는 팀에는 멤버십도 없어 NOT_TEAM_MEMBER 가 먼저 난다.
+ * 그래서 404 를 문서에 적지 않는다 — 클라이언트가 탈 수 없는 분기다 (자동 리뷰 지적).
+ */
 interface TeamControllerDocs {
 
     @Operation(summary = "팀 생성", description = "팀을 만들고 생성자를 관리자로 등록합니다.")
@@ -33,7 +37,7 @@ interface TeamControllerDocs {
     fun getTeamMembers(teamId: UUID, userId: UUID): ResponseEntity<List<TeamMemberResponse>>
 
     @Operation(summary = "팀 정보 수정", description = "팀 이름을 변경합니다. 관리자만 할 수 있습니다.")
-    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, TeamNotFoundException::class)
+    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class)
     fun updateTeam(teamId: UUID, userId: UUID, request: UpdateTeamRequest): ResponseEntity<TeamResponse>
 
     @Operation(
@@ -44,7 +48,6 @@ interface TeamControllerDocs {
     @ApiErrorResponses(
         NotTeamMemberException::class,
         NotTeamAdminException::class,
-        TeamNotFoundException::class,
         AlreadyTeamMemberException::class,
         InvitationAlreadySentException::class,
     )
@@ -77,6 +80,6 @@ interface TeamControllerDocs {
 
     @Operation(summary = "팀 삭제", description = "팀과 구성원 정보를 삭제합니다. 관리자만 할 수 있습니다.")
     @ApiResponse(responseCode = "204", description = "No Content")
-    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, TeamNotFoundException::class)
+    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class)
     fun deleteTeam(teamId: UUID, userId: UUID): ResponseEntity<Unit>
 }

@@ -15,7 +15,7 @@ import java.util.UUID
 
 interface InboxControllerDocs {
 
-    @Operation(summary = "받은 초대함 조회", description = "아직 처리하지 않은 팀 초대와 알림을 조회합니다.")
+    @Operation(summary = "받은 초대함 조회", description = "대기 중인 팀 초대와 내 알림을 조회합니다. 초대는 아직 처리하지 않은 것만, 알림은 읽은 것도 함께 옵니다.")
     fun getInbox(userId: UUID): ResponseEntity<InboxResponse>
 
     @Operation(summary = "팀 초대 수락", description = "초대를 수락해 팀 구성원이 됩니다. 자신에게 온 초대만 수락할 수 있습니다.")
