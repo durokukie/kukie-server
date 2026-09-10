@@ -6,8 +6,8 @@ Kukie의 REST API 서버입니다.
 
 - Kotlin 2.3 / Java 25
 - Spring Boot 4.1 (Web MVC, Data JPA, Data Redis, Validation, Mail, Actuator)
-- PostgreSQL 18 + Flyway (스키마 마이그레이션)
-- Redis 8 (리프레시 토큰, 이메일 인증 코드 저장)
+- PostgreSQL 18, Flyway
+- Redis 8
 - JWT 기반 인증, OAuth2 로그인 (GitHub, Google)
 
 ## 시작하기
