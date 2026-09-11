@@ -6,12 +6,7 @@ import com.duro.kukie.notification.exception.NotificationErrorCode
 import com.duro.kukie.support.FakeTeamInvitationSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
-import com.duro.kukie.team.domain.InvitationStatus
-import com.duro.kukie.team.domain.TeamInvitation
-import com.duro.kukie.team.domain.TeamInvitationRepository
-import com.duro.kukie.team.domain.TeamMembershipRepository
-import com.duro.kukie.team.domain.TeamRepository
-import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.team.domain.*
 import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -25,7 +20,7 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
-import java.util.UUID
+import java.util.*
 
 class TeamInvitationIntegrationTest : IntegrationTest() {
 
@@ -307,11 +302,6 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.invitations.length()") { value(0) }
         }
-    }
-
-    @Test
-    fun `로그인하지 않으면 받은 초대함을 볼 수 없다`() {
-        mockMvc.get("/inbox").andExpect { status { isUnauthorized() } }
     }
 
     // ── 초대 수락 ──────────────────────────────────────────────

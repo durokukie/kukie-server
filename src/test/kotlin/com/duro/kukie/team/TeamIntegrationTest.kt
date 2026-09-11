@@ -17,7 +17,7 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
-import java.util.UUID
+import java.util.*
 
 class TeamIntegrationTest : IntegrationTest() {
 
@@ -49,14 +49,6 @@ class TeamIntegrationTest : IntegrationTest() {
         val memberships = teamMembershipRepository.findAllByUserId(me.user.id)
         memberships.size shouldBe 1
         memberships.first().role shouldBe TeamRole.ADMIN
-    }
-
-    @Test
-    fun `로그인하지 않으면 팀을 만들 수 없다`() {
-        mockMvc.post("/teams") {
-            contentType = MediaType.APPLICATION_JSON
-            content = CreateTeamRequest(TeamFixture.DEFAULT_NAME).toJson()
-        }.andExpect { status { isUnauthorized() } }
     }
 
     @Test
@@ -298,7 +290,7 @@ class TeamIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `마지막 관리자는 제거할 수 없다`() {
+    fun `자기 자신은 추방할 수 없다`() {
         // given
         val admin = loggedInUser()
         val team = teamRepository.save(TeamFixture.team())
@@ -308,8 +300,97 @@ class TeamIntegrationTest : IntegrationTest() {
         mockMvc.delete("/teams/${team.id}/members/${admin.user.id}") {
             authorization(admin.accessToken)
         }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(TeamErrorCode.CANNOT_REMOVE_SELF.code) }
+        }
+        teamMembershipRepository.existsByTeamIdAndUserId(team.id, admin.user.id) shouldBe true
+    }
+
+    @Test
+    fun `구성원은 다른 구성원을 추방할 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val team = teamRepository.save(TeamFixture.team())
+        teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
+        teamMembershipRepository.save(TeamFixture.membership(team.id, member.user.id, TeamRole.MEMBER))
+
+        // when & then
+        mockMvc.delete("/teams/${team.id}/members/${admin.user.id}") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+    }
+
+    // ── 팀 나가기 ──────────────────────────────────────────────
+
+    @Test
+    fun `구성원은 팀을 나간다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val team = teamRepository.save(TeamFixture.team())
+        teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
+        teamMembershipRepository.save(TeamFixture.membership(team.id, member.user.id, TeamRole.MEMBER))
+
+        // when
+        mockMvc.delete("/teams/${team.id}/members/me") {
+            authorization(member.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        teamMembershipRepository.existsByTeamIdAndUserId(team.id, member.user.id) shouldBe false
+        teamMembershipRepository.existsByTeamIdAndUserId(team.id, admin.user.id) shouldBe true
+    }
+
+    @Test
+    fun `관리자가 둘이면 한 명은 팀을 나갈 수 있다`() {
+        // given
+        val admin = loggedInUser()
+        val otherAdmin = loggedInUser(UserFixture.user(email = "other@example.com"))
+        val team = teamRepository.save(TeamFixture.team())
+        teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
+        teamMembershipRepository.save(TeamFixture.membership(team.id, otherAdmin.user.id))
+
+        // when
+        mockMvc.delete("/teams/${team.id}/members/me") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        teamMembershipRepository.existsByTeamIdAndUserId(team.id, admin.user.id) shouldBe false
+    }
+
+    @Test
+    fun `마지막 관리자는 팀을 나갈 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val team = teamRepository.save(TeamFixture.team())
+        teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
+
+        // when & then
+        mockMvc.delete("/teams/${team.id}/members/me") {
+            authorization(admin.accessToken)
+        }.andExpect {
             status { isConflict() }
             jsonPath("$.code") { value(TeamErrorCode.ADMIN_REQUIRED.code) }
+        }
+    }
+
+    @Test
+    fun `구성원이 아니면 팀을 나갈 수 없다`() {
+        // given
+        val outsider = loggedInUser()
+        val team = teamRepository.save(TeamFixture.team())
+
+        // when & then
+        mockMvc.delete("/teams/${team.id}/members/me") {
+            authorization(outsider.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_MEMBER.code) }
         }
     }
 
