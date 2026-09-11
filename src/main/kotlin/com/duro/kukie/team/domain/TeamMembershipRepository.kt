@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
-import java.util.UUID
+import java.util.*
 
 interface TeamMembershipRepository : JpaRepository<TeamMembership, UUID> {
     fun findByTeamIdAndUserId(teamId: UUID, userId: UUID): TeamMembership?
@@ -30,6 +30,5 @@ interface TeamMembershipRepository : JpaRepository<TeamMembership, UUID> {
     fun deleteAllByTeamId(teamId: UUID)
 }
 
-/** 그 팀의 멤버가 아니면 예외. 멤버 여부 확인과 역할 조회를 겸한다. */
 fun TeamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId: UUID, userId: UUID): TeamMembership =
     findByTeamIdAndUserId(teamId, userId) ?: throw NotTeamMemberException()

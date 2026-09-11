@@ -1,11 +1,7 @@
 package com.duro.kukie.team.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
-import com.duro.kukie.team.exception.AdminRequiredException
-import com.duro.kukie.team.exception.AlreadyTeamMemberException
-import com.duro.kukie.team.exception.InvitationAlreadySentException
-import com.duro.kukie.team.exception.NotTeamAdminException
-import com.duro.kukie.team.exception.NotTeamMemberException
+import com.duro.kukie.team.exception.*
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -16,7 +12,7 @@ import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
-import java.util.UUID
+import java.util.*
 
 /**
  * 없는 teamId 로 부르면 404 가 아니라 **403** 이다. 모든 팀 API 가 먼저 `TeamPermission` 을 거치는데,
@@ -71,11 +67,24 @@ interface TeamControllerDocs {
     ): ResponseEntity<Unit>
 
     @Operation(
-        summary = "팀 구성원 제거",
-        description = "구성원을 팀에서 제거합니다. 관리자만 할 수 있으며, 마지막 관리자는 제거할 수 없습니다.",
+        summary = "팀 나가기",
+        description = "자신이 팀에서 나갑니다. 구성원이면 누구나 할 수 있으며, 마지막 관리자는 나갈 수 없습니다.",
     )
     @ApiResponse(responseCode = "204", description = "No Content")
-    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, AdminRequiredException::class)
+    @ApiErrorResponses(NotTeamMemberException::class, AdminRequiredException::class)
+    fun leaveTeam(teamId: UUID, userId: UUID): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "팀 구성원 제거",
+        description = "다른 구성원을 팀에서 제거합니다. 관리자만 할 수 있으며, 자기 자신은 제거할 수 없습니다(팀 나가기를 이용).",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(
+        NotTeamMemberException::class,
+        NotTeamAdminException::class,
+        CannotRemoveSelfException::class,
+        AdminRequiredException::class,
+    )
     fun removeTeamMember(teamId: UUID, targetUserId: UUID, userId: UUID): ResponseEntity<Unit>
 
     @Operation(summary = "팀 삭제", description = "팀과 구성원 정보를 삭제합니다. 관리자만 할 수 있습니다.")
