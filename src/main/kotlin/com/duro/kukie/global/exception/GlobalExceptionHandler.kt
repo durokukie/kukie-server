@@ -3,10 +3,13 @@ package com.duro.kukie.global.exception
 import com.duro.kukie.global.util.logger
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.servlet.NoHandlerFoundException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -41,6 +44,24 @@ class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleNotReadableException(e: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.BAD_REQUEST
+
+        return ResponseEntity
+            .status(errorCode.status)
+            .body(ErrorResponse(errorCode.code, errorCode.message))
+    }
+
+    @ExceptionHandler(NoResourceFoundException::class, NoHandlerFoundException::class)
+    fun handleNotFoundException(e: Exception): ResponseEntity<ErrorResponse> {
+        val errorCode = GlobalErrorCode.NOT_FOUND
+
+        return ResponseEntity
+            .status(errorCode.status)
+            .body(ErrorResponse(errorCode.code, errorCode.message))
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
+    fun handleMethodNotSupportedException(e: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> {
+        val errorCode = GlobalErrorCode.METHOD_NOT_ALLOWED
 
         return ResponseEntity
             .status(errorCode.status)
