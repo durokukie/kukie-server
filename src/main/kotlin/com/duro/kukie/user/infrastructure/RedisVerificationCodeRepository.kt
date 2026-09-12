@@ -1,6 +1,5 @@
 package com.duro.kukie.user.infrastructure
 
-import com.duro.kukie.global.config.properties.VerificationCodeProperties
 import com.duro.kukie.user.domain.VerificationCodeRepository
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Repository
@@ -8,12 +7,11 @@ import org.springframework.stereotype.Repository
 @Repository
 class RedisVerificationCodeRepository(
     private val redisTemplate: StringRedisTemplate,
-    private val verificationCodeProperties: VerificationCodeProperties,
 ) : VerificationCodeRepository {
 
     override fun save(email: String, code: String) {
         redisTemplate.opsForValue()
-            .set(key(email), code, verificationCodeProperties.expiration)
+            .set(key(email), code, VerificationCodeRepository.EXPIRATION)
     }
 
     override fun findByEmail(email: String): String? {

@@ -20,6 +20,8 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.*
 
 class TeamInvitationIntegrationTest : IntegrationTest() {
@@ -59,6 +61,38 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         }
 
         teamMembershipRepository.findAllByTeamId(admin.teamId).size shouldBe 1
+    }
+
+    @Test
+    fun `초대는 7일 뒤에 만료된다`() {
+        // given
+        val admin = adminOfNewTeam()
+
+        // when
+        invite(admin, INVITEE_EMAIL)
+
+        // then
+        val invitation = teamInvitationRepository.findAll().first()
+        val expectedExpiresAt = invitation.createdAt.plus(TeamInvitation.VALIDITY)
+        ChronoUnit.SECONDS.between(invitation.expiresAt, expectedExpiresAt) shouldBe 0
+    }
+
+    @Test
+    fun `만료된 주소는 다시 초대할 수 있다`() {
+        // given — 기한이 지난 대기 초대는 자리를 비켜 준다
+        val admin = adminOfNewTeam()
+        val expired = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId, expiresAt = yesterday())
+
+        // when
+        mockMvc.post("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = InviteTeamMemberRequest(INVITEE_EMAIL).toJson()
+        }.andExpect { status { isCreated() } }
+
+        // then
+        teamInvitationRepository.findByIdOrThrow(expired.id).status shouldBe InvitationStatus.EXPIRED
+        teamInvitationRepository.findAll().count { it.status == InvitationStatus.PENDING } shouldBe 1
     }
 
     @Test
@@ -426,6 +460,22 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         }
     }
 
+    @Test
+    fun `만료된 초대는 받은 초대함에 보이지 않는다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId, expiresAt = yesterday())
+
+        // when & then
+        mockMvc.get("/inbox") {
+            authorization(invitee.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.invitations.length()") { value(0) }
+        }
+    }
+
     // ── 초대 수락 ──────────────────────────────────────────────
 
     @Test
@@ -497,6 +547,23 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             status { isConflict() }
             jsonPath("$.code") { value(TeamErrorCode.INVITATION_NOT_PENDING.code) }
         }
+    }
+
+    @Test
+    fun `만료된 초대는 수락할 수 없다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId, expiresAt = yesterday())
+
+        // when & then
+        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+            authorization(invitee.accessToken)
+        }.andExpect {
+            status { isGone() }
+            jsonPath("$.code") { value(TeamErrorCode.INVITATION_EXPIRED.code) }
+        }
+        teamMembershipRepository.existsByTeamIdAndUserId(admin.teamId, invitee.user.id) shouldBe false
     }
 
     @Test
@@ -728,8 +795,14 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         }.andExpect { status { isCreated() } }
     }
 
-    private fun savedInvitation(teamId: UUID, email: String, invitedBy: UUID): TeamInvitation =
-        teamInvitationRepository.save(TeamInvitation(teamId = teamId, email = email, invitedBy = invitedBy))
+    private fun savedInvitation(
+        teamId: UUID,
+        email: String,
+        invitedBy: UUID,
+        expiresAt: LocalDateTime = LocalDateTime.now().plus(TeamInvitation.VALIDITY),
+    ): TeamInvitation = teamInvitationRepository.save(TeamFixture.invitation(teamId, email, invitedBy, expiresAt))
+
+    private fun yesterday(): LocalDateTime = LocalDateTime.now().minusDays(1)
 
     private data class TeamAdmin(
         val teamId: UUID,

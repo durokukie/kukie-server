@@ -38,7 +38,7 @@ interface TeamControllerDocs {
 
     @Operation(
         summary = "팀 구성원 초대",
-        description = "이메일 주소로 팀에 초대합니다. 관리자만 할 수 있으며, 받는 사람이 수락해야 구성원이 됩니다.",
+        description = "이메일 주소로 팀에 초대합니다. 관리자만 할 수 있으며, 받는 사람이 수락해야 구성원이 됩니다. 초대는 7일 뒤 만료됩니다.",
     )
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiErrorResponses(

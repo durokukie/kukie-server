@@ -18,6 +18,7 @@ data class InvitationResponse(
     val team: InvitedTeamResponse,
     val invitedBy: String,
     val createdAt: LocalDateTime,
+    val expiresAt: LocalDateTime,
 ) {
     companion object {
         fun of(invitation: TeamInvitation, team: Team, inviterName: String) = InvitationResponse(
@@ -25,6 +26,7 @@ data class InvitationResponse(
             team = InvitedTeamResponse(team.id, team.name),
             invitedBy = inviterName,
             createdAt = invitation.createdAt,
+            expiresAt = invitation.expiresAt,
         )
     }
 }

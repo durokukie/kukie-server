@@ -3,6 +3,7 @@ package com.duro.kukie.team.infrastructure
 import com.duro.kukie.global.mail.MailClient
 import com.duro.kukie.global.mail.MailTemplate
 import com.duro.kukie.team.application.port.out.TeamInvitationSender
+import com.duro.kukie.team.domain.TeamInvitation
 import org.springframework.stereotype.Component
 
 @Component
@@ -25,7 +26,11 @@ class SmtpTeamInvitationSender(
             subject = "[kukie] ${inviterName}님이 ${teamName} 팀에 초대했습니다.",
             htmlBody = mailTemplate.render(
                 TEMPLATE,
-                mapOf("teamName" to teamName, "inviterName" to inviterName),
+                mapOf(
+                    "teamName" to teamName,
+                    "inviterName" to inviterName,
+                    "expirationDays" to TeamInvitation.VALIDITY.toDays(),
+                ),
             ),
         )
     }

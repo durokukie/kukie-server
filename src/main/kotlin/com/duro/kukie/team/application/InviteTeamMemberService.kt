@@ -1,5 +1,6 @@
 package com.duro.kukie.team.application
 
+import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.team.domain.InvitationStatus
 import com.duro.kukie.team.domain.TeamInvitation
 import com.duro.kukie.team.domain.TeamInvitationRepository
@@ -9,7 +10,6 @@ import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.AlreadyTeamMemberException
 import com.duro.kukie.team.exception.InvitationAlreadySentException
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
-import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.findByIdOrThrow
@@ -37,6 +37,9 @@ class InviteTeamMemberService(
      *
      * 주소는 소문자로 맞춰 저장한다 — 대소문자만 다른 주소로 초대하면 그 초대는 상대의 초대함에
      * 뜨지 않고 수락도 재초대도 막혀 영영 남는다 (자동 리뷰 지적).
+     *
+     * 초대에는 유효 기간이 있다([TeamInvitation.VALIDITY]). 기한이 지난 대기 초대가 있으면
+     * 그것을 EXPIRED 로 정리하고 새로 보낸다.
      */
     @Transactional
     operator fun invoke(teamId: UUID, userId: UUID, request: InviteTeamMemberRequest): TeamInvitationResponse {
@@ -51,9 +54,7 @@ class InviteTeamMemberService(
         if (invitees.any { teamMembershipRepository.existsByTeamIdAndUserId(teamId, it.id) }) {
             throw AlreadyTeamMemberException()
         }
-        if (teamInvitationRepository.existsByTeamIdAndEmailAndStatus(teamId, email, InvitationStatus.PENDING)) {
-            throw InvitationAlreadySentException()
-        }
+        expirePendingInvitation(teamId, email)
 
         val invitation = teamInvitationRepository.save(TeamInvitation(teamId = teamId, email = email, invitedBy = userId))
         if (invitees.isEmpty()) {
@@ -63,5 +64,19 @@ class InviteTeamMemberService(
         }
 
         return TeamInvitationResponse.of(invitation)
+    }
+
+    /** 아직 유효한 대기 초대가 있으면 409, 기한이 지났으면 EXPIRED 로 바꿔 자리를 비운다. */
+    private fun expirePendingInvitation(teamId: UUID, email: String) {
+        val pending = teamInvitationRepository.findByTeamIdAndEmailAndStatus(teamId, email, InvitationStatus.PENDING)
+            ?: return
+        if (pending.isExpired.not()) {
+            throw InvitationAlreadySentException()
+        }
+
+        pending.expire()
+        // Hibernate 는 INSERT 를 UPDATE 보다 먼저 내보낸다. 상태 변경을 먼저 반영하지 않으면 새 초대의
+        // INSERT 가 `uk_team_invitation_pending` 에 걸린다.
+        teamInvitationRepository.flush()
     }
 }

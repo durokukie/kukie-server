@@ -15,6 +15,7 @@ enum class TeamErrorCode(
     INVITATION_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 초대입니다."),
     NOT_MY_INVITATION(HttpStatus.FORBIDDEN, "자신에게 온 초대만 처리할 수 있습니다."),
     INVITATION_NOT_PENDING(HttpStatus.CONFLICT, "이미 처리된 초대입니다."),
+    INVITATION_EXPIRED(HttpStatus.GONE, "만료된 초대입니다. 다시 초대를 받아야 합니다."),
     INVITATION_ALREADY_SENT(HttpStatus.CONFLICT, "이미 초대한 주소입니다."),
     ALREADY_TEAM_MEMBER(HttpStatus.CONFLICT, "이미 해당 팀의 구성원입니다."),
     ;
