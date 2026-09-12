@@ -25,6 +25,7 @@ class TeamController(
     private val getTeamMembersService: GetTeamMembersService,
     private val updateTeamService: UpdateTeamService,
     private val inviteTeamMemberService: InviteTeamMemberService,
+    private val cancelTeamInvitationService: CancelTeamInvitationService,
     private val updateTeamMemberRoleService: UpdateTeamMemberRoleService,
     private val removeTeamMemberService: RemoveTeamMemberService,
     private val leaveTeamService: LeaveTeamService,
@@ -70,6 +71,17 @@ class TeamController(
         @RequestBody @Valid request: InviteTeamMemberRequest,
     ): ResponseEntity<TeamInvitationResponse> {
         return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(teamId, userId, request))
+    }
+
+    @DeleteMapping("/{teamId}/invitations/{invitationId}")
+    override fun cancelTeamInvitation(
+        @PathVariable teamId: UUID,
+        @PathVariable invitationId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        cancelTeamInvitationService(teamId, invitationId, userId)
+
+        return ResponseEntity.noContent().build()
     }
 
     @PatchMapping("/{teamId}/members/{targetUserId}")

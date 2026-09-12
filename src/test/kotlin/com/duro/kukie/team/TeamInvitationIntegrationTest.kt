@@ -250,6 +250,128 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         }.andExpect { status { isBadRequest() } }
     }
 
+    // ── 초대 취소 ──────────────────────────────────────────────
+
+    @Test
+    fun `관리자는 보낸 초대를 취소한다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+
+        // when
+        mockMvc.delete("/teams/${admin.teamId}/invitations/${invitation.id}") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then — 기록은 남되 받는 사람의 초대함에서는 사라진다
+        teamInvitationRepository.findByIdOrThrow(invitation.id).status shouldBe InvitationStatus.CANCELED
+        mockMvc.get("/inbox") {
+            authorization(invitee.accessToken)
+        }.andExpect { jsonPath("$.invitations.length()") { value(0) } }
+    }
+
+    @Test
+    fun `취소한 초대는 수락할 수 없다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+        mockMvc.delete("/teams/${admin.teamId}/invitations/${invitation.id}") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // when & then
+        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+            authorization(invitee.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(TeamErrorCode.INVITATION_NOT_PENDING.code) }
+        }
+    }
+
+    @Test
+    fun `취소한 주소를 다시 초대할 수 있다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+        mockMvc.delete("/teams/${admin.teamId}/invitations/${invitation.id}") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // when & then
+        mockMvc.post("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = InviteTeamMemberRequest(INVITEE_EMAIL).toJson()
+        }.andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `구성원은 초대를 취소할 수 없다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        teamMembershipRepository.save(TeamFixture.membership(admin.teamId, member.user.id, TeamRole.MEMBER))
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+
+        // when & then
+        mockMvc.delete("/teams/${admin.teamId}/invitations/${invitation.id}") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+    }
+
+    @Test
+    fun `다른 팀의 초대는 취소할 수 없다`() {
+        // given — 남의 팀에 어떤 초대가 있는지 응답 코드로 알려 주지 않는다
+        val admin = adminOfNewTeam()
+        val otherAdmin = adminOfNewTeam(email = "other-admin@example.com")
+        val invitation = savedInvitation(otherAdmin.teamId, INVITEE_EMAIL, otherAdmin.userId)
+
+        // when & then
+        mockMvc.delete("/teams/${admin.teamId}/invitations/${invitation.id}") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(TeamErrorCode.INVITATION_NOT_FOUND.code) }
+        }
+        teamInvitationRepository.findByIdOrThrow(invitation.id).status shouldBe InvitationStatus.PENDING
+    }
+
+    @Test
+    fun `이미 처리된 초대는 취소할 수 없다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+            authorization(invitee.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // when & then
+        mockMvc.delete("/teams/${admin.teamId}/invitations/${invitation.id}") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(TeamErrorCode.INVITATION_NOT_PENDING.code) }
+        }
+    }
+
+    @Test
+    fun `없는 초대는 취소할 수 없다`() {
+        val admin = adminOfNewTeam()
+
+        mockMvc.delete("/teams/${admin.teamId}/invitations/${UUID.randomUUID()}") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(TeamErrorCode.INVITATION_NOT_FOUND.code) }
+        }
+    }
+
     // ── 받은 초대함 ────────────────────────────────────────────
 
     @Test
@@ -576,8 +698,8 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     // ── 도우미 ─────────────────────────────────────────────────
 
-    private fun adminOfNewTeam(): TeamAdmin {
-        val admin = loggedInUser()
+    private fun adminOfNewTeam(email: String = UserFixture.DEFAULT_EMAIL): TeamAdmin {
+        val admin = loggedInUser(UserFixture.user(email = email))
         val team = teamRepository.save(TeamFixture.team())
         teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
 

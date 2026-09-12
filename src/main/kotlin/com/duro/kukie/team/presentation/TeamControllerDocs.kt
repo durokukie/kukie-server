@@ -54,6 +54,19 @@ interface TeamControllerDocs {
     ): ResponseEntity<TeamInvitationResponse>
 
     @Operation(
+        summary = "팀 초대 취소",
+        description = "보낸 초대를 취소합니다. 관리자만 할 수 있으며, 아직 처리되지 않은 초대만 취소할 수 있습니다.",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(
+        NotTeamMemberException::class,
+        NotTeamAdminException::class,
+        InvitationNotFoundException::class,
+        InvitationNotPendingException::class,
+    )
+    fun cancelTeamInvitation(teamId: UUID, invitationId: UUID, userId: UUID): ResponseEntity<Unit>
+
+    @Operation(
         summary = "팀 구성원 역할 변경",
         description = "구성원의 역할을 변경합니다. 관리자만 할 수 있으며, 마지막 관리자는 강등할 수 없습니다.",
     )

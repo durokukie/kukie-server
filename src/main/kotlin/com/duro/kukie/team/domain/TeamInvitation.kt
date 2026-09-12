@@ -58,6 +58,9 @@ class TeamInvitation(
         }
     }
 
+    /** 이 초대가 이 팀의 것인지. 다른 팀 관리자가 남의 초대를 취소하지 못하게 막는다. */
+    fun belongsTo(teamId: UUID): Boolean = this.teamId == teamId
+
     fun accept() {
         requirePending()
         status = InvitationStatus.ACCEPTED
@@ -68,7 +71,13 @@ class TeamInvitation(
         status = InvitationStatus.DECLINED
     }
 
-    /** 이미 수락·거절한 초대를 다시 처리하지 못하게 막는다. */
+    /** 보낸 쪽(관리자)이 거둬들인다. */
+    fun cancel() {
+        requirePending()
+        status = InvitationStatus.CANCELED
+    }
+
+    /** 이미 수락·거절·취소한 초대를 다시 처리하지 못하게 막는다. */
     private fun requirePending() {
         if (status.isPending.not()) {
             throw InvitationNotPendingException()
