@@ -6,7 +6,13 @@ import com.duro.kukie.notification.exception.NotificationErrorCode
 import com.duro.kukie.support.FakeTeamInvitationSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
-import com.duro.kukie.team.domain.*
+import com.duro.kukie.team.domain.InvitationStatus
+import com.duro.kukie.team.domain.TeamInvitation
+import com.duro.kukie.team.domain.TeamInvitationRepository
+import com.duro.kukie.team.domain.TeamMembershipRepository
+import com.duro.kukie.team.domain.TeamRepository
+import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -22,7 +28,7 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
-import java.util.*
+import java.util.UUID
 
 class TeamInvitationIntegrationTest : IntegrationTest() {
 
