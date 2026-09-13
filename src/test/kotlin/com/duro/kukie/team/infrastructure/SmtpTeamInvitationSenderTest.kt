@@ -3,6 +3,7 @@ package com.duro.kukie.team.infrastructure
 import com.duro.kukie.global.mail.MailClient
 import com.duro.kukie.global.mail.MailTemplate
 import com.duro.kukie.support.IntegrationTest
+import com.duro.kukie.team.domain.TeamInvitation
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -53,6 +54,16 @@ class SmtpTeamInvitationSenderTest : IntegrationTest() {
 
         htmlBody.captured shouldContain "DURO 팀 초대"
         htmlBody.captured shouldContain "복재성님이"
+    }
+
+    @Test
+    fun `본문에 초대 유효 기간을 안내한다`() {
+        val htmlBody = slot<String>()
+        every { mailClient.send(any(), any(), capture(htmlBody)) } returns Unit
+
+        sender().send(email = "invitee@example.com", teamName = "DURO", inviterName = "복재성")
+
+        htmlBody.captured shouldContain "${TeamInvitation.VALIDITY.toDays()}일 동안만 유효합니다"
     }
 
     @Test

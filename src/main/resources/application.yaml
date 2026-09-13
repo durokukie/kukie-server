@@ -29,9 +29,6 @@ jwt:
   access-token-expiration: 30m
   refresh-token-expiration: 30d
 
-verification-code:
-  expiration: 3m
-
 oauth:
   github:
     client-id: ${GITHUB_CLIENT_ID}

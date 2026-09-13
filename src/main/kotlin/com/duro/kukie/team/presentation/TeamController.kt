@@ -2,11 +2,13 @@ package com.duro.kukie.team.presentation
 
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.team.application.CancelTeamInvitationService
 import com.duro.kukie.team.application.CreateTeamService
 import com.duro.kukie.team.application.DeleteTeamService
 import com.duro.kukie.team.application.GetMyTeamsService
 import com.duro.kukie.team.application.GetTeamMembersService
 import com.duro.kukie.team.application.InviteTeamMemberService
+import com.duro.kukie.team.application.LeaveTeamService
 import com.duro.kukie.team.application.RemoveTeamMemberService
 import com.duro.kukie.team.application.UpdateTeamMemberRoleService
 import com.duro.kukie.team.application.UpdateTeamService
@@ -39,8 +41,10 @@ class TeamController(
     private val getTeamMembersService: GetTeamMembersService,
     private val updateTeamService: UpdateTeamService,
     private val inviteTeamMemberService: InviteTeamMemberService,
+    private val cancelTeamInvitationService: CancelTeamInvitationService,
     private val updateTeamMemberRoleService: UpdateTeamMemberRoleService,
     private val removeTeamMemberService: RemoveTeamMemberService,
+    private val leaveTeamService: LeaveTeamService,
     private val deleteTeamService: DeleteTeamService,
 ) : TeamControllerDocs {
 
@@ -85,6 +89,17 @@ class TeamController(
         return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(teamId, userId, request))
     }
 
+    @DeleteMapping("/{teamId}/invitations/{invitationId}")
+    override fun cancelTeamInvitation(
+        @PathVariable teamId: UUID,
+        @PathVariable invitationId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        cancelTeamInvitationService(teamId, invitationId, userId)
+
+        return ResponseEntity.noContent().build()
+    }
+
     @PatchMapping("/{teamId}/members/{targetUserId}")
     override fun updateTeamMemberRole(
         @PathVariable teamId: UUID,
@@ -93,6 +108,16 @@ class TeamController(
         @RequestBody @Valid request: UpdateTeamMemberRoleRequest,
     ): ResponseEntity<Unit> {
         updateTeamMemberRoleService(teamId, targetUserId, userId, request)
+
+        return ResponseEntity.noContent().build()
+    }
+
+    @DeleteMapping("/{teamId}/members/me")
+    override fun leaveTeam(
+        @PathVariable teamId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        leaveTeamService(teamId, userId)
 
         return ResponseEntity.noContent().build()
     }

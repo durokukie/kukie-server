@@ -12,6 +12,7 @@ import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.findByIdOrThrow
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 import java.util.UUID
 
 @Service
@@ -25,7 +26,8 @@ class GetInboxService(
     /**
      * 대기 중인 초대와 내 알림 전부.
      *
-     * **초대와 알림의 기준이 다르다.** 초대는 PENDING 만 — 수락·거절하면 할 일이 없다. 알림은 읽은
+     * **초대와 알림의 기준이 다르다.** 초대는 만료되지 않은 PENDING 만 — 수락·거절했거나 기한이
+     * 지났으면 할 일이 없다. 알림은 읽은
      * 것까지 함께 준다. 읽음 여부(`readAt`)를 응답에 실어 화면이 구분해 그리기 때문이다.
      * 알림에는 아직 개수 상한이 없다 — 오래 쓰면 응답이 계속 커진다 (후속 과제, 자동 리뷰 지적).
      *
@@ -36,8 +38,11 @@ class GetInboxService(
     operator fun invoke(userId: UUID): InboxResponse {
         val user = userRepository.findByIdOrThrow(userId)
 
-        val invitations = teamInvitationRepository
-            .findAllByEmailAndStatusOrderByCreatedAtDesc(user.email.normalizeEmail(), InvitationStatus.PENDING)
+        val invitations = teamInvitationRepository.findAllByEmailAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+            user.email.normalizeEmail(),
+            InvitationStatus.PENDING,
+            LocalDateTime.now(),
+        )
         val teams = teamRepository.findAllById(invitations.map { it.teamId }).associateBy { it.id }
         val inviters = userRepository.findAllById(invitations.map { it.invitedBy }).associateBy { it.id }
 
