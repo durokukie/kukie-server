@@ -1,14 +1,7 @@
 package com.duro.kukie.team.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
-import com.duro.kukie.team.exception.AdminRequiredException
-import com.duro.kukie.team.exception.AlreadyTeamMemberException
-import com.duro.kukie.team.exception.CannotRemoveSelfException
-import com.duro.kukie.team.exception.InvitationAlreadySentException
-import com.duro.kukie.team.exception.InvitationNotFoundException
-import com.duro.kukie.team.exception.InvitationNotPendingException
-import com.duro.kukie.team.exception.NotTeamAdminException
-import com.duro.kukie.team.exception.NotTeamMemberException
+import com.duro.kukie.team.exception.*
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -19,10 +12,10 @@ import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
-import java.util.UUID
+import java.util.*
 
 /**
- * 없는 teamId 로 부르면 404 가 아니라 **403** 이다. 모든 팀 API 가 먼저 `TeamPermission` 을 거치는데,
+ * 없는 teamId 로 부르면 404 가 아니라 **403** 이다. teamId 를 받는 팀 API 는 먼저 `TeamPermission` 을 거치는데,
  * 멤버십의 `team_id` FK 가 팀 존재를 보장하므로 없는 팀에는 멤버십도 없어 NOT_TEAM_MEMBER 가 먼저 난다.
  * 그래서 404 를 문서에 적지 않는다 — 클라이언트가 탈 수 없는 분기다 (자동 리뷰 지적).
  */
@@ -72,6 +65,33 @@ interface TeamControllerDocs {
         InvitationNotPendingException::class,
     )
     fun cancelTeamInvitation(teamId: UUID, invitationId: UUID, userId: UUID): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "팀 초대 수락",
+        description = "초대를 수락해 팀 구성원이 됩니다. 자신에게 온 초대만 수락할 수 있습니다.",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(
+        InvitationNotFoundException::class,
+        NotMyInvitationException::class,
+        InvitationNotPendingException::class,
+        InvitationExpiredException::class,
+        AlreadyTeamMemberException::class,
+    )
+    fun acceptTeamInvitation(invitationId: UUID, userId: UUID): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "팀 초대 거절",
+        description = "초대를 거절합니다. 자신에게 온 초대만 거절할 수 있습니다.",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(
+        InvitationNotFoundException::class,
+        NotMyInvitationException::class,
+        InvitationNotPendingException::class,
+        InvitationExpiredException::class,
+    )
+    fun declineTeamInvitation(invitationId: UUID, userId: UUID): ResponseEntity<Unit>
 
     @Operation(
         summary = "팀 구성원 역할 변경",

@@ -2,16 +2,7 @@ package com.duro.kukie.team.presentation
 
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
-import com.duro.kukie.team.application.CancelTeamInvitationService
-import com.duro.kukie.team.application.CreateTeamService
-import com.duro.kukie.team.application.DeleteTeamService
-import com.duro.kukie.team.application.GetMyTeamsService
-import com.duro.kukie.team.application.GetTeamMembersService
-import com.duro.kukie.team.application.InviteTeamMemberService
-import com.duro.kukie.team.application.LeaveTeamService
-import com.duro.kukie.team.application.RemoveTeamMemberService
-import com.duro.kukie.team.application.UpdateTeamMemberRoleService
-import com.duro.kukie.team.application.UpdateTeamService
+import com.duro.kukie.team.application.*
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -22,15 +13,8 @@ import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.DeleteMapping
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PatchMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
-import java.util.UUID
+import org.springframework.web.bind.annotation.*
+import java.util.*
 
 @Authenticated
 @RestController
@@ -42,6 +26,8 @@ class TeamController(
     private val updateTeamService: UpdateTeamService,
     private val inviteTeamMemberService: InviteTeamMemberService,
     private val cancelTeamInvitationService: CancelTeamInvitationService,
+    private val acceptTeamInvitationService: AcceptTeamInvitationService,
+    private val declineTeamInvitationService: DeclineTeamInvitationService,
     private val updateTeamMemberRoleService: UpdateTeamMemberRoleService,
     private val removeTeamMemberService: RemoveTeamMemberService,
     private val leaveTeamService: LeaveTeamService,
@@ -96,6 +82,26 @@ class TeamController(
         @AuthUser userId: UUID,
     ): ResponseEntity<Unit> {
         cancelTeamInvitationService(teamId, invitationId, userId)
+
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/invitations/{invitationId}/accept")
+    override fun acceptTeamInvitation(
+        @PathVariable invitationId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        acceptTeamInvitationService(invitationId, userId)
+
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/invitations/{invitationId}/decline")
+    override fun declineTeamInvitation(
+        @PathVariable invitationId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        declineTeamInvitationService(invitationId, userId)
 
         return ResponseEntity.noContent().build()
     }
