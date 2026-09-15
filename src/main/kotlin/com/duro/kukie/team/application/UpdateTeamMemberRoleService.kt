@@ -9,7 +9,7 @@ import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
+import java.util.*
 
 @Service
 class UpdateTeamMemberRoleService(
@@ -27,8 +27,6 @@ class UpdateTeamMemberRoleService(
      */
     @Transactional
     operator fun invoke(teamId: UUID, targetUserId: UUID, userId: UUID, request: UpdateTeamMemberRoleRequest) {
-        teamPermission.requireAdmin(teamId, userId)
-
         val target = teamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId, targetUserId)
         if (target.role == request.role) {
             return

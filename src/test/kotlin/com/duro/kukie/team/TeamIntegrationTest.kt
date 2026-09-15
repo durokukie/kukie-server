@@ -1,5 +1,6 @@
 package com.duro.kukie.team
 
+import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
@@ -17,7 +18,7 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
-import java.util.UUID
+import java.util.*
 
 class TeamIntegrationTest : IntegrationTest() {
 
@@ -134,6 +135,20 @@ class TeamIntegrationTest : IntegrationTest() {
         }
     }
 
+    @Test
+    fun `팀 id 가 UUID 형식이 아니면 400 이다`() {
+        // given — 경로 변수 파싱은 인터셉터가 먼저 한다. 핸들러 인자 변환이 냈을 400 과 같아야 한다.
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.get("/teams/not-a-uuid/members") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(GlobalErrorCode.BAD_REQUEST.code) }
+        }
+    }
+
     // ── 팀 정보 수정 ───────────────────────────────────────────
 
     @Test
@@ -168,7 +183,7 @@ class TeamIntegrationTest : IntegrationTest() {
             content = UpdateTeamRequest("새 이름").toJson()
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
     }
 
@@ -320,7 +335,7 @@ class TeamIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
     }
 
@@ -432,7 +447,7 @@ class TeamIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
     }
 }

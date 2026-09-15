@@ -5,12 +5,11 @@ import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.InvitationNotFoundException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
+import java.util.*
 
 @Service
 class CancelTeamInvitationService(
     private val teamInvitationRepository: TeamInvitationRepository,
-    private val teamPermission: TeamPermission,
 ) {
 
     /**
@@ -21,8 +20,6 @@ class CancelTeamInvitationService(
      */
     @Transactional
     operator fun invoke(teamId: UUID, invitationId: UUID, userId: UUID) {
-        teamPermission.requireAdmin(teamId, userId)
-
         val invitation = teamInvitationRepository.findByIdOrThrow(invitationId)
         if (invitation.belongsTo(teamId).not()) {
             throw InvitationNotFoundException()

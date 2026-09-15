@@ -5,14 +5,13 @@ import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
+import java.util.*
 
 @Service
 class DeleteTeamService(
     private val teamRepository: TeamRepository,
     private val teamMembershipRepository: TeamMembershipRepository,
     private val teamInvitationRepository: TeamInvitationRepository,
-    private val teamPermission: TeamPermission,
 ) {
 
     /**
@@ -27,8 +26,6 @@ class DeleteTeamService(
      */
     @Transactional
     operator fun invoke(teamId: UUID, userId: UUID) {
-        teamPermission.requireAdmin(teamId, userId)
-
         teamInvitationRepository.deleteAllByTeamId(teamId)
         teamMembershipRepository.deleteAllByTeamId(teamId)
         teamRepository.deleteById(teamId)

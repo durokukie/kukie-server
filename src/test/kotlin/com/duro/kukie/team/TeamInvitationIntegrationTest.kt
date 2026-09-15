@@ -6,7 +6,13 @@ import com.duro.kukie.notification.exception.NotificationErrorCode
 import com.duro.kukie.support.FakeTeamInvitationSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
-import com.duro.kukie.team.domain.*
+import com.duro.kukie.team.domain.InvitationStatus
+import com.duro.kukie.team.domain.TeamInvitation
+import com.duro.kukie.team.domain.TeamInvitationRepository
+import com.duro.kukie.team.domain.TeamMembershipRepository
+import com.duro.kukie.team.domain.TeamRepository
+import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -234,7 +240,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             content = InviteTeamMemberRequest(INVITEE_EMAIL).toJson()
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
     }
 
@@ -354,7 +360,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
     }
 

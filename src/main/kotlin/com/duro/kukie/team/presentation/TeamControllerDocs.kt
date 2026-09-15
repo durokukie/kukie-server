@@ -1,7 +1,16 @@
 package com.duro.kukie.team.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
-import com.duro.kukie.team.exception.*
+import com.duro.kukie.team.exception.AdminRequiredException
+import com.duro.kukie.team.exception.AlreadyTeamMemberException
+import com.duro.kukie.team.exception.CannotRemoveSelfException
+import com.duro.kukie.team.exception.InsufficientTeamRoleException
+import com.duro.kukie.team.exception.InvitationAlreadySentException
+import com.duro.kukie.team.exception.InvitationExpiredException
+import com.duro.kukie.team.exception.InvitationNotFoundException
+import com.duro.kukie.team.exception.InvitationNotPendingException
+import com.duro.kukie.team.exception.NotMyInvitationException
+import com.duro.kukie.team.exception.NotTeamMemberException
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -33,7 +42,7 @@ interface TeamControllerDocs {
     fun getTeamMembers(teamId: UUID, userId: UUID): ResponseEntity<List<TeamMemberResponse>>
 
     @Operation(summary = "팀 정보 수정", description = "팀 이름을 변경합니다. 관리자만 할 수 있습니다.")
-    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class)
+    @ApiErrorResponses(NotTeamMemberException::class, InsufficientTeamRoleException::class)
     fun updateTeam(teamId: UUID, userId: UUID, request: UpdateTeamRequest): ResponseEntity<TeamResponse>
 
     @Operation(
@@ -43,7 +52,7 @@ interface TeamControllerDocs {
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiErrorResponses(
         NotTeamMemberException::class,
-        NotTeamAdminException::class,
+        InsufficientTeamRoleException::class,
         AlreadyTeamMemberException::class,
         InvitationAlreadySentException::class,
     )
@@ -60,7 +69,7 @@ interface TeamControllerDocs {
     @ApiResponse(responseCode = "204", description = "No Content")
     @ApiErrorResponses(
         NotTeamMemberException::class,
-        NotTeamAdminException::class,
+        InsufficientTeamRoleException::class,
         InvitationNotFoundException::class,
         InvitationNotPendingException::class,
     )
@@ -98,7 +107,7 @@ interface TeamControllerDocs {
         description = "구성원의 역할을 변경합니다. 관리자만 할 수 있으며, 마지막 관리자는 강등할 수 없습니다.",
     )
     @ApiResponse(responseCode = "204", description = "No Content")
-    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, AdminRequiredException::class)
+    @ApiErrorResponses(NotTeamMemberException::class, InsufficientTeamRoleException::class, AdminRequiredException::class)
     fun updateTeamMemberRole(
         teamId: UUID,
         targetUserId: UUID,
@@ -121,7 +130,7 @@ interface TeamControllerDocs {
     @ApiResponse(responseCode = "204", description = "No Content")
     @ApiErrorResponses(
         NotTeamMemberException::class,
-        NotTeamAdminException::class,
+        InsufficientTeamRoleException::class,
         CannotRemoveSelfException::class,
         AdminRequiredException::class,
     )
@@ -129,6 +138,6 @@ interface TeamControllerDocs {
 
     @Operation(summary = "팀 삭제", description = "팀과 구성원 정보를 삭제합니다. 관리자만 할 수 있습니다.")
     @ApiResponse(responseCode = "204", description = "No Content")
-    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class)
+    @ApiErrorResponses(NotTeamMemberException::class, InsufficientTeamRoleException::class)
     fun deleteTeam(teamId: UUID, userId: UUID): ResponseEntity<Unit>
 }

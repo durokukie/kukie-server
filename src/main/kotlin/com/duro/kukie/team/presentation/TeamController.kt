@@ -2,7 +2,19 @@ package com.duro.kukie.team.presentation
 
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
-import com.duro.kukie.team.application.*
+import com.duro.kukie.team.application.AcceptTeamInvitationService
+import com.duro.kukie.team.application.CancelTeamInvitationService
+import com.duro.kukie.team.application.CreateTeamService
+import com.duro.kukie.team.application.DeclineTeamInvitationService
+import com.duro.kukie.team.application.DeleteTeamService
+import com.duro.kukie.team.application.GetMyTeamsService
+import com.duro.kukie.team.application.GetTeamMembersService
+import com.duro.kukie.team.application.InviteTeamMemberService
+import com.duro.kukie.team.application.LeaveTeamService
+import com.duro.kukie.team.application.RemoveTeamMemberService
+import com.duro.kukie.team.application.UpdateTeamMemberRoleService
+import com.duro.kukie.team.application.UpdateTeamService
+import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
@@ -13,7 +25,14 @@ import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.*
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
 import java.util.*
 
 @Authenticated
@@ -49,6 +68,7 @@ class TeamController(
         return ResponseEntity.ok(getMyTeamsService(userId))
     }
 
+    @TeamMember(TeamRole.MEMBER)
     @GetMapping("/{teamId}/members")
     override fun getTeamMembers(
         @PathVariable teamId: UUID,
@@ -57,6 +77,7 @@ class TeamController(
         return ResponseEntity.ok(getTeamMembersService(teamId, userId))
     }
 
+    @TeamMember(TeamRole.ADMIN)
     @PatchMapping("/{teamId}")
     override fun updateTeam(
         @PathVariable teamId: UUID,
@@ -66,6 +87,7 @@ class TeamController(
         return ResponseEntity.ok(updateTeamService(teamId, userId, request))
     }
 
+    @TeamMember(TeamRole.ADMIN)
     @PostMapping("/{teamId}/invitations")
     override fun inviteTeamMember(
         @PathVariable teamId: UUID,
@@ -75,6 +97,7 @@ class TeamController(
         return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(teamId, userId, request))
     }
 
+    @TeamMember(TeamRole.ADMIN)
     @DeleteMapping("/{teamId}/invitations/{invitationId}")
     override fun cancelTeamInvitation(
         @PathVariable teamId: UUID,
@@ -106,6 +129,7 @@ class TeamController(
         return ResponseEntity.noContent().build()
     }
 
+    @TeamMember(TeamRole.ADMIN)
     @PatchMapping("/{teamId}/members/{targetUserId}")
     override fun updateTeamMemberRole(
         @PathVariable teamId: UUID,
@@ -118,6 +142,7 @@ class TeamController(
         return ResponseEntity.noContent().build()
     }
 
+    @TeamMember(TeamRole.MEMBER)
     @DeleteMapping("/{teamId}/members/me")
     override fun leaveTeam(
         @PathVariable teamId: UUID,
@@ -128,6 +153,7 @@ class TeamController(
         return ResponseEntity.noContent().build()
     }
 
+    @TeamMember(TeamRole.ADMIN)
     @DeleteMapping("/{teamId}/members/{targetUserId}")
     override fun removeTeamMember(
         @PathVariable teamId: UUID,
@@ -139,6 +165,7 @@ class TeamController(
         return ResponseEntity.noContent().build()
     }
 
+    @TeamMember(TeamRole.ADMIN)
     @DeleteMapping("/{teamId}")
     override fun deleteTeam(
         @PathVariable teamId: UUID,

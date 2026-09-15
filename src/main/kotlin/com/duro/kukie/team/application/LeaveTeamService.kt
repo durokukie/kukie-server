@@ -1,9 +1,10 @@
 package com.duro.kukie.team.application
 
 import com.duro.kukie.team.domain.TeamMembershipRepository
+import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
+import java.util.*
 
 @Service
 class LeaveTeamService(
@@ -13,7 +14,7 @@ class LeaveTeamService(
 
     @Transactional
     operator fun invoke(teamId: UUID, userId: UUID) {
-        val membership = teamPermission.requireMember(teamId, userId)
+        val membership = teamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId, userId)
         if (membership.role.isAdmin) {
             teamPermission.requireNotLastAdmin(teamId)
         }

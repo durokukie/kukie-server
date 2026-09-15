@@ -16,7 +16,7 @@ import com.duro.kukie.user.domain.findByIdOrThrow
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
+import java.util.*
 
 @Service
 class InviteTeamMemberService(
@@ -24,7 +24,6 @@ class InviteTeamMemberService(
     private val teamMembershipRepository: TeamMembershipRepository,
     private val teamInvitationRepository: TeamInvitationRepository,
     private val userRepository: UserRepository,
-    private val teamPermission: TeamPermission,
     private val events: ApplicationEventPublisher,
 ) {
 
@@ -43,8 +42,6 @@ class InviteTeamMemberService(
      */
     @Transactional
     operator fun invoke(teamId: UUID, userId: UUID, request: InviteTeamMemberRequest): TeamInvitationResponse {
-        teamPermission.requireAdmin(teamId, userId)
-
         val team = teamRepository.findByIdOrThrow(teamId)
         val email = request.email.normalizeEmail()
 
