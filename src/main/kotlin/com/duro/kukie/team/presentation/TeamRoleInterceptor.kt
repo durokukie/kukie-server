@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.method.HandlerMethod
 import org.springframework.web.servlet.HandlerInterceptor
 import org.springframework.web.servlet.HandlerMapping
-import java.util.*
+import java.util.UUID
 
 @Component
 class TeamRoleInterceptor(

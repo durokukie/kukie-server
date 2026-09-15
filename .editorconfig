@@ -1,0 +1,14 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+
+# IntelliJ 가 java.util 등을 * 로 접지 않도록. import 순서는 Kotlin 공식 규칙(java/javax/kotlin 은 맨 뒤).
+[*.{kt,kts}]
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647
+ij_kotlin_packages_to_use_import_on_demand = unset
+ij_kotlin_imports_layout = *,java.**,javax.**,kotlin.**,^

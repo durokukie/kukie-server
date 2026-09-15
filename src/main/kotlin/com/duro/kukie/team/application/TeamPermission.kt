@@ -4,7 +4,7 @@ import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.exception.AdminRequiredException
 import org.springframework.stereotype.Component
-import java.util.*
+import java.util.UUID
 
 /**
  * "이 사용자가 이 팀에서 무엇을 할 수 있나" 를 판단하는 한 곳.

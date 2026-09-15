@@ -7,7 +7,7 @@ import com.duro.kukie.notification.exception.NotificationNotFoundException
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
-import java.util.*
+import java.util.UUID
 
 interface InboxControllerDocs {
 

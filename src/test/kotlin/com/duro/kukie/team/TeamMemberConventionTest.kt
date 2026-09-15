@@ -14,7 +14,7 @@ import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.PathVariable
 import java.lang.reflect.Method
 import java.lang.reflect.Parameter
-import java.util.*
+import java.util.UUID
 
 class TeamMemberConventionTest {
 

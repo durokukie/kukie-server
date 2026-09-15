@@ -8,7 +8,7 @@ import com.duro.kukie.team.presentation.dto.request.UpdateTeamRequest
 import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.*
+import java.util.UUID
 
 @Service
 class UpdateTeamService(

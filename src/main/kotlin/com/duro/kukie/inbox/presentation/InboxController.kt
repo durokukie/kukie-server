@@ -6,8 +6,12 @@ import com.duro.kukie.inbox.application.GetInboxService
 import com.duro.kukie.inbox.presentation.dto.response.InboxResponse
 import com.duro.kukie.notification.application.ReadNotificationService
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.*
-import java.util.*
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
+import java.util.UUID
 
 @Authenticated
 @RestController

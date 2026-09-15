@@ -21,7 +21,7 @@ import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
-import java.util.*
+import java.util.UUID
 
 /**
  * 없는 teamId 로 부르면 404 가 아니라 **403** 이다. teamId 를 받는 팀 API 는 먼저 `TeamPermission` 을 거치는데,

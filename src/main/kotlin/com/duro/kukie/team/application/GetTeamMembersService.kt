@@ -5,7 +5,7 @@ import com.duro.kukie.team.presentation.dto.response.TeamMemberResponse
 import com.duro.kukie.user.domain.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.*
+import java.util.UUID
 
 @Service
 class GetTeamMembersService(

@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
-import java.util.*
+import java.util.UUID
 
 class TeamInvitationIntegrationTest : IntegrationTest() {
 
