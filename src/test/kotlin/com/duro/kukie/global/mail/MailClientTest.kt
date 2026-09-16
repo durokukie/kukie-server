@@ -15,9 +15,9 @@ class MailClientTest {
     private val client = MailClient(mailSender)
 
     @Test
-    fun `제목의 줄바꿈은 한 칸으로 눌리고 헤더가 갈라지지 않는다`() {
-        // given — 제목에는 팀 이름 같은 사용자 입력이 들어간다. 줄바꿈이 헤더에 실리면 헤더를 하나 더
-        // 끼워 넣는 입구가 된다.
+    fun `제목에 줄바꿈이 있어도 헤더가 갈라지지 않는다`() {
+        // given — 제목에는 팀 이름 같은 사용자 입력이 들어간다. 줄바꿈이 헤더에 그대로 실리면 헤더를
+        // 하나 더 끼워 넣는 입구가 된다. 막는 건 Jakarta Mail(인코딩·접기)이고, 그 보장이 유효한지 본다.
         val sent = slot<MimeMessage>()
         every { mailSender.createMimeMessage() } returns realSender.createMimeMessage()
         every { mailSender.send(capture(sent)) } returns Unit
@@ -29,8 +29,7 @@ class MailClientTest {
             htmlBody = "<p>본문</p>",
         )
 
-        // then — 한 줄로 눌리고, Bcc 헤더는 생기지 않는다
-        sent.captured.subject shouldBe "[kukie] Hi Bcc: attacker@evil.example 팀에 초대했습니다."
+        // then
         sent.captured.getHeader("Bcc") shouldBe null
     }
 }
