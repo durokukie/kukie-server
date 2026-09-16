@@ -59,7 +59,7 @@ hotfix/crash-on-agent-78
 
 ## 💬 커밋 메시지 컨벤션
 > [Angular Commit Convention](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit)을 따릅니다.
-> 
+>
 > <span style="color:red">*</span> 이 붙은 요소는 필수입니다.
 
 
