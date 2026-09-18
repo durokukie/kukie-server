@@ -1,5 +1,7 @@
 package com.duro.kukie.auth.presentation.dto.request
 
+import com.duro.kukie.auth.application.port.`in`.OAuthLogInCommand
+import com.duro.kukie.auth.domain.OAuthProvider
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 
@@ -14,4 +16,11 @@ data class OAuthLogInRequest(
 
     @Schema(description = "PKCE code verifier (인가 요청에 code challenge를 사용한 경우 필수)")
     val codeVerifier: String? = null,
-)
+) {
+    fun toCommand(provider: OAuthProvider) = OAuthLogInCommand(
+        provider = provider,
+        code = code,
+        redirectUri = redirectUri,
+        codeVerifier = codeVerifier,
+    )
+}

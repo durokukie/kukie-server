@@ -37,7 +37,7 @@ class TeamInvitationController(
         @AuthUser userId: UUID,
         @RequestBody @Valid request: InviteTeamMemberRequest,
     ): ResponseEntity<TeamInvitationResponse> {
-        return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(teamId, userId, request))
+        return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(request.toCommand(teamId, userId)))
     }
 
     @TeamMember(TeamRole.ADMIN)

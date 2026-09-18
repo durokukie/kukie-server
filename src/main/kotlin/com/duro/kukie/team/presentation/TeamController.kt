@@ -48,7 +48,7 @@ class TeamController(
         @AuthUser userId: UUID,
         @RequestBody @Valid request: CreateTeamRequest,
     ): ResponseEntity<TeamResponse> {
-        return ResponseEntity.status(HttpStatus.CREATED).body(createTeamService(userId, request))
+        return ResponseEntity.status(HttpStatus.CREATED).body(createTeamService(request.toCommand(userId)))
     }
 
     @GetMapping
@@ -74,7 +74,7 @@ class TeamController(
         @AuthUser userId: UUID,
         @RequestBody @Valid request: UpdateTeamRequest,
     ): ResponseEntity<TeamResponse> {
-        return ResponseEntity.ok(updateTeamService(teamId, userId, request))
+        return ResponseEntity.ok(updateTeamService(request.toCommand(teamId, userId)))
     }
 
     @TeamMember(TeamRole.ADMIN)
@@ -85,7 +85,7 @@ class TeamController(
         @AuthUser userId: UUID,
         @RequestBody @Valid request: UpdateTeamMemberRoleRequest,
     ): ResponseEntity<Unit> {
-        updateTeamMemberRoleService(teamId, targetUserId, userId, request)
+        updateTeamMemberRoleService(request.toCommand(teamId, targetUserId))
 
         return ResponseEntity.noContent().build()
     }

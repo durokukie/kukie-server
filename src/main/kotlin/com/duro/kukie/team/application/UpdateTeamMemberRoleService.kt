@@ -2,14 +2,13 @@ package com.duro.kukie.team.application
 
 import com.duro.kukie.notification.domain.Notification
 import com.duro.kukie.notification.domain.NotificationRepository
+import com.duro.kukie.team.application.port.`in`.UpdateTeamMemberRoleCommand
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow
-import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
 
 @Service
 class UpdateTeamMemberRoleService(
@@ -26,20 +25,25 @@ class UpdateTeamMemberRoleService(
      * 결과적으로 Admin이 0명이 되는 변경은 막는다 — 팀에 관리자가 없으면 아무도 팀을 관리할 수 없다.
      */
     @Transactional
-    operator fun invoke(teamId: UUID, targetUserId: UUID, userId: UUID, request: UpdateTeamMemberRoleRequest) {
-        val target = teamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId, targetUserId)
-        if (target.role == request.role) {
+    operator fun invoke(command: UpdateTeamMemberRoleCommand) {
+        val target = teamMembershipRepository.findByTeamIdAndUserIdOrThrow(command.teamId, command.targetUserId)
+        if (target.role == command.role) {
             return
         }
-        if (target.role.isAdmin && request.role.isAdmin.not()) {
-            teamPermission.requireNotLastAdmin(teamId)
+        if (target.role.isAdmin && command.role.isAdmin.not()) {
+            teamPermission.requireNotLastAdmin(command.teamId)
         }
 
-        target.changeRole(request.role)
+        target.changeRole(command.role)
 
-        val team = teamRepository.findByIdOrThrow(teamId)
+        val team = teamRepository.findByIdOrThrow(command.teamId)
         notificationRepository.save(
-            Notification.roleChanged(userId = targetUserId, teamId = team.id, teamName = team.name, role = request.role),
+            Notification.roleChanged(
+                userId = command.targetUserId,
+                teamId = team.id,
+                teamName = team.name,
+                role = command.role,
+            ),
         )
     }
 }
