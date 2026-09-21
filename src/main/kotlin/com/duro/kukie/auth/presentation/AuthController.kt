@@ -99,7 +99,7 @@ class AuthController(
         @AuthUser userId: UUID,
         @RequestBody @Valid request: HandoffCodeRequest,
     ): ResponseEntity<HandoffCodeResponse> {
-        return ResponseEntity.ok(issueHandoffCodeService(userId, request.codeChallenge))
+        return ResponseEntity.ok(issueHandoffCodeService(request.toCommand(userId)))
     }
 
     /** 앱이 딥링크로 받은 코드 + PKCE 원본 → 토큰. 응답 쿠키는 앱 창의 세션에 구워진다 — 그 뒤는 웹과 같다. */

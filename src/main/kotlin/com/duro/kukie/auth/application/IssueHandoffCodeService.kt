@@ -1,5 +1,6 @@
 package com.duro.kukie.auth.application
 
+import com.duro.kukie.auth.application.port.`in`.IssueHandoffCodeCommand
 import com.duro.kukie.auth.domain.HandoffCodeRepository
 import com.duro.kukie.auth.domain.HandoffTicket
 import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
@@ -7,7 +8,6 @@ import org.springframework.stereotype.Service
 import java.security.SecureRandom
 import java.time.Duration
 import java.util.Base64
-import java.util.UUID
 
 /**
  * 로그인된 웹 페이지(시스템 브라우저)가 앱에 건넬 1회용 코드를 받는다 (DURO-109).
@@ -18,9 +18,9 @@ class IssueHandoffCodeService(
     private val handoffCodeRepository: HandoffCodeRepository,
 ) {
 
-    operator fun invoke(userId: UUID, codeChallenge: String): HandoffCodeResponse {
+    operator fun invoke(command: IssueHandoffCodeCommand): HandoffCodeResponse {
         val code = randomCode()
-        handoffCodeRepository.save(code, HandoffTicket(userId, codeChallenge), TTL)
+        handoffCodeRepository.save(code, HandoffTicket(command.userId, command.codeChallenge), TTL)
 
         return HandoffCodeResponse(code, TTL.seconds)
     }
