@@ -184,7 +184,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
         // 수락도 된다
         val invitation = teamInvitationRepository.findAll().first()
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
@@ -240,7 +240,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             content = InviteTeamMemberRequest(INVITEE_EMAIL).toJson()
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
     }
 
@@ -322,7 +322,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         }.andExpect { status { isNoContent() } }
 
         // when & then
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(invitee.accessToken)
         }.andExpect {
             status { isConflict() }
@@ -360,7 +360,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
     }
 
@@ -387,7 +387,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val admin = adminOfNewTeam()
         val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
@@ -492,7 +492,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
 
         // when
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
@@ -510,7 +510,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
 
         // when
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
@@ -528,7 +528,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
 
         // when & then
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(other.accessToken)
         }.andExpect {
             status { isForbidden() }
@@ -542,12 +542,12 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val admin = adminOfNewTeam()
         val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
-        mockMvc.post("/inbox/invitations/${invitation.id}/decline") {
+        mockMvc.post("/teams/invitations/${invitation.id}/decline") {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
         // when & then
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(invitee.accessToken)
         }.andExpect {
             status { isConflict() }
@@ -563,7 +563,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId, expiresAt = yesterday())
 
         // when & then
-        mockMvc.post("/inbox/invitations/${invitation.id}/accept") {
+        mockMvc.post("/teams/invitations/${invitation.id}/accept") {
             authorization(invitee.accessToken)
         }.andExpect {
             status { isGone() }
@@ -576,7 +576,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
     fun `없는 초대는 수락할 수 없다`() {
         val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
 
-        mockMvc.post("/inbox/invitations/${UUID.randomUUID()}/accept") {
+        mockMvc.post("/teams/invitations/${UUID.randomUUID()}/accept") {
             authorization(invitee.accessToken)
         }.andExpect {
             status { isNotFound() }
@@ -594,7 +594,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
 
         // when
-        mockMvc.post("/inbox/invitations/${invitation.id}/decline") {
+        mockMvc.post("/teams/invitations/${invitation.id}/decline") {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
@@ -609,7 +609,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         val admin = adminOfNewTeam()
         val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
         val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
-        mockMvc.post("/inbox/invitations/${invitation.id}/decline") {
+        mockMvc.post("/teams/invitations/${invitation.id}/decline") {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 

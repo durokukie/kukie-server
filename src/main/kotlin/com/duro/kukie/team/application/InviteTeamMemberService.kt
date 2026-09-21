@@ -1,6 +1,7 @@
 package com.duro.kukie.team.application
 
 import com.duro.kukie.global.util.normalizeEmail
+import com.duro.kukie.team.application.port.`in`.InviteTeamMemberCommand
 import com.duro.kukie.team.domain.InvitationStatus
 import com.duro.kukie.team.domain.TeamInvitation
 import com.duro.kukie.team.domain.TeamInvitationRepository
@@ -9,7 +10,6 @@ import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.AlreadyTeamMemberException
 import com.duro.kukie.team.exception.InvitationAlreadySentException
-import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.findByIdOrThrow
@@ -24,7 +24,6 @@ class InviteTeamMemberService(
     private val teamMembershipRepository: TeamMembershipRepository,
     private val teamInvitationRepository: TeamInvitationRepository,
     private val userRepository: UserRepository,
-    private val teamPermission: TeamPermission,
     private val events: ApplicationEventPublisher,
 ) {
 
@@ -42,25 +41,25 @@ class InviteTeamMemberService(
      * 그것을 EXPIRED 로 정리하고 새로 보낸다.
      */
     @Transactional
-    operator fun invoke(teamId: UUID, userId: UUID, request: InviteTeamMemberRequest): TeamInvitationResponse {
-        teamPermission.requireAdmin(teamId, userId)
-
-        val team = teamRepository.findByIdOrThrow(teamId)
-        val email = request.email.normalizeEmail()
+    operator fun invoke(command: InviteTeamMemberCommand): TeamInvitationResponse {
+        val team = teamRepository.findByIdOrThrow(command.teamId)
+        val email = command.email.normalizeEmail()
 
         // tbl_user.email 유니크는 대소문자를 구분해서 같은 주소의 변형이 여럿일 수 있다. 하나라도
         // 이미 멤버면 초대할 이유가 없다.
         val invitees = userRepository.findAllByEmailIgnoreCase(email)
-        if (invitees.any { teamMembershipRepository.existsByTeamIdAndUserId(teamId, it.id) }) {
+        if (invitees.any { teamMembershipRepository.existsByTeamIdAndUserId(command.teamId, it.id) }) {
             throw AlreadyTeamMemberException()
         }
-        expirePendingInvitation(teamId, email)
+        expirePendingInvitation(command.teamId, email)
 
-        val invitation = teamInvitationRepository.save(TeamInvitation(teamId = teamId, email = email, invitedBy = userId))
+        val invitation = teamInvitationRepository.save(
+            TeamInvitation(teamId = command.teamId, email = email, invitedBy = command.userId),
+        )
         if (invitees.isEmpty()) {
             // 발송은 커밋 뒤에. 트랜잭션 안에서 보내면 SMTP 를 기다리는 동안 DB 커넥션이 묶이고,
             // 보낸 뒤 커밋이 실패하면 없는 초대의 메일이 나간다 (TeamInvitationMailListener).
-            events.publishEvent(TeamMemberInvited(email, team.name, userRepository.findByIdOrThrow(userId).name))
+            events.publishEvent(TeamMemberInvited(email, team.name, userRepository.findByIdOrThrow(command.userId).name))
         }
 
         return TeamInvitationResponse.of(invitation)

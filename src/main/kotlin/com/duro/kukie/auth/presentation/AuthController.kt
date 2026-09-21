@@ -42,7 +42,7 @@ class AuthController(
         @PathVariable provider: OAuthProvider,
         @RequestBody @Valid request: OAuthLogInRequest,
     ): ResponseEntity<TokenResponse> {
-        return ResponseEntity.ok(oAuthLogInService(provider, request))
+        return ResponseEntity.ok(oAuthLogInService(request.toCommand(provider)))
     }
 
     @PostMapping("/refresh")

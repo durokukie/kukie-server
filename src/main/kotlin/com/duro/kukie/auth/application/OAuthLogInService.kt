@@ -1,10 +1,9 @@
 package com.duro.kukie.auth.application
 
+import com.duro.kukie.auth.application.port.`in`.OAuthLogInCommand
 import com.duro.kukie.auth.application.port.out.OAuthClient
 import com.duro.kukie.auth.application.port.out.OAuthProfile
-import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.domain.RefreshTokenRepository
-import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.domain.User
@@ -22,8 +21,8 @@ class OAuthLogInService(
 ) {
 
     // 외부 HTTP 호출을 트랜잭션 밖에서 수행하고, 동시 가입으로 유니크 제약이 충돌하면 재조회로 복구해야 하므로 @Transactional을 걸지 않는다
-    operator fun invoke(provider: OAuthProvider, request: OAuthLogInRequest): TokenResponse {
-        val profile = oAuthClient.fetchProfile(provider, request.code, request.redirectUri, request.codeVerifier)
+    operator fun invoke(command: OAuthLogInCommand): TokenResponse {
+        val profile = oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier)
         val user = findOrCreateUser(profile)
 
         val accessToken = jwtTokenProvider.generateAccessToken(user.id)

@@ -12,7 +12,6 @@ class DeleteTeamService(
     private val teamRepository: TeamRepository,
     private val teamMembershipRepository: TeamMembershipRepository,
     private val teamInvitationRepository: TeamInvitationRepository,
-    private val teamPermission: TeamPermission,
 ) {
 
     /**
@@ -26,9 +25,7 @@ class DeleteTeamService(
      * 판단하므로 아무도 쓸 수는 없지만, 지우려면 이 서버가 agent 에 알려 줘야 한다 (후속 과제).
      */
     @Transactional
-    operator fun invoke(teamId: UUID, userId: UUID) {
-        teamPermission.requireAdmin(teamId, userId)
-
+    operator fun invoke(teamId: UUID) {
         teamInvitationRepository.deleteAllByTeamId(teamId)
         teamMembershipRepository.deleteAllByTeamId(teamId)
         teamRepository.deleteById(teamId)

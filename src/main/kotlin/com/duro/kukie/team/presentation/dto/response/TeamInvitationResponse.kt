@@ -22,6 +22,6 @@ data class TeamInvitationResponse(
 
         /** 만료는 저장하지 않고 expiresAt 으로 계산한다 — 기한이 지난 PENDING 은 EXPIRED 로 나간다. */
         private fun statusOf(invitation: TeamInvitation): InvitationStatus =
-            if (invitation.status.isPending && invitation.isExpired) InvitationStatus.EXPIRED else invitation.status
+            if (invitation.status == InvitationStatus.PENDING && invitation.isExpired) InvitationStatus.EXPIRED else invitation.status
     }
 }

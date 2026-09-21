@@ -10,7 +10,6 @@ import java.util.UUID
 @Service
 class CancelTeamInvitationService(
     private val teamInvitationRepository: TeamInvitationRepository,
-    private val teamPermission: TeamPermission,
 ) {
 
     /**
@@ -20,11 +19,9 @@ class CancelTeamInvitationService(
      * 응답 코드로 알려 주지 않는다.
      */
     @Transactional
-    operator fun invoke(teamId: UUID, invitationId: UUID, userId: UUID) {
-        teamPermission.requireAdmin(teamId, userId)
-
+    operator fun invoke(teamId: UUID, invitationId: UUID) {
         val invitation = teamInvitationRepository.findByIdOrThrow(invitationId)
-        if (invitation.belongsTo(teamId).not()) {
+        if (invitation.teamId != teamId) {
             throw InvitationNotFoundException()
         }
 
