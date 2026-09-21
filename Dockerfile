@@ -11,7 +11,8 @@ COPY gradlew settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
 RUN chmod +x gradlew && ./gradlew --no-daemon dependencies --quiet > /dev/null 2>&1 || true
 COPY src ./src
-# 테스트는 CI 가 돌린다 (Testcontainers 라 도커 안에서는 못 돈다). plain jar 가 아니라 실행 가능한 boot jar 하나만 집는다
+# 테스트는 CI 가 돌린다 (Testcontainers 라 도커 안에서는 못 돈다). 지금은 bootJar 만 돌아 jar 가 하나지만, 나중에 jar 태스크가
+# 같이 돌아 *-plain.jar 이 생겨도 실행 가능한 boot jar 만 집히게 걸러 둔다
 RUN ./gradlew --no-daemon bootJar -x test \
  && cp "$(ls build/libs/*.jar | grep -v -- '-plain.jar' | head -1)" /src/app.jar
 
@@ -19,7 +20,7 @@ RUN ./gradlew --no-daemon bootJar -x test \
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 # 기본 이미지에 uid 1000(ubuntu)이 이미 있어 번호를 고정하지 않는다 — 이 컨테이너는 볼륨이 없어 uid 가 밖과 맞을 필요가 없다
-RUN useradd --system --no-create-home kukie
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin kukie
 COPY --from=build /src/app.jar /app/app.jar
 USER kukie
 EXPOSE 8080
