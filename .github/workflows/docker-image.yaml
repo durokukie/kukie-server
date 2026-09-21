@@ -18,6 +18,7 @@ on:
       - build.gradle.kts
       - settings.gradle.kts
       - gradle/**
+      - .github/workflows/docker-image.yaml
 
 jobs:
   build-image:
@@ -26,5 +27,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: docker build
         run: docker build -t kukie-server:ci .
-      - name: 이미지 안에 app.jar 하나
-        run: docker run --rm --entrypoint sh kukie-server:ci -c 'ls -la /app/app.jar && id -un'
+      - name: 이미지 안에 app.jar 가 있고 비루트(kukie)로 돈다
+        run: docker run --rm --entrypoint sh kukie-server:ci -c 'ls -la /app/app.jar && test "$(id -un)" = kukie'
