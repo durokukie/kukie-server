@@ -62,9 +62,8 @@ class TeamController(
     @GetMapping("/{teamId}/members")
     override fun getTeamMembers(
         @PathVariable teamId: UUID,
-        @AuthUser userId: UUID,
     ): ResponseEntity<List<TeamMemberResponse>> {
-        return ResponseEntity.ok(getTeamMembersService(teamId, userId))
+        return ResponseEntity.ok(getTeamMembersService(teamId))
     }
 
     @TeamRoleRequired(TeamRole.ADMIN)
@@ -82,7 +81,6 @@ class TeamController(
     override fun updateTeamMemberRole(
         @PathVariable teamId: UUID,
         @PathVariable targetUserId: UUID,
-        @AuthUser userId: UUID,
         @RequestBody @Valid request: UpdateTeamMemberRoleRequest,
     ): ResponseEntity<Unit> {
         updateTeamMemberRoleService(request.toCommand(teamId, targetUserId))
