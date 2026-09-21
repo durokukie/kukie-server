@@ -1,6 +1,9 @@
 package com.duro.kukie.auth
 
 import com.duro.kukie.auth.exception.AuthErrorCode
+import com.duro.kukie.auth.domain.PkceS256
+import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
@@ -390,6 +393,117 @@ class AuthIntegrationTest : IntegrationTest() {
     }
 
     /** 브라우저가 우리 페이지에서 보낸 요청에 붙이는 표시. 쿠키 인증은 이게 있어야 받는다. */
+    // ── 앱 넘겨주기 (DURO-109): 시스템 브라우저에서 로그인한 페이지 → 1회용 코드 → 앱이 토큰으로 ──
+
+    @Test
+    fun `로그인된 페이지가 받은 넘겨주기 코드를 앱이 PKCE 원본과 함께 내면 토큰과 쿠키를 받는다`() {
+        val loggedIn = loggedInUser()
+        val verifier = "app-made-random-verifier-0123456789abcdef"
+
+        val code = issueHandoffCode(loggedIn.accessToken, PkceS256.challengeOf(verifier))
+
+        val result = mockMvc.post("/auth/exchange") {
+            contentType = MediaType.APPLICATION_JSON
+            content = ExchangeHandoffCodeRequest(code, verifier).toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accessToken") { isNotEmpty() }
+            jsonPath("$.refreshToken") { isNotEmpty() }
+            cookie { exists(cookies.accessName); httpOnly(cookies.accessName, true) }
+            cookie { exists(cookies.refreshName); httpOnly(cookies.refreshName, true) }
+        }.andReturn()
+
+        // 받은 토큰이 실제로 그 사용자의 것이다
+        val newAccessToken = result.response.cookies.first { it.name == cookies.accessName }.value
+        mockMvc.get("/users/me") {
+            authorization(newAccessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(loggedIn.user.id.toString()) }
+        }
+    }
+
+    @Test
+    fun `넘겨주기 코드는 웹 페이지의 쿠키 로그인으로도 받을 수 있다`() {
+        val loggedIn = loggedInUser()
+
+        mockMvc.post("/auth/handoff") {
+            cookie(Cookie(cookies.accessName, loggedIn.accessToken))
+            fromSameSite()
+            contentType = MediaType.APPLICATION_JSON
+            content = HandoffCodeRequest("challenge").toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.code") { isNotEmpty() }
+            jsonPath("$.expiresIn") { value(60) }
+        }
+    }
+
+    @Test
+    fun `로그인 없이는 넘겨주기 코드를 받을 수 없다`() {
+        mockMvc.post("/auth/handoff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = HandoffCodeRequest("challenge").toJson()
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
+        }
+    }
+
+    @Test
+    fun `PKCE 원본이 맡긴 검증값과 다르면 코드를 교환할 수 없다`() {
+        val loggedIn = loggedInUser()
+        val code = issueHandoffCode(loggedIn.accessToken, PkceS256.challengeOf("the-real-verifier"))
+
+        mockMvc.post("/auth/exchange") {
+            contentType = MediaType.APPLICATION_JSON
+            content = ExchangeHandoffCodeRequest(code, "someone-elses-verifier").toJson()
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.INVALID_HANDOFF_CODE.code) }
+        }
+    }
+
+    @Test
+    fun `넘겨주기 코드는 한 번만 쓸 수 있다 - 틀린 원본으로 한 번 시도한 뒤에도 사라진다`() {
+        val loggedIn = loggedInUser()
+        val verifier = "verifier-used-once"
+        val code = issueHandoffCode(loggedIn.accessToken, PkceS256.challengeOf(verifier))
+
+        exchange(code, verifier).andExpect { status { isOk() } }
+        exchange(code, verifier).andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.INVALID_HANDOFF_CODE.code) }
+        }
+
+        // 틀린 원본으로 한 번 두드리면 코드가 소모된다 — 맞는 원본으로 다시 와도 안 된다
+        val second = issueHandoffCode(loggedIn.accessToken, PkceS256.challengeOf(verifier))
+        exchange(second, "wrong").andExpect { status { isUnauthorized() } }
+        exchange(second, verifier).andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `없는 넘겨주기 코드는 교환할 수 없다`() {
+        exchange("never-issued", "whatever").andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.INVALID_HANDOFF_CODE.code) }
+        }
+    }
+
+    private fun issueHandoffCode(accessToken: String, codeChallenge: String): String {
+        val body = mockMvc.post("/auth/handoff") {
+            authorization(accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = HandoffCodeRequest(codeChallenge).toJson()
+        }.andExpect { status { isOk() } }.andReturn().response.contentAsString
+        return Regex("\"code\":\"([^\"]+)\"").find(body)!!.groupValues[1]
+    }
+
+    private fun exchange(code: String, verifier: String) = mockMvc.post("/auth/exchange") {
+        contentType = MediaType.APPLICATION_JSON
+        content = ExchangeHandoffCodeRequest(code, verifier).toJson()
+    }
+
     private fun MockHttpServletRequestDsl.fromSameSite() = header("Sec-Fetch-Site", "same-origin")
 
     private fun refresh(refreshToken: String) =

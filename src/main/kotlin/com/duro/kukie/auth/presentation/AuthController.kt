@@ -1,14 +1,19 @@
 package com.duro.kukie.auth.presentation
 
+import com.duro.kukie.auth.application.ExchangeHandoffCodeService
+import com.duro.kukie.auth.application.IssueHandoffCodeService
 import com.duro.kukie.auth.application.LogInService
 import com.duro.kukie.auth.application.LogOutService
 import com.duro.kukie.auth.application.OAuthLogInService
 import com.duro.kukie.auth.application.RefreshTokenService
 import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.UnauthorizedException
+import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.security.AuthCookies
 import com.duro.kukie.global.security.AuthUser
@@ -36,6 +41,8 @@ class AuthController(
     private val oAuthLogInService: OAuthLogInService,
     private val logOutService: LogOutService,
     private val refreshTokenService: RefreshTokenService,
+    private val issueHandoffCodeService: IssueHandoffCodeService,
+    private val exchangeHandoffCodeService: ExchangeHandoffCodeService,
     private val authCookies: AuthCookies,
 ) : AuthControllerDocs {
 
@@ -80,6 +87,28 @@ class AuthController(
         authCookies.clear(response)
 
         return ResponseEntity.noContent().build()
+    }
+
+    /**
+     * 앱 넘겨주기 (DURO-109) — 시스템 브라우저에서 로그인을 마친 웹 페이지가 부른다. 그 페이지의 쿠키(또는 헤더)로 인증되고,
+     * 앱이 맡긴 PKCE 검증값과 함께 1회용 코드를 만든다. 페이지는 이 코드를 `kukie://auth?code=…` 로 앱에 건넨다.
+     */
+    @Authenticated
+    @PostMapping("/handoff")
+    override fun issueHandoffCode(
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: HandoffCodeRequest,
+    ): ResponseEntity<HandoffCodeResponse> {
+        return ResponseEntity.ok(issueHandoffCodeService(userId, request.codeChallenge))
+    }
+
+    /** 앱이 딥링크로 받은 코드 + PKCE 원본 → 토큰. 응답 쿠키는 앱 창의 세션에 구워진다 — 그 뒤는 웹과 같다. */
+    @PostMapping("/exchange")
+    override fun exchangeHandoffCode(
+        @RequestBody @Valid request: ExchangeHandoffCodeRequest,
+        response: HttpServletResponse,
+    ): ResponseEntity<TokenResponse> {
+        return ResponseEntity.ok(exchangeHandoffCodeService(request).alsoIssueCookies(response))
     }
 
     private fun TokenResponse.alsoIssueCookies(response: HttpServletResponse): TokenResponse {

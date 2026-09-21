@@ -13,6 +13,7 @@ enum class AuthErrorCode(
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     OAUTH_LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "소셜 로그인에 실패했습니다."),
     CROSS_SITE_COOKIE(HttpStatus.FORBIDDEN, "다른 오리진에서 시작됐거나 출처(Sec-Fetch-Site)를 알 수 없는 요청은 쿠키로 인증하지 않습니다. 브라우저는 HTTPS·localhost 에서만 이 헤더를 보냅니다."),
+    INVALID_HANDOFF_CODE(HttpStatus.UNAUTHORIZED, "앱 넘겨주기 코드가 유효하지 않습니다 (없거나 만료·재사용됐거나 검증값이 맞지 않습니다)."),
     ;
 
     override val code: String
