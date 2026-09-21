@@ -21,7 +21,7 @@ class CancelTeamInvitationService(
     @Transactional
     operator fun invoke(teamId: UUID, invitationId: UUID, userId: UUID) {
         val invitation = teamInvitationRepository.findByIdOrThrow(invitationId)
-        if (invitation.belongsTo(teamId).not()) {
+        if (invitation.teamId != teamId) {
             throw InvitationNotFoundException()
         }
 

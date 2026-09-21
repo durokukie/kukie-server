@@ -9,8 +9,4 @@ package com.duro.kukie.team.domain
 enum class TeamRole(val level: Int) {
     MEMBER(1),
     ADMIN(2),
-    ;
-
-    val isAdmin: Boolean
-        get() = this == ADMIN
 }

@@ -28,7 +28,7 @@ class TeamRoleInterceptor(
         if (handler !is HandlerMethod) {
             return true
         }
-        val required = handler.getMethodAnnotation(TeamMember::class.java) ?: return true
+        val required = handler.getMethodAnnotation(TeamRoleRequired::class.java) ?: return true
 
         val teamId = request.teamId()
         val userId = request.getAttribute(AuthenticationInterceptor.AUTHENTICATED_USER_ID) as? UUID
@@ -45,7 +45,7 @@ class TeamRoleInterceptor(
     private fun HttpServletRequest.teamId(): UUID {
         val variables = getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE) as? Map<*, *>
         val raw = variables?.get(TEAM_ID) as? String
-            ?: error("@RequireTeamRole 핸들러에는 {$TEAM_ID} 경로 변수가 있어야 합니다: $requestURI")
+            ?: error("@TeamRoleRequired 핸들러에는 {$TEAM_ID} 경로 변수가 있어야 합니다: $requestURI")
 
         return runCatching { UUID.fromString(raw) }
             .getOrElse { throw BusinessException(GlobalErrorCode.BAD_REQUEST) }

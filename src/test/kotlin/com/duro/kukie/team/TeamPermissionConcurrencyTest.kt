@@ -4,6 +4,7 @@ import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.application.TeamPermission
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
+import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.exception.AdminRequiredException
 import com.duro.kukie.user.UserFixture
 import io.kotest.matchers.shouldBe
@@ -77,6 +78,6 @@ class TeamPermissionConcurrencyTest : IntegrationTest() {
 
         // then — 두 번째 제거는 막힌다. 막지 못하면 관리자 0명인 팀이 된다.
         rejected shouldBe true
-        teamMembershipRepository.findAllByTeamId(team.id).count { it.role.isAdmin } shouldBe 1
+        teamMembershipRepository.findAllByTeamId(team.id).count { it.role == TeamRole.ADMIN } shouldBe 1
     }
 }

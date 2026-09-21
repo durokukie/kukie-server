@@ -30,7 +30,7 @@ class TeamInvitationController(
     private val declineTeamInvitationService: DeclineTeamInvitationService,
 ) : TeamInvitationControllerDocs {
 
-    @TeamMember(TeamRole.ADMIN)
+    @TeamRoleRequired(TeamRole.ADMIN)
     @PostMapping("/{teamId}/invitations")
     override fun inviteTeamMember(
         @PathVariable teamId: UUID,
@@ -40,7 +40,7 @@ class TeamInvitationController(
         return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(request.toCommand(teamId, userId)))
     }
 
-    @TeamMember(TeamRole.ADMIN)
+    @TeamRoleRequired(TeamRole.ADMIN)
     @DeleteMapping("/{teamId}/invitations/{invitationId}")
     override fun cancelTeamInvitation(
         @PathVariable teamId: UUID,

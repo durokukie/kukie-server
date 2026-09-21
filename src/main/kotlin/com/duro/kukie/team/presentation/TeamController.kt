@@ -58,7 +58,7 @@ class TeamController(
         return ResponseEntity.ok(getMyTeamsService(userId))
     }
 
-    @TeamMember(TeamRole.MEMBER)
+    @TeamRoleRequired(TeamRole.MEMBER)
     @GetMapping("/{teamId}/members")
     override fun getTeamMembers(
         @PathVariable teamId: UUID,
@@ -67,7 +67,7 @@ class TeamController(
         return ResponseEntity.ok(getTeamMembersService(teamId, userId))
     }
 
-    @TeamMember(TeamRole.ADMIN)
+    @TeamRoleRequired(TeamRole.ADMIN)
     @PatchMapping("/{teamId}")
     override fun updateTeam(
         @PathVariable teamId: UUID,
@@ -77,7 +77,7 @@ class TeamController(
         return ResponseEntity.ok(updateTeamService(request.toCommand(teamId, userId)))
     }
 
-    @TeamMember(TeamRole.ADMIN)
+    @TeamRoleRequired(TeamRole.ADMIN)
     @PatchMapping("/{teamId}/members/{targetUserId}")
     override fun updateTeamMemberRole(
         @PathVariable teamId: UUID,
@@ -90,7 +90,7 @@ class TeamController(
         return ResponseEntity.noContent().build()
     }
 
-    @TeamMember(TeamRole.MEMBER)
+    @TeamRoleRequired(TeamRole.MEMBER)
     @DeleteMapping("/{teamId}/members/me")
     override fun leaveTeam(
         @PathVariable teamId: UUID,
@@ -101,7 +101,7 @@ class TeamController(
         return ResponseEntity.noContent().build()
     }
 
-    @TeamMember(TeamRole.ADMIN)
+    @TeamRoleRequired(TeamRole.ADMIN)
     @DeleteMapping("/{teamId}/members/{targetUserId}")
     override fun removeTeamMember(
         @PathVariable teamId: UUID,
@@ -113,7 +113,7 @@ class TeamController(
         return ResponseEntity.noContent().build()
     }
 
-    @TeamMember(TeamRole.ADMIN)
+    @TeamRoleRequired(TeamRole.ADMIN)
     @DeleteMapping("/{teamId}")
     override fun deleteTeam(
         @PathVariable teamId: UUID,

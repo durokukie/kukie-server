@@ -1,8 +1,8 @@
 package com.duro.kukie.team
 
 import com.duro.kukie.global.security.Authenticated
-import com.duro.kukie.team.presentation.TeamMember
 import com.duro.kukie.team.presentation.TeamRoleInterceptor
+import com.duro.kukie.team.presentation.TeamRoleRequired
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import org.junit.jupiter.api.Test
@@ -16,28 +16,28 @@ import java.lang.reflect.Method
 import java.lang.reflect.Parameter
 import java.util.UUID
 
-class TeamMemberConventionTest {
+class TeamRoleRequiredConventionTest {
 
     @Test
-    fun `teamId 경로 변수를 받는 핸들러는 RequireTeamRole 을 선언해야 한다`() {
+    fun `teamId 경로 변수를 받는 핸들러는 TeamRoleRequired 을 선언해야 한다`() {
         val violations = findHandlerMethods()
             .filter { it.teamIdParameter() != null }
-            .filterNot { it.isAnnotationPresent(TeamMember::class.java) }
+            .filterNot { it.isAnnotationPresent(TeamRoleRequired::class.java) }
             .map { it.toGenericString() }
 
-        withClue("{teamId} 경로 변수를 받는 핸들러에는 @RequireTeamRole 이 있어야 합니다") {
+        withClue("{teamId} 경로 변수를 받는 핸들러에는 @TeamRoleRequired 이 있어야 합니다") {
             violations.shouldBeEmpty()
         }
     }
 
     @Test
-    fun `RequireTeamRole 은 Authenticated 핸들러의 UUID teamId 경로 변수에만 선언할 수 있다`() {
+    fun `TeamRoleRequired 은 Authenticated 핸들러의 UUID teamId 경로 변수에만 선언할 수 있다`() {
         val violations = findHandlerMethods()
-            .filter { it.isAnnotationPresent(TeamMember::class.java) }
+            .filter { it.isAnnotationPresent(TeamRoleRequired::class.java) }
             .filterNot { it.teamIdParameter()?.type == UUID::class.java && it.requiresAuthentication() }
             .map { it.toGenericString() }
 
-        withClue("@RequireTeamRole 은 @Authenticated 핸들러의 UUID 타입 {teamId} 경로 변수와 함께 써야 합니다") {
+        withClue("@TeamRoleRequired 은 @Authenticated 핸들러의 UUID 타입 {teamId} 경로 변수와 함께 써야 합니다") {
             violations.shouldBeEmpty()
         }
     }

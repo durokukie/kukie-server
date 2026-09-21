@@ -10,7 +10,4 @@ enum class InvitationStatus {
     DECLINED,
     CANCELED,
     EXPIRED,
-    ;
-
-    val isPending: Boolean get() = this == PENDING
 }

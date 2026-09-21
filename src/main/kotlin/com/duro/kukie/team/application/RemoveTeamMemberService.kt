@@ -1,6 +1,7 @@
 package com.duro.kukie.team.application
 
 import com.duro.kukie.team.domain.TeamMembershipRepository
+import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow
 import com.duro.kukie.team.exception.CannotRemoveSelfException
 import org.springframework.stereotype.Service
@@ -21,7 +22,7 @@ class RemoveTeamMemberService(
         }
 
         val target = teamMembershipRepository.findByTeamIdAndUserIdOrThrow(teamId, targetUserId)
-        if (target.role.isAdmin) {
+        if (target.role == TeamRole.ADMIN) {
             teamPermission.requireNotLastAdmin(teamId)
         }
 

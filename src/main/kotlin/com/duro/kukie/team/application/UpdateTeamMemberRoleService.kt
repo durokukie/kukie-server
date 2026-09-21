@@ -5,6 +5,7 @@ import com.duro.kukie.notification.domain.NotificationRepository
 import com.duro.kukie.team.application.port.`in`.UpdateTeamMemberRoleCommand
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
+import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.domain.findByTeamIdAndUserIdOrThrow
 import org.springframework.stereotype.Service
@@ -30,7 +31,7 @@ class UpdateTeamMemberRoleService(
         if (target.role == command.role) {
             return
         }
-        if (target.role.isAdmin && command.role.isAdmin.not()) {
+        if (target.role == TeamRole.ADMIN && command.role != TeamRole.ADMIN) {
             teamPermission.requireNotLastAdmin(command.teamId)
         }
 
