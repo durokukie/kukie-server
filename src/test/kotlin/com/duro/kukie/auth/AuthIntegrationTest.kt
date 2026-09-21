@@ -14,6 +14,7 @@ import io.kotest.matchers.shouldBe
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
@@ -243,6 +244,45 @@ class AuthIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.email") { value(headerUser.user.email) }
         }
+    }
+
+    @Test
+    fun `헤더가 있으면 모양이 틀려도 쿠키로 넘어가지 않는다`() {
+        // given — Basic 을 보낸 클라이언트가 조용히 남의 쿠키 세션으로 돌면 안 된다
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.get("/users/me") {
+            header(HttpHeaders.AUTHORIZATION, "Basic abc")
+            cookie(Cookie(cookies.accessName, user.accessToken))
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
+        }
+    }
+
+    @Test
+    fun `다른 사이트에서 시작된 요청은 쿠키로 인증하지 않는다`() {
+        // given — SameSite=Lax 도 top-level GET 은 통과시키므로 브라우저의 Sec-Fetch-Site 로 한 번 더 거른다
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.get("/users/me") {
+            cookie(Cookie(cookies.accessName, user.accessToken))
+            header("Sec-Fetch-Site", "cross-site")
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(AuthErrorCode.CROSS_SITE_COOKIE.code) }
+        }
+        // 같은 사이트에서 온 요청과, 헤더 토큰은 cross-site 여도 통과
+        mockMvc.get("/users/me") {
+            cookie(Cookie(cookies.accessName, user.accessToken))
+            header("Sec-Fetch-Site", "same-origin")
+        }.andExpect { status { isOk() } }
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+            header("Sec-Fetch-Site", "cross-site")
+        }.andExpect { status { isOk() } }
     }
 
     @Test

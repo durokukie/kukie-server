@@ -1,5 +1,6 @@
 package com.duro.kukie.global.security
 
+import com.duro.kukie.auth.exception.CrossSiteCookieException
 import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.exception.UnauthorizedException
 import jakarta.servlet.http.HttpServletRequest
@@ -37,21 +38,34 @@ class AuthenticationInterceptor(
             AnnotatedElementUtils.hasAnnotation(beanType, Authenticated::class.java)
 
     /**
-     * 헤더가 먼저, 없을 때만 쿠키. 앱(Electron)과 에이전트(`/users/me` 조회)는 `Authorization: Bearer` 로 오고,
-     * 웹 브라우저는 httpOnly 쿠키로 온다 (`AuthCookies`). 둘 다 있으면 헤더가 이긴다 — 헤더는 부르는 쪽이
-     * 이번 요청에 일부러 붙인 값이고 쿠키는 브라우저가 알아서 붙이는 값이라서다.
+     * 헤더가 **있으면** 헤더만 본다 — 모양이 틀려도 쿠키로 넘어가지 않는다 (Basic 을 보낸 클라이언트가 조용히
+     * 남의 쿠키 세션으로 도는 일이 없게). 헤더가 **없을 때만** 쿠키. 앱(Electron)과 에이전트(`/users/me` 조회)는
+     * `Authorization: Bearer` 로 오고, 웹 브라우저는 httpOnly 쿠키로 온다 (`AuthCookies`). agent `auth.py` 와 같은 규칙.
+     *
+     * 쿠키는 브라우저가 알아서 붙이므로 다른 사이트가 시킨 요청에도 실릴 수 있다 (`SameSite=Lax` 도 top-level GET 은
+     * 통과시킨다). 쿠키로만 인증된 요청은 같은 사이트에서 시작된 것만 받는다 — `Sec-Fetch-Site: cross-site` 면 거부.
      */
-    private fun resolveToken(request: HttpServletRequest): String? =
-        bearerToken(request) ?: authCookies.accessToken(request)
+    private fun resolveToken(request: HttpServletRequest): String? {
+        val header: String? = request.getHeader(HttpHeaders.AUTHORIZATION)
+        if (header != null) return bearerToken(header)
 
-    private fun bearerToken(request: HttpServletRequest): String? =
-        request.getHeader(HttpHeaders.AUTHORIZATION)
-            ?.takeIf { it.startsWith(BEARER_PREFIX, ignoreCase = true) }
+        val cookieToken = authCookies.accessToken(request) ?: return null
+        if (request.getHeader(SEC_FETCH_SITE)?.trim().equals(CROSS_SITE, ignoreCase = true)) {
+            throw CrossSiteCookieException()
+        }
+        return cookieToken
+    }
+
+    private fun bearerToken(header: String): String? =
+        header
+            .takeIf { it.startsWith(BEARER_PREFIX, ignoreCase = true) }
             ?.substring(BEARER_PREFIX.length)
             ?.takeIf { it.isNotBlank() }
 
     companion object {
         const val AUTHENTICATED_USER_ID = "authenticatedUserId"
         private const val BEARER_PREFIX = "Bearer "
+        private const val SEC_FETCH_SITE = "Sec-Fetch-Site"
+        private const val CROSS_SITE = "cross-site"
     }
 }
