@@ -12,6 +12,7 @@ import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeOAuthClient
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.UserFixture
+import com.jayway.jsonpath.JsonPath
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import jakarta.servlet.http.Cookie
@@ -392,7 +393,6 @@ class AuthIntegrationTest : IntegrationTest() {
         }
     }
 
-    /** 브라우저가 우리 페이지에서 보낸 요청에 붙이는 표시. 쿠키 인증은 이게 있어야 받는다. */
     // ── 앱 넘겨주기 (DURO-109): 시스템 브라우저에서 로그인한 페이지 → 1회용 코드 → 앱이 토큰으로 ──
 
     @Test
@@ -496,7 +496,7 @@ class AuthIntegrationTest : IntegrationTest() {
             contentType = MediaType.APPLICATION_JSON
             content = HandoffCodeRequest(codeChallenge).toJson()
         }.andExpect { status { isOk() } }.andReturn().response.contentAsString
-        return Regex("\"code\":\"([^\"]+)\"").find(body)!!.groupValues[1]
+        return JsonPath.read(body, "$.code")
     }
 
     private fun exchange(code: String, verifier: String) = mockMvc.post("/auth/exchange") {
@@ -504,6 +504,7 @@ class AuthIntegrationTest : IntegrationTest() {
         content = ExchangeHandoffCodeRequest(code, verifier).toJson()
     }
 
+    /** 브라우저가 우리 페이지에서 보낸 요청에 붙이는 표시. 쿠키 인증은 이게 있어야 받는다. */
     private fun MockHttpServletRequestDsl.fromSameSite() = header("Sec-Fetch-Site", "same-origin")
 
     private fun refresh(refreshToken: String) =
