@@ -11,12 +11,13 @@ WORKDIR /src
 COPY gradlew settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
 # 이미지에 필요한 두 구성만 미리 받는다 — 테스트 전용(Testcontainers·mockk·kotest)은 안 받는다. gradlew 는 git 에 실행 권한이 있다
-# --configuration 은 단일 값이라 두 번 부른다. 캐시 워밍이라 실패해도 다음 단계(bootJar)가 알아서 받으니 || true
-RUN ./gradlew --no-daemon --quiet dependencies --configuration compileClasspath > /dev/null 2>&1 \
- && ./gradlew --no-daemon --quiet dependencies --configuration runtimeClasspath > /dev/null 2>&1 || true
+# --configuration 은 단일 값이라 두 번 부른다. 캐시 워밍이라 하나가 실패해도 다른 하나는 시도하고, 둘 다 실패해도 다음 단계(bootJar)가 알아서 받는다
+RUN (./gradlew --no-daemon --quiet dependencies --configuration compileClasspath > /dev/null 2>&1 || true) \
+ && (./gradlew --no-daemon --quiet dependencies --configuration runtimeClasspath > /dev/null 2>&1 || true)
 COPY src ./src
-# 테스트는 CI 가 돌린다 (Testcontainers 라 도커 안에서는 못 돈다). 산출물 이름은 build.gradle.kts 가 app.jar 로 고정한다 — 글롭으로 고르지 않는다
-RUN ./gradlew --no-daemon bootJar -x test
+# bootJar 는 test 에 의존하지 않아 여기서 테스트는 돌지 않는다 (테스트는 CI — Testcontainers 라 도커 안에서는 못 돈다).
+# 산출물 이름은 build.gradle.kts 가 app.jar 로 고정한다 — 글롭으로 고르지 않는다
+RUN ./gradlew --no-daemon bootJar
 
 # ── 2) 실행: JRE 만, 루트 아님 ──────────────────────────────────────────────────────
 FROM eclipse-temurin:25-jre-noble
