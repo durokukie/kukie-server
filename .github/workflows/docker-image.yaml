@@ -1,0 +1,30 @@
+# 컨테이너 이미지가 실제로 만들어지는지 — Dockerfile·빌드 스크립트가 바뀔 때만 (PR #27 리뷰: CI 가 docker build 를 안 돌렸다)
+name: docker-image
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - build.gradle.kts
+      - settings.gradle.kts
+      - gradle/**
+      - .github/workflows/docker-image.yaml
+  push:
+    branches: [develop]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - build.gradle.kts
+      - settings.gradle.kts
+      - gradle/**
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build -t kukie-server:ci .
+      - name: 이미지 안에 app.jar 하나
+        run: docker run --rm --entrypoint sh kukie-server:ci -c 'ls -la /app/app.jar && id -un'
