@@ -73,5 +73,5 @@ interface TeamControllerDocs {
     @Operation(summary = "팀 삭제", description = "팀과 구성원 정보를 삭제합니다. 관리자만 할 수 있습니다.")
     @ApiResponse(responseCode = "204", description = "No Content")
     @ApiErrorResponses(NotTeamMemberException::class, InsufficientTeamRoleException::class)
-    fun deleteTeam(teamId: UUID, userId: UUID): ResponseEntity<Unit>
+    fun deleteTeam(teamId: UUID): ResponseEntity<Unit>
 }

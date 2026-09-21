@@ -45,9 +45,8 @@ class TeamInvitationController(
     override fun cancelTeamInvitation(
         @PathVariable teamId: UUID,
         @PathVariable invitationId: UUID,
-        @AuthUser userId: UUID,
     ): ResponseEntity<Unit> {
-        cancelTeamInvitationService(teamId, invitationId, userId)
+        cancelTeamInvitationService(teamId, invitationId)
 
         return ResponseEntity.noContent().build()
     }

@@ -115,9 +115,8 @@ class TeamController(
     @DeleteMapping("/{teamId}")
     override fun deleteTeam(
         @PathVariable teamId: UUID,
-        @AuthUser userId: UUID,
     ): ResponseEntity<Unit> {
-        deleteTeamService(teamId, userId)
+        deleteTeamService(teamId)
 
         return ResponseEntity.noContent().build()
     }

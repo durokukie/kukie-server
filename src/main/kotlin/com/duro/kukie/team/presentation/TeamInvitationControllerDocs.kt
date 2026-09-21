@@ -47,7 +47,7 @@ interface TeamInvitationControllerDocs {
         InvitationNotFoundException::class,
         InvitationNotPendingException::class,
     )
-    fun cancelTeamInvitation(teamId: UUID, invitationId: UUID, userId: UUID): ResponseEntity<Unit>
+    fun cancelTeamInvitation(teamId: UUID, invitationId: UUID): ResponseEntity<Unit>
 
     @Operation(
         summary = "팀 초대 수락",

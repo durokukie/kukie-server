@@ -19,7 +19,7 @@ class CancelTeamInvitationService(
      * 응답 코드로 알려 주지 않는다.
      */
     @Transactional
-    operator fun invoke(teamId: UUID, invitationId: UUID, userId: UUID) {
+    operator fun invoke(teamId: UUID, invitationId: UUID) {
         val invitation = teamInvitationRepository.findByIdOrThrow(invitationId)
         if (invitation.teamId != teamId) {
             throw InvitationNotFoundException()

@@ -25,7 +25,7 @@ class DeleteTeamService(
      * 판단하므로 아무도 쓸 수는 없지만, 지우려면 이 서버가 agent 에 알려 줘야 한다 (후속 과제).
      */
     @Transactional
-    operator fun invoke(teamId: UUID, userId: UUID) {
+    operator fun invoke(teamId: UUID) {
         teamInvitationRepository.deleteAllByTeamId(teamId)
         teamMembershipRepository.deleteAllByTeamId(teamId)
         teamRepository.deleteById(teamId)
