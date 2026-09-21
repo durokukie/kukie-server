@@ -39,18 +39,21 @@ class AuthenticationInterceptor(
 
     /**
      * 헤더가 **있으면** 헤더만 본다 — 모양이 틀려도 쿠키로 넘어가지 않는다 (Basic 을 보낸 클라이언트가 조용히
-     * 남의 쿠키 세션으로 도는 일이 없게). 헤더가 **없을 때만** 쿠키. 앱(Electron)과 에이전트(`/users/me` 조회)는
-     * `Authorization: Bearer` 로 오고, 웹 브라우저는 httpOnly 쿠키로 온다 (`AuthCookies`). agent `auth.py` 와 같은 규칙.
+     * 남의 쿠키 세션으로 도는 일이 없게). 값이 빈 헤더는 존중할 뜻이 없으니 없는 것으로 친다. 헤더가 **없을 때만** 쿠키.
+     * 앱(Electron)과 에이전트(`/users/me` 조회)는 `Authorization: Bearer` 로 오고, 웹 브라우저는 httpOnly 쿠키로 온다
+     * (`AuthCookies`). agent `auth.py` 와 같은 규칙.
      *
      * 쿠키는 브라우저가 알아서 붙이므로 다른 사이트가 시킨 요청에도 실릴 수 있다 (`SameSite=Lax` 도 top-level GET 은
-     * 통과시킨다). 쿠키로만 인증된 요청은 같은 사이트에서 시작된 것만 받는다 — `Sec-Fetch-Site: cross-site` 면 거부.
+     * 통과시킨다). 쿠키로만 인증된 요청은 브라우저가 `Sec-Fetch-Site` 로 "같은 사이트에서 시작됐다" 고 알려 줄 때만 받는다.
+     * 헤더가 없어도 거부다(fail-closed) — 통과시키면 그 브라우저에서는 검사가 없는 것과 같다. 최신 브라우저는 모두 붙인다.
      */
     private fun resolveToken(request: HttpServletRequest): String? {
-        val header: String? = request.getHeader(HttpHeaders.AUTHORIZATION)
+        val header = request.getHeader(HttpHeaders.AUTHORIZATION)?.takeIf { it.isNotBlank() }
         if (header != null) return bearerToken(header)
 
         val cookieToken = authCookies.accessToken(request) ?: return null
-        if (request.getHeader(SEC_FETCH_SITE)?.trim().equals(CROSS_SITE, ignoreCase = true)) {
+        val site = request.getHeader(SEC_FETCH_SITE)?.trim()?.lowercase()
+        if (site !in SAME_SITE_VALUES) {
             throw CrossSiteCookieException()
         }
         return cookieToken
@@ -66,6 +69,7 @@ class AuthenticationInterceptor(
         const val AUTHENTICATED_USER_ID = "authenticatedUserId"
         private const val BEARER_PREFIX = "Bearer "
         private const val SEC_FETCH_SITE = "Sec-Fetch-Site"
-        private const val CROSS_SITE = "cross-site"
+        // same-origin/same-site 는 우리 페이지가 부른 것, none 은 주소창에 직접 친 것. cross-site 나 없음은 거부
+        private val SAME_SITE_VALUES = setOf("same-origin", "same-site", "none")
     }
 }

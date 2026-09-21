@@ -13,7 +13,7 @@ enum class AuthErrorCode(
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     OAUTH_LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "소셜 로그인에 실패했습니다."),
     OAUTH_CLIENT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "이 로그인 경로의 OAuth 클라이언트가 서버에 설정되지 않았습니다."),
-    CROSS_SITE_COOKIE(HttpStatus.FORBIDDEN, "다른 사이트에서 시작된 요청은 쿠키로 인증하지 않습니다."),
+    CROSS_SITE_COOKIE(HttpStatus.FORBIDDEN, "다른 사이트에서 시작됐거나 출처를 알 수 없는 요청은 쿠키로 인증하지 않습니다."),
     ;
 
     override val code: String
