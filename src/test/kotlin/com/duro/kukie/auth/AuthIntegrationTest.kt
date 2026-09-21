@@ -250,6 +250,22 @@ class AuthIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `값이 빈 Authorization 헤더는 없는 것으로 치고 쿠키를 본다`() {
+        // given — `Authorization:` 만 붙인 클라이언트가 쿠키 로그인을 통째로 잃지 않게
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.get("/users/me") {
+            header(HttpHeaders.AUTHORIZATION, "")
+            cookie(Cookie(cookies.accessName, user.accessToken))
+            fromSameSite()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.email") { value(user.user.email) }
+        }
+    }
+
+    @Test
     fun `헤더가 있으면 모양이 틀려도 쿠키로 넘어가지 않는다`() {
         // given — Basic 을 보낸 클라이언트가 조용히 남의 쿠키 세션으로 돌면 안 된다
         val user = loggedInUser()
@@ -303,22 +319,6 @@ class AuthIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `값이 빈 Authorization 헤더는 없는 것으로 치고 쿠키를 본다`() {
-        // given — `Authorization:` 만 붙인 클라이언트가 쿠키 로그인을 통째로 잃지 않게
-        val user = loggedInUser()
-
-        // when & then
-        mockMvc.get("/users/me") {
-            header(HttpHeaders.AUTHORIZATION, "")
-            cookie(Cookie(cookies.accessName, user.accessToken))
-            fromSameSite()
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.email") { value(user.user.email) }
-        }
-    }
-
-    @Test
     fun `리프레시 토큰을 쿠키로만 보내도 재발급되고 새 토큰이 쿠키로 내려간다`() {
         // given
         val user = loggedInUser()
@@ -342,6 +342,24 @@ class AuthIntegrationTest : IntegrationTest() {
             status { isUnauthorized() }
             jsonPath("$.code") { value(AuthErrorCode.INVALID_TOKEN.code) }
         }
+    }
+
+    @Test
+    fun `리프레시 쿠키도 우리 페이지에서 온 요청에만 쓴다`() {
+        // given — /auth/refresh 는 @Authenticated 가 아니라 인터셉터를 안 지난다. 그래도 같은 문(AuthCookies)을 지나야 한다
+        val user = loggedInUser()
+
+        // when & then — 다른 서브도메인(same-site)이나 출처 없음이면 403, 회전도 일어나지 않는다
+        for (site in listOf("same-site", "cross-site", null)) {
+            mockMvc.post("/auth/refresh") {
+                cookie(Cookie(cookies.refreshName, user.refreshToken))
+                if (site != null) header("Sec-Fetch-Site", site)
+            }.andExpect {
+                status { isForbidden() }
+                jsonPath("$.code") { value(AuthErrorCode.CROSS_SITE_COOKIE.code) }
+            }
+        }
+        refresh(user.refreshToken).andExpect { status { isOk() } }
     }
 
     @Test
