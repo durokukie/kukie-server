@@ -4,12 +4,14 @@ import com.duro.kukie.auth.exception.AuthErrorCode
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.global.config.properties.AuthCookieProperties
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeOAuthClient
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.UserFixture
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
@@ -21,6 +23,9 @@ class AuthIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var fakeOAuthClient: FakeOAuthClient
+
+    @Autowired
+    private lateinit var cookies: AuthCookieProperties
 
     @Test
     fun `정상적으로 로그인한다`() {
@@ -158,6 +163,136 @@ class AuthIntegrationTest : IntegrationTest() {
         refresh(user.refreshToken).andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value(AuthErrorCode.INVALID_TOKEN.code) }
+        }
+    }
+
+    // ── 웹: 토큰을 httpOnly 쿠키로도 주고, 쿠키로 온 토큰도 읽는다 (#25) ──────────────
+
+    @Test
+    fun `로그인 응답은 토큰을 본문과 httpOnly 쿠키로 함께 준다`() {
+        // given
+        val user = userRepository.save(UserFixture.user())
+        val request = LogInRequest(user.email, UserFixture.DEFAULT_PASSWORD)
+
+        // when & then
+        mockMvc.post("/auth/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accessToken") { isNotEmpty() }
+            jsonPath("$.refreshToken") { isNotEmpty() }
+            cookie {
+                exists(cookies.accessName)
+                exists(cookies.refreshName)
+            }
+        }
+    }
+
+    @Test
+    fun `소셜 로그인 응답의 토큰 쿠키는 화면 코드가 못 읽고 https 에서만 같은 사이트 요청에 실린다`() {
+        // given
+        val request = OAuthLogInRequest("code", "http://127.0.0.1:3000/callback")
+
+        // when & then
+        mockMvc.post("/auth/oauth/github") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect {
+            status { isOk() }
+            cookie {
+                httpOnly(cookies.accessName, true)
+                secure(cookies.accessName, true)
+                sameSite(cookies.accessName, "Lax")
+                path(cookies.accessName, "/")
+                maxAge(cookies.accessName, 30 * 60)
+                httpOnly(cookies.refreshName, true)
+                secure(cookies.refreshName, true)
+                sameSite(cookies.refreshName, "Lax")
+                path(cookies.refreshName, "/")
+                maxAge(cookies.refreshName, 30 * 24 * 60 * 60)
+            }
+        }
+    }
+
+    @Test
+    fun `액세스 토큰을 쿠키로만 보내도 인증된다`() {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.get("/users/me") {
+            cookie(Cookie(cookies.accessName, user.accessToken))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.email") { value(user.user.email) }
+        }
+    }
+
+    @Test
+    fun `헤더와 쿠키에 토큰이 둘 다 있으면 헤더의 토큰을 쓴다`() {
+        // given
+        val headerUser = loggedInUser(UserFixture.user(email = "header@example.com"))
+        val cookieUser = loggedInUser(UserFixture.user(email = "cookie@example.com"))
+
+        // when & then
+        mockMvc.get("/users/me") {
+            authorization(headerUser.accessToken)
+            cookie(Cookie(cookies.accessName, cookieUser.accessToken))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.email") { value(headerUser.user.email) }
+        }
+    }
+
+    @Test
+    fun `리프레시 토큰을 쿠키로만 보내도 재발급되고 새 토큰이 쿠키로 내려간다`() {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.post("/auth/refresh") {
+            cookie(Cookie(cookies.refreshName, user.refreshToken))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accessToken") { isNotEmpty() }
+            cookie {
+                exists(cookies.accessName)
+                exists(cookies.refreshName)
+                httpOnly(cookies.refreshName, true)
+            }
+        }
+
+        // 회전: 쿠키로 쓴 옛 리프레시 토큰도 더는 안 된다
+        refresh(user.refreshToken).andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.INVALID_TOKEN.code) }
+        }
+    }
+
+    @Test
+    fun `리프레시 토큰이 본문에도 쿠키에도 없으면 인증이 필요하다는 응답을 준다`() {
+        mockMvc.post("/auth/refresh").andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
+        }
+    }
+
+    @Test
+    fun `로그아웃하면 토큰 쿠키를 지운다`() {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.delete("/auth/logout") {
+            cookie(Cookie(cookies.accessName, user.accessToken))
+        }.andExpect {
+            status { isNoContent() }
+            cookie {
+                maxAge(cookies.accessName, 0)
+                maxAge(cookies.refreshName, 0)
+                path(cookies.accessName, "/")
+            }
         }
     }
 

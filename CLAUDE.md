@@ -16,7 +16,7 @@ Kukie server — Kotlin 2.3 / Spring Boot 4.1 / Java 25 REST API backed by Postg
 ```
 
 - Integration tests use Testcontainers (PostgreSQL + Redis, wired via `TestcontainersConfig`) and the `test` profile (`src/test/resources/application-test.yaml`), so Docker must be running.
-- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Optional: `GITHUB_WEB_CLIENT_ID/SECRET`, `GOOGLE_WEB_CLIENT_ID/SECRET` (web OAuth pair — without them only web login returns 503) and `AUTH_COOKIE_SECURE=false` for local http.
 
 ## Architecture
 
@@ -33,16 +33,18 @@ Package layout is **feature-first** (`user`, `auth`) with a shared `global` pack
 
 Not Spring Security — a custom interceptor-based mechanism:
 
-- `@Authenticated` on a controller class or handler method marks it as requiring auth; `AuthenticationInterceptor` validates the `Bearer` access token via `JwtTokenProvider` and stashes the user id as a request attribute.
+- `@Authenticated` on a controller class or handler method marks it as requiring auth; `AuthenticationInterceptor` resolves the access token — `Authorization: Bearer` header first, else the `kukie_access` cookie — validates it via `JwtTokenProvider` and stashes the user id as a request attribute. Header wins when both are present (desktop app and agent send Bearer; the web client relies on cookies).
+- Login/refresh responses return tokens **both** as JSON and as httpOnly cookies (`kukie_access`, `kukie_refresh`; `Secure`, `SameSite=Lax`, `Path=/`, max-age = token expiry) via `AuthCookies` — no per-client branching. `/auth/refresh` reads the refresh token from the body, else from the cookie; `/auth/logout` clears both cookies. Cookie names/`secure` live in `AuthCookieProperties` (`auth.cookie.*`).
 - `@AuthUser userId: UUID` handler parameters are resolved by `AuthUserArgumentResolver` (parameter must be `UUID`).
 - **Convention enforced by test**: `@AuthUser` may only appear on handlers covered by `@Authenticated` (`AuthAnnotationConventionTest`).
 - Access/refresh tokens are typed via a `type` claim; refresh tokens are stored in Redis and rotated on refresh. Expirations configured under `jwt.*` in `application.yaml`.
 
 ### OAuth (auth feature)
 
-- **The client of this API is a desktop app.** OAuth uses the authorization code flow with loopback redirects: the app opens the provider's authorize URL in a browser, catches the redirect on `http://127.0.0.1:<any-port>`, then POSTs `code` + `redirectUri` (+ optional PKCE `codeVerifier`) to this server, which exchanges the code using the client secret.
-- The **Google** OAuth client is registered as the **"Desktop app" type** — it has no redirect-URI allowlist (Google auto-allows loopback on any port), which is why the console never asked for one. Do not switch it to "Web application" unless the client stops being a desktop app.
-- The **GitHub** OAuth App has no type distinction; its callback URL is a loopback address (GitHub ignores the port on loopback callbacks).
+- **Two clients call this API: the desktop app and the web app.** Both use the authorization code flow with PKCE and POST `code` + `redirectUri` (+ `codeVerifier`) to this server, which exchanges the code using a client secret. The desktop app catches the redirect on `http://127.0.0.1:<any-port>`; the web app is redirected to `<origin>/auth/callback`.
+- **Each provider has two credential pairs** (`OAuthProperties.Registration`: desktop `clientId/clientSecret`, web `webClientId/webClientSecret`). `OAuthCredentialsResolver` picks the pair from the request's `redirectUri`: `http://127.0.0.1:...` → desktop, anything else (including `http://localhost:5173/...` for local web dev) → web. A code issued to one client cannot be exchanged with the other's secret, so pairs never mix. Missing web pair → `OAUTH_CLIENT_NOT_CONFIGURED` (503) for web logins only.
+- **Google**: the desktop pair is a **"Desktop app" type** client (no redirect-URI allowlist; Google auto-allows loopback). The web pair must be a **"Web application" type** client with the callback URIs registered. Keep both; do not convert one into the other.
+- **GitHub**: OAuth Apps have a single callback URL, so the desktop pair's app uses a loopback callback (port ignored) and the web pair is a **second OAuth App** whose callback is the web address.
 
 ### Persistence
 

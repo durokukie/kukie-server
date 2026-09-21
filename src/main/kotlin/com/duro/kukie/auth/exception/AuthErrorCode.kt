@@ -12,6 +12,7 @@ enum class AuthErrorCode(
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰입니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     OAUTH_LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "소셜 로그인에 실패했습니다."),
+    OAUTH_CLIENT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "이 로그인 경로의 OAuth 클라이언트가 서버에 설정되지 않았습니다."),
     ;
 
     override val code: String
