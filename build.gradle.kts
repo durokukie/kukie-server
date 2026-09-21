@@ -80,3 +80,8 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+// 컨테이너 빌드(Dockerfile)가 산출물 이름을 추측하지 않게 고정한다 — build/libs/app.jar 하나 (PR #27 리뷰)
+tasks.bootJar {
+    archiveFileName.set("app.jar")
+}
