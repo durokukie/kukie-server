@@ -6,6 +6,8 @@ on:
     paths:
       - Dockerfile
       - .dockerignore
+      - gradlew
+      - gradlew.bat
       - build.gradle.kts
       - settings.gradle.kts
       - gradle/**
@@ -15,10 +17,16 @@ on:
     paths:
       - Dockerfile
       - .dockerignore
+      - gradlew
+      - gradlew.bat
       - build.gradle.kts
       - settings.gradle.kts
       - gradle/**
       - .github/workflows/docker-image.yaml
+
+# 이 잡은 checkout 과 docker build 뿐이라 읽기 권한이면 된다 (다른 워크플로와 같은 방식으로 명시)
+permissions:
+  contents: read
 
 jobs:
   build-image:
