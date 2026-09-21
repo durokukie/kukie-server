@@ -284,8 +284,13 @@ class AuthIntegrationTest : IntegrationTest() {
             status { isForbidden() }
             jsonPath("$.code") { value(AuthErrorCode.CROSS_SITE_COOKIE.code) }
         }
-        // 같은 사이트 · 주소창 직접 입력은 통과. 헤더 토큰은 cross-site 여도 통과
-        for (site in listOf("same-origin", "same-site", "none")) {
+        // 같은 도메인의 다른 서브도메인(same-site)도 거부 — 웹은 이 서버와 같은 오리진이라 잃는 게 없다
+        mockMvc.get("/users/me") {
+            cookie(Cookie(cookies.accessName, user.accessToken))
+            header("Sec-Fetch-Site", "same-site")
+        }.andExpect { status { isForbidden() } }
+        // 우리 페이지 · 주소창 직접 입력은 통과. 헤더 토큰은 cross-site 여도 통과
+        for (site in listOf("same-origin", "none")) {
             mockMvc.get("/users/me") {
                 cookie(Cookie(cookies.accessName, user.accessToken))
                 header("Sec-Fetch-Site", site)
