@@ -32,6 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+      - run: ./gradlew bootJar
       - name: docker build
         run: docker build -t kukie-server:ci .
       - name: 이미지 안에 app.jar 가 있고 비루트(kukie)로 돈다
