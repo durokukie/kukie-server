@@ -6,7 +6,6 @@ build
 .env
 .idea
 *.iml
-# .gitignore 가 거르는 로컬 산출물도 컨텍스트에 안 싣는다 — 로컬 docker build 가 느려지고 COPY 로 이미지에 들어갈 수 있다
 .kotlin
 .vscode
 out
