@@ -1,4 +1,4 @@
-# 컨테이너 이미지가 실제로 만들어지는지 — Dockerfile·빌드 스크립트가 바뀔 때만 (PR #27 리뷰: CI 가 docker build 를 안 돌렸다)
+# Dockerfile·빌드 스크립트가 바뀔 때만 실행
 name: docker-image
 
 on:
@@ -24,7 +24,6 @@ on:
       - gradle/**
       - .github/workflows/docker-image.yaml
 
-# 이 잡은 checkout 과 docker build 뿐이라 읽기 권한이면 된다 (다른 워크플로와 같은 방식으로 명시)
 permissions:
   contents: read
 
