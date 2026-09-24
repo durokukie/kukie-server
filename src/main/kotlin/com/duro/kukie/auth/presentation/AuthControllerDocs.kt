@@ -3,13 +3,17 @@ package com.duro.kukie.auth.presentation
 import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.ExpiredTokenException
 import com.duro.kukie.auth.exception.InvalidCredentialsException
+import com.duro.kukie.auth.exception.InvalidHandoffCodeException
 import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.exception.OAuthClientNotConfiguredException
 import com.duro.kukie.auth.exception.OAuthLogInFailedException
 import com.duro.kukie.auth.exception.UnauthorizedException
+import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
 import io.swagger.v3.oas.annotations.Operation
@@ -48,4 +52,20 @@ interface AuthControllerDocs {
     @Operation(summary = "로그아웃", description = "로그아웃하고 리프레시 토큰을 삭제합니다. 토큰 쿠키도 지웁니다.")
     @ApiResponse(responseCode = "204", description = "No Content")
     fun logOut(userId: UUID, response: HttpServletResponse): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "앱 넘겨주기 코드 발급",
+        description = "시스템 브라우저에서 로그인을 마친 웹 페이지가 부릅니다. 로그인된 사용자의 1회용 코드(60초)를 만들어 돌려주고, " +
+            "페이지는 이를 `kukie://auth?code=…` 로 데스크톱 앱에 건넵니다. `codeChallenge` 는 앱이 만든 PKCE 검증값(base64url(sha256(verifier)))입니다.",
+    )
+    @ApiErrorResponses(UnauthorizedException::class, InvalidTokenException::class, ExpiredTokenException::class)
+    fun issueHandoffCode(userId: UUID, request: HandoffCodeRequest): ResponseEntity<HandoffCodeResponse>
+
+    @Operation(
+        summary = "앱 넘겨주기 코드 교환",
+        description = "데스크톱 앱이 딥링크로 받은 1회용 코드와 PKCE 원본(`codeVerifier`)을 내면 토큰을 발급합니다. 코드는 한 번 쓰면 지워지고, " +
+            "원본의 해시가 발급 때 맡긴 검증값과 다르면 거절합니다. 토큰은 본문과 httpOnly 쿠키로 함께 내려갑니다.",
+    )
+    @ApiErrorResponses(InvalidHandoffCodeException::class)
+    fun exchangeHandoffCode(request: ExchangeHandoffCodeRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
 }
