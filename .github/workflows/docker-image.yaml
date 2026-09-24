@@ -13,7 +13,7 @@ on:
       - gradle/**
       - .github/workflows/docker-image.yaml
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - Dockerfile
       - .dockerignore
