@@ -2,6 +2,7 @@
 .github
 .gradle
 build
+!build/libs/app.jar
 .data
 .env
 .idea
