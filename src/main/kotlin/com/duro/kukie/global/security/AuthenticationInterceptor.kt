@@ -13,6 +13,7 @@ import org.springframework.web.servlet.HandlerInterceptor
 @Component
 class AuthenticationInterceptor(
     private val jwtTokenProvider: JwtTokenProvider,
+    private val authCookies: AuthCookies,
 ) : HandlerInterceptor {
 
     override fun preHandle(
@@ -35,9 +36,25 @@ class AuthenticationInterceptor(
         hasMethodAnnotation(Authenticated::class.java) ||
             AnnotatedElementUtils.hasAnnotation(beanType, Authenticated::class.java)
 
-    private fun resolveToken(request: HttpServletRequest): String? =
-        request.getHeader(HttpHeaders.AUTHORIZATION)
-            ?.takeIf { it.startsWith(BEARER_PREFIX, ignoreCase = true) }
+    /**
+     * 헤더가 **있으면** 헤더만 본다 — 모양이 틀려도 쿠키로 넘어가지 않는다 (Basic 을 보낸 클라이언트가 조용히
+     * 남의 쿠키 세션으로 도는 일이 없게). 값이 빈 헤더는 존중할 뜻이 없으니 없는 것으로 친다. 헤더가 **없을 때만** 쿠키.
+     * 앱(Electron)과 에이전트(`/users/me` 조회)는 `Authorization: Bearer` 로 오고, 웹 브라우저는 httpOnly 쿠키로 온다
+     * (`AuthCookies`). agent `auth.py` 와 같은 규칙.
+     *
+     * 쿠키의 출처 검사(`Sec-Fetch-Site` 가 same-origin/none 일 때만, 아니면 403)는 `AuthCookies.accessToken` 안에 있다 —
+     * refresh 쿠키를 읽는 `/auth/refresh` 와 같은 문을 지나게 하려고 거기 뒀다.
+     */
+    private fun resolveToken(request: HttpServletRequest): String? {
+        val header = request.getHeader(HttpHeaders.AUTHORIZATION)?.takeIf { it.isNotBlank() }
+        if (header != null) return bearerToken(header)
+
+        return authCookies.accessToken(request)
+    }
+
+    private fun bearerToken(header: String): String? =
+        header
+            .takeIf { it.startsWith(BEARER_PREFIX, ignoreCase = true) }
             ?.substring(BEARER_PREFIX.length)
             ?.takeIf { it.isNotBlank() }
 
