@@ -34,13 +34,13 @@ oauth:
   github:
     client-id: ${GITHUB_CLIENT_ID}
     client-secret: ${GITHUB_CLIENT_SECRET}
-    web-client-id: ${GITHUB_WEB_CLIENT_ID:}
-    web-client-secret: ${GITHUB_WEB_CLIENT_SECRET:}
+    web-client-id: ${GITHUB_WEB_CLIENT_ID}
+    web-client-secret: ${GITHUB_WEB_CLIENT_SECRET}
   google:
     client-id: ${GOOGLE_CLIENT_ID}
     client-secret: ${GOOGLE_CLIENT_SECRET}
-    web-client-id: ${GOOGLE_WEB_CLIENT_ID:}
-    web-client-secret: ${GOOGLE_WEB_CLIENT_SECRET:}
+    web-client-id: ${GOOGLE_WEB_CLIENT_ID}
+    web-client-secret: ${GOOGLE_WEB_CLIENT_SECRET}
 
 auth:
   cookie:

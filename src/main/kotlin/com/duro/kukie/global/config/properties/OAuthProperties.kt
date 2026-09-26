@@ -1,6 +1,9 @@
 package com.duro.kukie.global.config.properties
 
+import jakarta.validation.Valid
+import jakarta.validation.constraints.NotBlank
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.validation.annotation.Validated
 
 /**
  * 제공자마다 OAuth 클라이언트가 **두 쌍**이다.
@@ -11,26 +14,25 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   콜백 주소를 하나만 받아서 따로 등록해야 한다
  *
  * code 교환은 그 흐름을 시작한 클라이언트의 secret 으로만 되므로 요청의 `redirectUri` 로 쌍을 고른다
- * (`OAuthCredentialsResolver`). 웹 쌍이 비어 있으면(환경변수 없음) 웹 로그인만 503 이고 앱은 그대로 된다.
+ * (`OAuthCredentialsResolver`). 웹 쌍이 비어 있으면 켜지지 않는다 — 컴포즈는 빠진 값을 빈 문자열로 넘기므로 `@NotBlank` 로 막는다.
  */
+@Validated
 @ConfigurationProperties(prefix = "oauth")
 data class OAuthProperties(
-    val github: Registration,
-    val google: Registration,
+    @field:Valid val github: Registration,
+    @field:Valid val google: Registration,
 ) {
     data class Registration(
         val clientId: String,
         val clientSecret: String,
-        val webClientId: String? = null,
-        val webClientSecret: String? = null,
+        @field:NotBlank val webClientId: String,
+        @field:NotBlank val webClientSecret: String,
     ) {
         val desktop: Credentials
             get() = Credentials(clientId, clientSecret)
 
-        /** 둘 다 채워졌을 때만. `${VAR:}` 로 비어 들어온 빈 문자열은 "없음" 으로 본다. */
-        val web: Credentials?
-            get() = if (webClientId.isNullOrBlank() || webClientSecret.isNullOrBlank()) null
-            else Credentials(webClientId, webClientSecret)
+        val web: Credentials
+            get() = Credentials(webClientId, webClientSecret)
     }
 
     data class Credentials(

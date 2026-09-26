@@ -1,7 +1,6 @@
 package com.duro.kukie.auth.infrastructure
 
 import com.duro.kukie.auth.domain.OAuthProvider
-import com.duro.kukie.auth.exception.OAuthClientNotConfiguredException
 import com.duro.kukie.global.config.properties.OAuthProperties
 import org.springframework.stereotype.Component
 import java.net.URI
@@ -30,7 +29,7 @@ class OAuthCredentialsResolver(
         return if (isDesktopLoopback(redirectUri)) {
             registration.desktop
         } else {
-            registration.web ?: throw OAuthClientNotConfiguredException()
+            registration.web
         }
     }
 

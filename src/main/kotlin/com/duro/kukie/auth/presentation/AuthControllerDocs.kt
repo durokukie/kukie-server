@@ -4,7 +4,6 @@ import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.ExpiredTokenException
 import com.duro.kukie.auth.exception.InvalidCredentialsException
 import com.duro.kukie.auth.exception.InvalidTokenException
-import com.duro.kukie.auth.exception.OAuthClientNotConfiguredException
 import com.duro.kukie.auth.exception.OAuthLogInFailedException
 import com.duro.kukie.auth.exception.UnauthorizedException
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
@@ -34,7 +33,7 @@ interface AuthControllerDocs {
             "redirectUri 가 `http://127.0.0.1:...`(앱 루프백)이면 데스크톱 클라이언트, 그 밖이면 웹 클라이언트로 코드를 교환합니다. " +
             "토큰은 응답 본문과 httpOnly 쿠키로 함께 내려갑니다.",
     )
-    @ApiErrorResponses(OAuthLogInFailedException::class, OAuthClientNotConfiguredException::class)
+    @ApiErrorResponses(OAuthLogInFailedException::class)
     fun oAuthLogIn(provider: OAuthProvider, request: OAuthLogInRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
 
     @Operation(

@@ -10,6 +10,10 @@ oauth:
   github:
     client-id: test
     client-secret: test
+    web-client-id: test
+    web-client-secret: test
   google:
     client-id: test
     client-secret: test
+    web-client-id: test
+    web-client-secret: test
