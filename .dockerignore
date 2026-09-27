@@ -1,0 +1,15 @@
+.git
+.github
+.gradle
+build
+!build/libs/app.jar
+.data
+.env
+.idea
+*.iml
+.kotlin
+.vscode
+out
+bin
+*.iws
+*.ipr
