@@ -9,10 +9,7 @@ import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.security.JwtTokenProvider
 import org.springframework.stereotype.Service
 
-/**
- * 앱이 딥링크로 받은 1회용 코드를 토큰(과 쿠키)으로 바꾼다 (DURO-109). 코드는 꺼내는 순간 지워지고,
- * PKCE 원본이 시작 때 맡긴 검증값과 맞아야 한다 — 코드만 가로챈 쪽은 여기서 막힌다.
- */
+/** 앱 넘겨주기 코드를 PKCE 원본과 대조해 토큰으로 바꾼다. 코드는 꺼내는 순간 지워진다. */
 @Service
 class ExchangeHandoffCodeService(
     private val handoffCodeRepository: HandoffCodeRepository,

@@ -4,12 +4,7 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
 
-/**
- * PKCE S256 — `challenge = base64url(sha256(verifier))`, 패딩 없음 (RFC 7636 §4.2). 구글·깃허브가 OAuth 에서 쓰는 것과 같은 식이다.
- *
- * 앱 넘겨주기(DURO-109)에 쓴다: 앱이 난수(verifier)를 만들어 해시(challenge)만 시스템 브라우저로 보내고, 코드를 바꿀 때 원본을 낸다.
- * `kukie://` 를 가로채 코드를 얻은 다른 프로그램은 verifier 가 없어 쿠키로 못 바꾼다.
- */
+/** PKCE S256 — `challenge = base64url(sha256(verifier))`, 패딩 없음 (RFC 7636 §4.2). */
 object PkceS256 {
 
     fun challengeOf(verifier: String): String {

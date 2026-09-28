@@ -19,12 +19,7 @@ class UpdateTeamMemberRoleService(
     private val teamPermission: TeamPermission,
 ) {
 
-    /**
-     * 역할 변경은 Admin만. 상대방 승인은 받지 않고 대신 알림을 남긴다 (제품기획서 02 §3) —
-     * 승인 절차가 없으므로 알림이 당사자가 아는 유일한 방법이다.
-     *
-     * 결과적으로 Admin이 0명이 되는 변경은 막는다 — 팀에 관리자가 없으면 아무도 팀을 관리할 수 없다.
-     */
+    /** 역할 변경은 Admin만. 승인 대신 알림을 남기고, Admin 이 0명이 되는 변경은 막는다. */
     @Transactional
     operator fun invoke(command: UpdateTeamMemberRoleCommand) {
         val target = teamMembershipRepository.findByTeamIdAndUserIdOrThrow(command.teamId, command.targetUserId)

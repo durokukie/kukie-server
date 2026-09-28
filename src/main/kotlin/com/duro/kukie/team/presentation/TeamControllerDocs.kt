@@ -15,11 +15,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
 import java.util.UUID
 
-/**
- * 없는 teamId 로 부르면 404 가 아니라 **403** 이다. teamId 를 받는 팀 API 는 먼저 `TeamRoleInterceptor` 을 거치는데,
- * 멤버십의 `team_id` FK 가 팀 존재를 보장하므로 없는 팀에는 멤버십도 없어 NOT_TEAM_MEMBER 가 먼저 난다.
- * 그래서 404 를 문서에 적지 않는다 — 클라이언트가 탈 수 없는 분기다 (자동 리뷰 지적).
- */
+/** 없는 teamId 는 `TeamRoleInterceptor` 에서 403(NOT_TEAM_MEMBER)이 먼저 나므로 404 를 문서에 적지 않는다. */
 interface TeamControllerDocs {
 
     @Operation(summary = "팀 생성", description = "팀을 만들고 생성자를 관리자로 등록합니다.")

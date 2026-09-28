@@ -16,15 +16,7 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.util.UUID
 
-/**
- * 팀이 어떤 이메일 주소를 초대한 기록.
- *
- * 회원 id가 아니라 **이메일**을 들고 있다. 아직 가입하지 않은 사람도 초대할 수 있어야 하고,
- * 그 사람은 가입한 뒤에 자기 Inbox 에서 이 초대를 보게 된다 (제품기획서 02 §4).
- *
- * 초대에는 유효 기간이 있다([VALIDITY]). 지난 초대는 상태가 PENDING 이어도 수락할 수 없고
- * 초대함에도 뜨지 않으며, 같은 주소를 다시 초대하면 그때 EXPIRED 로 정리된다.
- */
+/** 팀이 이메일 주소를 초대한 기록. 가입 전인 사람도 초대할 수 있게 회원 id 대신 주소를 든다. */
 @Entity
 @Table(name = "tbl_team_invitation")
 class TeamInvitation(
@@ -62,10 +54,7 @@ class TeamInvitation(
     val isExpired: Boolean
         get() = expiresAt.isBefore(LocalDateTime.now())
 
-    /**
-     * 초대는 회원 id 가 아니라 주소로 사람을 가리키므로 "내 주소로 온 초대인가" 가 본인 확인이다.
-     * 수락과 거절이 같은 규칙을 쓰므로 두 서비스에 복붙하지 않고 여기 둔다 (자동 리뷰 지적).
-     */
+    /** 초대는 주소로 사람을 가리키므로 주소 일치가 본인 확인이다. */
     fun requireOwnedBy(email: String) {
         if (this.email != email.normalizeEmail()) {
             throw NotMyInvitationException()

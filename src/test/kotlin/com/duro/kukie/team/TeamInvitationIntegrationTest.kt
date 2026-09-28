@@ -60,7 +60,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             contentType = MediaType.APPLICATION_JSON
             content = InviteTeamMemberRequest(INVITEE_EMAIL).toJson()
         }.andExpect {
-            // then — 초대를 보냈다고 바로 멤버가 되지는 않는다 (제품기획서 02 §4)
+            // then
             status { isCreated() }
             jsonPath("$.email") { value(INVITEE_EMAIL) }
             jsonPath("$.status") { value(InvitationStatus.PENDING.name) }
@@ -118,7 +118,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Test
     fun `이미 가입한 사람에게는 메일을 보내지 않는다`() {
-        // given — 가입한 사람은 받은 초대함으로 받는다 (제품기획서 02 §4)
+        // given
         val admin = adminOfNewTeam()
         loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
 
@@ -132,8 +132,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Test
     fun `메일 발송이 실패해도 초대는 남는다`() {
-        // given — 메일은 커밋 뒤에 최선 노력으로 나간다. SMTP 가 잠깐 죽었다고 관리자가 초대를
-        // 아예 못 하게 되면 안 된다.
+        // given
         val admin = adminOfNewTeam()
         invitationSender.shouldFail = true
 
@@ -150,12 +149,12 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Test
     fun `초대가 실패하면 메일도 나가지 않는다`() {
-        // given — 메일을 트랜잭션 안에서 보내면 커밋이 실패했을 때 없는 초대의 메일이 나간다.
+        // given
         val admin = adminOfNewTeam()
         invite(admin, INVITEE_EMAIL)
         val before = invitationSender.sentCount()
 
-        // when — 같은 주소를 다시 초대해 실패시킨다
+        // when
         mockMvc.post("/teams/${admin.teamId}/invitations") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
@@ -168,13 +167,12 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Test
     fun `대소문자만 다른 주소로 초대해도 자기 초대를 본다`() {
-        // given — 초대는 주소 문자열로 사람을 가리킨다. 대소문자가 어긋나면 그 초대는 초대함에도
-        // 안 뜨고 수락도 재초대도 막혀 영영 남는다 (자동 리뷰 지적).
+        // given
         val admin = adminOfNewTeam()
         invite(admin, INVITEE_EMAIL.uppercase())
         val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
 
-        // when & then — 초대함에 뜨고
+        // when & then
         mockMvc.get("/inbox") {
             authorization(invitee.accessToken)
         }.andExpect {
@@ -434,11 +432,11 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Test
     fun `초대받은 뒤에 가입해도 자기 초대를 본다`() {
-        // given — 초대는 회원 id가 아니라 이메일 주소로 저장된다 (제품기획서 02 §4 미가입자 흐름)
+        // given
         val admin = adminOfNewTeam()
         invite(admin, INVITEE_EMAIL)
 
-        // when — 초대가 만들어진 다음에 그 주소로 가입한다
+        // when
         val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
 
         // then
@@ -496,7 +494,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
-        // then — 새 구성원의 역할은 MEMBER 다
+        // then
         val membership = teamMembershipRepository.findByTeamIdAndUserId(admin.teamId, invitee.user.id)
         membership?.role shouldBe TeamRole.MEMBER
         teamInvitationRepository.findAll().first().status shouldBe InvitationStatus.ACCEPTED
@@ -613,7 +611,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             authorization(invitee.accessToken)
         }.andExpect { status { isNoContent() } }
 
-        // when & then — 거절 기록은 남지만 대기 중인 초대는 없으므로 다시 보낼 수 있다
+        // when & then
         mockMvc.post("/teams/${admin.teamId}/invitations") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
@@ -625,7 +623,7 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Test
     fun `역할이 바뀌면 당사자에게 알림이 남는다`() {
-        // given — 역할 변경에는 상대방 승인이 없으므로 알림이 유일한 통지다 (제품기획서 02 §3)
+        // given
         val admin = adminOfNewTeam()
         val member = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
         teamMembershipRepository.save(TeamFixture.membership(admin.teamId, member.user.id, TeamRole.MEMBER))

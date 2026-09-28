@@ -10,22 +10,7 @@ import org.springframework.http.ResponseCookie
 import org.springframework.stereotype.Component
 import java.time.Duration
 
-/**
- * 토큰을 httpOnly 쿠키로 굽고, 지우고, 읽는 유일한 자리.
- *
- * 웹은 토큰을 보관할 곳이 브라우저뿐이고 화면 코드가 토큰을 못 봐야 하므로(HttpOnly) 서버가 쿠키로 준다.
- * 앱(Electron)은 JSON 응답의 토큰을 쓰므로 쿠키를 항상 같이 굽더라도 해가 없다 — 그래서 요청 종류를 가르지 않는다.
- *
- * - `SameSite=Lax`: 다른 사이트에서 오는 POST 에는 쿠키가 안 실린다 → CSRF 를 막는다. GET 으로 상태를 바꾸는 API 가 없어야 한다
- * - `Path=/`: 한 주소 아래 `/api/`(에이전트)·`/member/`(이 서버) 둘 다에 실려야 한다
- * - `Max-Age`: 토큰 만료와 같게 둔다. 브라우저가 만료된 쿠키를 알아서 버린다
- *
- * **읽기는 출처 검사를 거친다.** 쿠키는 브라우저가 알아서 붙이므로 다른 곳이 시킨 요청에도 실릴 수 있다
- * (`SameSite=Lax` 도 top-level GET 과 같은 사이트의 다른 서브도메인은 통과시킨다). 그래서 쿠키의 토큰은 브라우저가
- * `Sec-Fetch-Site` 로 same-origin(우리 페이지) 또는 none(주소창 직접 입력)이라고 알려 줄 때만 내준다 — 없거나
- * same-site·cross-site 면 `CrossSiteCookieException`(403). 인터셉터(access)와 `/auth/refresh`(refresh)가 같은 문을 지난다.
- * 브라우저는 이 헤더를 HTTPS·localhost 에서만 붙이므로 웹은 HTTPS 배포가 전제다 (쿠키도 Secure 라 평문 HTTP 엔 안 실린다).
- */
+/** 토큰 쿠키를 굽고·지우고·읽는 유일한 자리. 읽기는 `Sec-Fetch-Site` 가 same-origin/none 일 때만 허용한다. */
 @Component
 class AuthCookies(
     private val cookieProperties: AuthCookieProperties,
@@ -59,7 +44,7 @@ class AuthCookies(
 
     companion object {
         private const val SEC_FETCH_SITE = "Sec-Fetch-Site"
-        // same-origin 은 우리 페이지가 부른 것, none 은 주소창에 직접 친 것. same-site(다른 서브도메인)·cross-site·없음은 거부
+        // same-origin 은 우리 페이지, none 은 주소창 직접 입력
         private val SAME_ORIGIN_VALUES = setOf("same-origin", "none")
     }
 
