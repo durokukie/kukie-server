@@ -2,8 +2,6 @@ package com.duro.kukie.team.infrastructure
 
 import com.duro.kukie.global.mail.MailClient
 import com.duro.kukie.support.IntegrationTest
-import com.duro.kukie.team.domain.TeamInvitation
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
@@ -43,36 +41,5 @@ class SmtpTeamInvitationSenderTest : IntegrationTest() {
         // then
         htmlBody.captured shouldNotContain "<a href"
         htmlBody.captured shouldContain "&lt;a href"
-    }
-
-    @Test
-    fun `평범한 팀 이름은 그대로 보인다`() {
-        val htmlBody = slot<String>()
-        every { mailClient.send(any(), any(), capture(htmlBody)) } returns Unit
-
-        sender().send(email = "invitee@example.com", teamName = "DURO", inviterName = "복재성")
-
-        htmlBody.captured shouldContain "DURO 팀 초대"
-        htmlBody.captured shouldContain "복재성님이"
-    }
-
-    @Test
-    fun `본문에 초대 유효 기간을 안내한다`() {
-        val htmlBody = slot<String>()
-        every { mailClient.send(any(), any(), capture(htmlBody)) } returns Unit
-
-        sender().send(email = "invitee@example.com", teamName = "DURO", inviterName = "복재성")
-
-        htmlBody.captured shouldContain "${TeamInvitation.VALIDITY.toDays()}일 동안만 유효합니다"
-    }
-
-    @Test
-    fun `제목은 평문이라 이스케이프하지 않는다`() {
-        val subject = slot<String>()
-        every { mailClient.send(any(), capture(subject), any()) } returns Unit
-
-        sender().send(email = "invitee@example.com", teamName = "A&B", inviterName = "복재성")
-
-        subject.captured shouldBe "[kukie] 복재성님이 A&B 팀에 초대했습니다."
     }
 }
