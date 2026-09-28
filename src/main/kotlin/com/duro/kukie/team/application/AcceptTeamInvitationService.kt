@@ -19,11 +19,7 @@ class AcceptTeamInvitationService(
     private val userRepository: UserRepository,
 ) {
 
-    /**
-     * 초대를 수락하면 그때 멤버십이 생긴다 (제품기획서 02 §4). 새 멤버의 역할은 MEMBER 다.
-     *
-     * 초대는 이메일 주소로 저장되므로 "내 주소로 온 초대인가"로 본인 확인을 한다.
-     */
+    /** 초대를 수락하면 MEMBER 로 합류한다. */
     @Transactional
     operator fun invoke(invitationId: UUID, userId: UUID) {
         val user = userRepository.findByIdOrThrow(userId)

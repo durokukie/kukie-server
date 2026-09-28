@@ -172,7 +172,7 @@ class AuthIntegrationTest : IntegrationTest() {
         }
     }
 
-    // ── 웹: 토큰을 httpOnly 쿠키로도 주고, 쿠키로 온 토큰도 읽는다 (#25) ──────────────
+    // ── 웹 쿠키 인증 ──────────────────────────────────────────
 
     @Test
     fun `로그인 응답은 토큰을 본문과 httpOnly 쿠키로 함께 준다`() {
@@ -255,7 +255,7 @@ class AuthIntegrationTest : IntegrationTest() {
 
     @Test
     fun `값이 빈 Authorization 헤더는 없는 것으로 치고 쿠키를 본다`() {
-        // given — `Authorization:` 만 붙인 클라이언트가 쿠키 로그인을 통째로 잃지 않게
+        // given
         val user = loggedInUser()
 
         // when & then
@@ -271,7 +271,7 @@ class AuthIntegrationTest : IntegrationTest() {
 
     @Test
     fun `헤더가 있으면 모양이 틀려도 쿠키로 넘어가지 않는다`() {
-        // given — Basic 을 보낸 클라이언트가 조용히 남의 쿠키 세션으로 돌면 안 된다
+        // given
         val user = loggedInUser()
 
         // when & then
@@ -286,8 +286,7 @@ class AuthIntegrationTest : IntegrationTest() {
 
     @Test
     fun `다른 사이트에서 시작됐거나 출처를 모르는 요청은 쿠키로 인증하지 않는다`() {
-        // given — SameSite=Lax 도 top-level GET 은 통과시키므로 브라우저의 Sec-Fetch-Site 로 한 번 더 거른다.
-        // 헤더가 없어도 거부(fail-closed) — 통과시키면 그 브라우저에서는 검사가 없는 것과 같다
+        // given
         val user = loggedInUser()
 
         // when & then
@@ -304,12 +303,12 @@ class AuthIntegrationTest : IntegrationTest() {
             status { isForbidden() }
             jsonPath("$.code") { value(AuthErrorCode.CROSS_SITE_COOKIE.code) }
         }
-        // 같은 도메인의 다른 서브도메인(same-site)도 거부 — 웹은 이 서버와 같은 오리진이라 잃는 게 없다
+        // same-site 도 거부
         mockMvc.get("/users/me") {
             cookie(Cookie(cookies.accessName, user.accessToken))
             header("Sec-Fetch-Site", "same-site")
         }.andExpect { status { isForbidden() } }
-        // 우리 페이지 · 주소창 직접 입력은 통과. 헤더 토큰은 cross-site 여도 통과
+        // same-origin·none 은 통과, 헤더 토큰은 cross-site 여도 통과
         for (site in listOf("same-origin", "none")) {
             mockMvc.get("/users/me") {
                 cookie(Cookie(cookies.accessName, user.accessToken))
@@ -350,10 +349,10 @@ class AuthIntegrationTest : IntegrationTest() {
 
     @Test
     fun `리프레시 쿠키도 우리 페이지에서 온 요청에만 쓴다`() {
-        // given — /auth/refresh 는 @Authenticated 가 아니라 인터셉터를 안 지난다. 그래도 같은 문(AuthCookies)을 지나야 한다
+        // given
         val user = loggedInUser()
 
-        // when & then — 다른 서브도메인(same-site)이나 출처 없음이면 403, 회전도 일어나지 않는다
+        // when & then
         for (site in listOf("same-site", "cross-site", null)) {
             mockMvc.post("/auth/refresh") {
                 cookie(Cookie(cookies.refreshName, user.refreshToken))
@@ -393,7 +392,7 @@ class AuthIntegrationTest : IntegrationTest() {
         }
     }
 
-    // ── 앱 넘겨주기 (DURO-109): 시스템 브라우저에서 로그인한 페이지 → 1회용 코드 → 앱이 토큰으로 ──
+    // ── 앱 넘겨주기 ────────────────────────────────────────────
 
     @Test
     fun `로그인된 페이지가 받은 넘겨주기 코드를 앱이 PKCE 원본과 함께 내면 토큰과 쿠키를 받는다`() {
@@ -476,7 +475,7 @@ class AuthIntegrationTest : IntegrationTest() {
             jsonPath("$.code") { value(AuthErrorCode.INVALID_HANDOFF_CODE.code) }
         }
 
-        // 틀린 원본으로 한 번 두드리면 코드가 소모된다 — 맞는 원본으로 다시 와도 안 된다
+        // 틀린 원본으로 한 번 시도해도 코드가 소모된다
         val second = issueHandoffCode(loggedIn.accessToken, PkceS256.challengeOf(verifier))
         exchange(second, "wrong").andExpect { status { isUnauthorized() } }
         exchange(second, verifier).andExpect { status { isUnauthorized() } }

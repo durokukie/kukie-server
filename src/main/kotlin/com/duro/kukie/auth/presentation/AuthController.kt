@@ -30,10 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
-/**
- * 토큰은 두 길로 나간다 — JSON 본문(앱이 쓴다)과 httpOnly 쿠키(웹이 쓴다). 요청이 어느 쪽인지 가르지 않고
- * 항상 둘 다 준다: 앱은 쿠키를 무시하므로 해가 없고, 분기가 없어 경로가 하나다 (`AuthCookies`).
- */
+/** 토큰은 요청 종류와 상관없이 JSON 본문과 httpOnly 쿠키로 함께 준다 (`AuthCookies`). */
 @RestController
 @RequestMapping("/auth")
 class AuthController(
@@ -89,10 +86,7 @@ class AuthController(
         return ResponseEntity.noContent().build()
     }
 
-    /**
-     * 앱 넘겨주기 (DURO-109) — 시스템 브라우저에서 로그인을 마친 웹 페이지가 부른다. 그 페이지의 쿠키(또는 헤더)로 인증되고,
-     * 앱이 맡긴 PKCE 검증값과 함께 1회용 코드를 만든다. 페이지는 이 코드를 `kukie://auth?code=…` 로 앱에 건넨다.
-     */
+    /** 앱 넘겨주기 코드 발급. 시스템 브라우저에서 로그인한 웹 페이지가 부른다. */
     @Authenticated
     @PostMapping("/handoff")
     override fun issueHandoffCode(
@@ -102,7 +96,7 @@ class AuthController(
         return ResponseEntity.ok(issueHandoffCodeService(request.toCommand(userId)))
     }
 
-    /** 앱이 딥링크로 받은 코드 + PKCE 원본 → 토큰. 응답 쿠키는 앱 창의 세션에 구워진다 — 그 뒤는 웹과 같다. */
+    /** 앱 넘겨주기 코드 + PKCE 원본 → 토큰. */
     @PostMapping("/exchange")
     override fun exchangeHandoffCode(
         @RequestBody @Valid request: ExchangeHandoffCodeRequest,

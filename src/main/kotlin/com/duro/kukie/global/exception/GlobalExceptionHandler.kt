@@ -16,6 +16,7 @@ class GlobalExceptionHandler {
 
     private val log = logger()
 
+    /** 요청 본문 DTO 의 Bean Validation(`@NotBlank`, `@Email` 등) 위반. */
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationException(e: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.BAD_REQUEST
@@ -26,6 +27,7 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(errorCode.code, message))
     }
 
+    /** 경로 변수·쿼리 파라미터 타입 변환 실패 (예: 형식이 틀린 UUID, 없는 OAuth 제공자). */
     @ExceptionHandler(MethodArgumentTypeMismatchException::class)
     fun handleTypeMismatchException(e: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.BAD_REQUEST
@@ -35,12 +37,7 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
-    /**
-     * 본문을 읽지 못한 요청. enum 에 없는 값(`{"role":"OWNER"}`), 빠진 필수 필드, 깨진 JSON 이 여기로 온다.
-     *
-     * Jackson 역직렬화는 Bean Validation 보다 먼저라 `@NotNull` 이 잡을 기회가 없다. 이 핸들러가 없으면
-     * 클라이언트의 입력 실수가 catch-all 로 떨어져 500 으로 나간다.
-     */
+    /** 본문 역직렬화 실패 (없는 enum 값, 빠진 필드, 깨진 JSON). */
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleNotReadableException(e: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.BAD_REQUEST
@@ -50,6 +47,7 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
+    /** 매핑된 핸들러가 없는 경로. */
     @ExceptionHandler(NoResourceFoundException::class, NoHandlerFoundException::class)
     fun handleNotFoundException(e: Exception): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.NOT_FOUND
@@ -59,6 +57,7 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
+    /** 경로는 있지만 지원하지 않는 HTTP 메서드. */
     @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
     fun handleMethodNotSupportedException(e: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.METHOD_NOT_ALLOWED
@@ -68,6 +67,7 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
+    /** 각 기능의 `ErrorCode` 로 정의된 비즈니스 예외. */
     @ExceptionHandler(BusinessException::class)
     fun handleBusinessException(e: BusinessException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
@@ -75,6 +75,7 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(e.errorCode.code, e.errorCode.message))
     }
 
+    /** 위에서 처리하지 못한 모든 예외 — 500 으로 응답하고 로그를 남긴다. */
     @ExceptionHandler(Exception::class)
     fun handleException(e: Exception): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.INTERNAL_SERVER_ERROR

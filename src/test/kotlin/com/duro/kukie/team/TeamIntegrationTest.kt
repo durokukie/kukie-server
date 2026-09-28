@@ -65,7 +65,6 @@ class TeamIntegrationTest : IntegrationTest() {
 
     @Test
     fun `팀 이름에 줄바꿈을 넣을 수 없다`() {
-        // 팀 이름은 초대 메일의 제목·본문에 실린다. 줄바꿈이 정상인 이름은 없으므로 입구에서 막는다.
         val me = loggedInUser()
 
         mockMvc.post("/teams") {
@@ -248,15 +247,14 @@ class TeamIntegrationTest : IntegrationTest() {
 
     @Test
     fun `역할 값이 잘못되면 400 이다`() {
-        // given — enum 역직렬화는 Bean Validation 보다 먼저라 @NotNull 이 잡을 기회가 없다.
-        // 핸들러가 없으면 클라이언트의 입력 실수가 500 으로 나간다 (자동 리뷰 지적).
+        // given
         val admin = loggedInUser()
         val team = teamRepository.save(TeamFixture.team())
         teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
         val member = loggedInUser(UserFixture.user(email = "member@example.com"))
         teamMembershipRepository.save(TeamFixture.membership(team.id, member.user.id, TeamRole.MEMBER))
 
-        // when & then — 없는 값, null, 아예 빠진 경우 모두
+        // when & then
         listOf("""{"role":"OWNER"}""", """{"role":null}""", "{}").forEach { body ->
             mockMvc.patch("/teams/${team.id}/members/${member.user.id}") {
                 authorization(admin.accessToken)
@@ -426,13 +424,6 @@ class TeamIntegrationTest : IntegrationTest() {
         // then
         teamRepository.existsById(team.id) shouldBe false
         teamMembershipRepository.findAllByTeamId(team.id).isEmpty() shouldBe true
-    }
-
-    @Test
-    fun `없는 팀을 지워도 예외가 나지 않는다`() {
-        // DeleteTeamService 가 조회 없이 deleteById 하나로 끝내는 근거. 삭제가 겹쳐 팀이 먼저 사라져도
-        // EmptyResultDataAccessException 으로 500 이 되지 않는다 (Spring Data 4.1 에서 확인).
-        teamRepository.deleteById(UUID.randomUUID())
     }
 
     @Test

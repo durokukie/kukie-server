@@ -10,11 +10,8 @@ interface UserRepository : JpaRepository<User, UUID> {
 
     fun findByEmail(email: String): User?
 
-    /**
-     * 대소문자를 무시한 조회. 목록으로 받는 이유는 `tbl_user.email` 유니크 제약이 대소문자를 구분해서
-     * `Kim@x.com` 과 `kim@x.com` 이 서로 다른 계정으로 함께 있을 수 있기 때문이다 — 단건으로 받으면
-     * 그때 예외가 난다.
-     */
+    /** 대소문자 무시 조회. `tbl_user.email` 유니크가 대소문자를 구분해 여러 건일 수 있어 목록으로 받는다. */
+    // TODO: Emails.kt 삭제 후 모두 findByEmail로 대체
     fun findAllByEmailIgnoreCase(email: String): List<User>
 }
 

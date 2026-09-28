@@ -24,8 +24,8 @@ class OAuthCredentialsResolverTest {
 
     @Test
     fun `루프백처럼 보이게 꾸민 주소는 데스크톱 쌍을 받지 못한다`() {
-        // given — userinfo 자리에 127.0.0.1 을 넣어 접두사 검사를 속이는 모양. host 는 evil.com 이다
-        val disguised = "http://127.0.0.1:8080@evil.com/callback"
+        // given
+        val disguised = "http://127.0.0.1:8080@evil.com/callback" // host 는 evil.com
 
         // when
         val credentials = resolver.resolve(OAuthProvider.GITHUB, disguised)

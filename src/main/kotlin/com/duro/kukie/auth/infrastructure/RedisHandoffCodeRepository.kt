@@ -16,7 +16,7 @@ class RedisHandoffCodeRepository(
         redisTemplate.opsForValue().set(key(code), "${ticket.userId} ${ticket.codeChallenge}", ttl)
     }
 
-    /** GETDEL 한 번으로 읽고 지운다 — 읽기와 지우기 사이에 다른 요청이 끼어 같은 코드를 두 번 쓰는 일이 없다. */
+    /** GETDEL 로 읽기와 삭제를 한 번에 — 같은 코드를 두 번 쓸 수 없다. */
     override fun take(code: String): HandoffTicket? {
         val raw = redisTemplate.opsForValue().getAndDelete(key(code)) ?: return null
         val (userId, challenge) = raw.split(' ', limit = 2).takeIf { it.size == 2 } ?: return null

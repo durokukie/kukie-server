@@ -8,10 +8,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.util.UUID
 
-/**
- * 구성원이 함께 Kubernetes Cluster를 관리하는 최상위 협업 단위. Slack의 Workspace에 해당한다.
- * 한 사용자는 여러 Team에 속할 수 있고, 하나의 Cluster는 하나의 Team에만 속한다.
- */
+/** 구성원이 함께 클러스터를 관리하는 최상위 협업 단위 (Slack 의 Workspace). */
 @Entity
 @Table(name = "tbl_team")
 class Team(
