@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM eclipse-temurin:25-jre-noble
 WORKDIR /app
 # root 대신 jar를 실행하기 위한 nologin 유저
