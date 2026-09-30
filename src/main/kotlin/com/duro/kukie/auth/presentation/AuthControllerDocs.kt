@@ -34,7 +34,6 @@ interface AuthControllerDocs {
     @Operation(
         summary = "소셜 로그인",
         description = "OAuth 인가 코드로 로그인하고 토큰을 발급받습니다. 같은 이메일로 가입된 계정이 없으면 자동으로 가입한 뒤 로그인합니다. " +
-            "redirectUri 가 `http://127.0.0.1:...`(앱 루프백)이면 데스크톱 클라이언트, 그 밖이면 웹 클라이언트로 코드를 교환합니다. " +
             "토큰은 응답 본문과 httpOnly 쿠키로 함께 내려갑니다.",
     )
     @ApiErrorResponses(OAuthLogInFailedException::class)
