@@ -16,7 +16,7 @@ Kukie server — Kotlin 2.3 / Spring Boot 4.1 / Java 25 REST API backed by Postg
 ```
 
 - Integration tests use Testcontainers (PostgreSQL + Redis, wired via `TestcontainersConfig`) and the `test` profile (`src/test/resources/application-test.yaml`), so Docker must be running.
-- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_WEB_CLIENT_ID/SECRET`, `GOOGLE_WEB_CLIENT_ID/SECRET` (web OAuth pair — `@NotBlank`, so the app fails to start if any is missing or empty). Optional: `AUTH_COOKIE_SECURE=false` for local http.
+- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `GITHUB_CLIENT_ID/SECRET`, `GOOGLE_CLIENT_ID/SECRET` — every OAuth value is `@NotBlank`, so the app fails to start if any is missing or empty. Optional: `AUTH_COOKIE_SECURE=false` for local http.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Package layout is **feature-first** (`user`, `auth`) with a shared `global` pack
 
 Not Spring Security — a custom interceptor-based mechanism:
 
-- `@Authenticated` on a controller class or handler method marks it as requiring auth; `AuthenticationInterceptor` resolves the access token — `Authorization: Bearer` header first, else the `kukie_access` cookie — validates it via `JwtTokenProvider` and stashes the user id as a request attribute. Header wins when both are present (a blank header counts as absent; a present-but-malformed header is a 401, never a cookie fallback). Cookie auth is accepted only when the browser's `Sec-Fetch-Site` is `same-origin` or `none` — `same-site`, `cross-site` or missing → 403 `CROSS_SITE_COOKIE` (fail-closed; `SameSite=Lax` alone lets top-level GETs through; the web client shares this server's origin via the reverse proxy). Browsers send that header only on HTTPS/localhost, so web login presumes an HTTPS deployment (the cookies are `Secure` anyway). Desktop app and agent send Bearer; the web client relies on cookies.
+- `@Authenticated` on a controller class or handler method marks it as requiring auth; `AuthenticationInterceptor` resolves the access token — `Authorization: Bearer` header first, else the `kukie_access` cookie — validates it via `JwtTokenProvider` and stashes the user id as a request attribute. Header wins when both are present (a blank header counts as absent; a present-but-malformed header is a 401, never a cookie fallback). Cookie auth is accepted only when the browser's `Sec-Fetch-Site` is `same-origin` or `none` — `same-site`, `cross-site` or missing → 403 `CROSS_SITE_COOKIE` (fail-closed; `SameSite=Lax` alone lets top-level GETs through; the web client shares this server's origin via the reverse proxy). Browsers send that header only on HTTPS/localhost, so web login presumes an HTTPS deployment (the cookies are `Secure` anyway). The agent sends Bearer; the web client (in a browser or inside the Electron shell, which loads the same web page) relies on cookies.
 - Login/refresh responses return tokens **both** as JSON and as httpOnly cookies (`kukie_access`, `kukie_refresh`; `Secure`, `SameSite=Lax`, `Path=/`, max-age = token expiry) via `AuthCookies` — no per-client branching. `/auth/refresh` reads the refresh token from the body, else from the cookie; `/auth/logout` clears both cookies. Cookie names/`secure` live in `AuthCookieProperties` (`auth.cookie.*`).
 - `@AuthUser userId: UUID` handler parameters are resolved by `AuthUserArgumentResolver` (parameter must be `UUID`).
 - **Convention enforced by test**: `@AuthUser` may only appear on handlers covered by `@Authenticated` (`AuthAnnotationConventionTest`).
@@ -41,10 +41,10 @@ Not Spring Security — a custom interceptor-based mechanism:
 
 ### OAuth (auth feature)
 
-- **Two clients call this API: the desktop app and the web app.** Both use the authorization code flow with PKCE and POST `code` + `redirectUri` (+ `codeVerifier`) to this server, which exchanges the code using a client secret. The desktop app catches the redirect on `http://127.0.0.1:<any-port>`; the web app is redirected to `<origin>/auth/callback`.
-- **Each provider has two credential pairs** (`OAuthProperties.Registration`: desktop `clientId/clientSecret`, web `webClientId/webClientSecret`). `OAuthCredentialsResolver` picks the pair from the request's `redirectUri`: `http://127.0.0.1:...` → desktop, anything else (including `http://localhost:5173/...` for local web dev) → web. A code issued to one client cannot be exchanged with the other's secret, so pairs never mix. Both pairs are required at startup — a missing or blank web pair fails startup (`@Validated` + `@NotBlank`; compose passes absent vars as empty strings).
-- **Google**: the desktop pair is a **"Desktop app" type** client (no redirect-URI allowlist; Google auto-allows loopback). The web pair must be a **"Web application" type** client with the callback URIs registered. Keep both; do not convert one into the other.
-- **GitHub**: OAuth Apps have a single callback URL, so the desktop pair's app uses a loopback callback (port ignored) and the web pair is a **second OAuth App** whose callback is the web address.
+- **The only OAuth client is the web page** (opened in a browser or inside the Electron shell). It uses the authorization code flow with PKCE: the provider redirects the browser to `<origin>/auth/callback` (a front-end route, not an endpoint of this server), and the page POSTs `code` + `redirectUri` (+ `codeVerifier`) to `/auth/oauth/{provider}`, which exchanges the code using the client secret. The old native desktop flow (loopback redirect on `http://127.0.0.1:<port>`, a separate desktop credential pair) is gone.
+- **One credential pair per provider** (`OAuthProperties`: `github` and `google` are each a `Credential(clientId, clientSecret)` bound from `oauth.<provider>.client-id/client-secret`). Both are required at startup — any missing or blank value fails startup (`@Validated` + `@NotBlank`; compose passes absent vars as empty strings). The front end's `VITE_*_WEB_CLIENT_ID` must be the same client, or the exchange fails.
+- **Google**: a **"Web application" type** client with every callback URI registered (`https://<deployed origin>/auth/callback`, `http://localhost:5173/auth/callback` for local dev).
+- **GitHub**: one OAuth App with the same callback URLs registered (an OAuth App can hold several).
 
 ### Persistence
 
