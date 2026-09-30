@@ -1,8 +1,8 @@
 package com.duro.kukie.auth.infrastructure
 
 import com.duro.kukie.auth.application.port.out.OAuthProfile
-import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.OAuthLogInFailedException
+import com.duro.kukie.global.config.properties.OAuthProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatusCode
@@ -15,7 +15,7 @@ import org.springframework.web.client.body
 @Component
 class GoogleOAuthApi(
     private val restClient: RestClient,
-    private val credentialsResolver: OAuthCredentialsResolver,
+    private val oAuthProperties: OAuthProperties,
 ) {
 
     fun fetchProfile(code: String, redirectUri: String, codeVerifier: String?): OAuthProfile {
@@ -29,7 +29,7 @@ class GoogleOAuthApi(
     }
 
     private fun exchangeCode(code: String, redirectUri: String, codeVerifier: String?): String {
-        val credentials = credentialsResolver.resolve(OAuthProvider.GOOGLE, redirectUri)
+        val credentials = oAuthProperties.google
         val body = LinkedMultiValueMap<String, String>().apply {
             add("grant_type", "authorization_code")
             add("code", code)

@@ -28,18 +28,13 @@ jwt:
   access-token-expiration: 30m
   refresh-token-expiration: 30d
 
-# 제공자마다 데스크톱(앱 루프백)·웹(/auth/callback) 두 쌍 (OAuthProperties)
 oauth:
   github:
     client-id: ${GITHUB_CLIENT_ID}
     client-secret: ${GITHUB_CLIENT_SECRET}
-    web-client-id: ${GITHUB_WEB_CLIENT_ID}
-    web-client-secret: ${GITHUB_WEB_CLIENT_SECRET}
   google:
     client-id: ${GOOGLE_CLIENT_ID}
     client-secret: ${GOOGLE_CLIENT_SECRET}
-    web-client-id: ${GOOGLE_WEB_CLIENT_ID}
-    web-client-secret: ${GOOGLE_WEB_CLIENT_SECRET}
 
 auth:
   cookie:
