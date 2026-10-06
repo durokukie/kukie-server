@@ -3,6 +3,7 @@ package com.duro.kukie.user.presentation.dto.request
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 
 data class CreateUserRequest(
@@ -17,6 +18,7 @@ data class CreateUserRequest(
 
     @field:NotBlank
     @field:Size(min = 8, max = 72)
+    @field:Pattern(regexp = "^[!-~]+$", message = "비밀번호는 공백 없이 영문, 숫자, 특수문자만 사용할 수 있습니다.")
     val password: String,
 
     @Schema(description = "이메일로 발송된 6자리 인증 코드 (유효시간 3분)", example = "123456")
