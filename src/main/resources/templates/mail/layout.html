@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org"
+      th:fragment="layout(title, preheader, content)">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title th:text="${title}">kukie</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+      body {
+          margin: 0;
+          padding: 0;
+      }
+
+      @media only screen and (max-width: 620px) {
+          .wrap {
+              width: 100% !important;
+          }
+
+          .pad {
+              padding-left: 24px !important;
+              padding-right: 24px !important;
+          }
+
+          .code {
+              font-size: 36px !important;
+              letter-spacing: 8px !important;
+          }
+      }
+
+      @media (prefers-color-scheme: dark) {
+          .bg {
+              background-color: #1b1b19 !important;
+          }
+
+          .card {
+              background-color: #262624 !important;
+          }
+
+          .codebox {
+              background-color: #1b1b19 !important;
+              border-color: #3a3a37 !important;
+          }
+
+          .btn {
+              background-color: #f2f1ec !important;
+          }
+
+          .btn a {
+              color: #1c1c1a !important;
+          }
+
+          .t1 {
+              color: #f2f1ec !important;
+          }
+
+          .t2 {
+              color: #b3b1a9 !important;
+          }
+
+          .rule {
+              border-color: #3a3a37 !important;
+          }
+      }
+  </style>
+</head>
+<body class="bg" style="margin:0; padding:0; background-color:#f2f1ec;">
+<span
+  style="display:none; font-size:1px; color:#f2f1ec; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;"><span
+  th:text="${preheader}"></span>&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</span>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bg"
+       style="background-color:#f2f1ec;">
+  <tr>
+    <td align="center" style="padding:40px 16px;">
+
+      <!--[if mso]>
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td><![endif]-->
+      <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0"
+             style="width:600px; max-width:600px;">
+
+        <!-- Brand -->
+        <tr>
+          <td class="pad t1"
+              style="padding:0 40px 20px 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; font-size:15px; line-height:20px; mso-line-height-rule:exactly; font-weight:bold; color:#1c1c1a; letter-spacing:-0.2px;">
+            kukie
+          </td>
+        </tr>
+
+        <!-- Card -->
+        <tr>
+          <td class="card" style="background-color:#fbfbf9; border-radius:12px;" th:insert="${content}">
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td class="pad"
+              style="padding:24px 40px 0 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; font-size:12px; line-height:19px; mso-line-height-rule:exactly; color:#8a887f;">
+            이 메일은 발신 전용이라 회신할 수 없습니다.<br>© kukie
+          </td>
+        </tr>
+
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+
+    </td>
+  </tr>
+</table>
+</body>
+</html>

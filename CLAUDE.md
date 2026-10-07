@@ -16,7 +16,7 @@ Kukie server — Kotlin 2.3 / Spring Boot 4.1 / Java 25 REST API backed by Postg
 ```
 
 - Integration tests use Testcontainers (PostgreSQL + Redis, wired via `TestcontainersConfig`) and the `test` profile (`src/test/resources/application-test.yaml`), so Docker must be running.
-- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `GITHUB_CLIENT_ID/SECRET`, `GOOGLE_CLIENT_ID/SECRET` — every OAuth value is `@NotBlank`, so the app fails to start if any is missing or empty. Optional: `AUTH_COOKIE_SECURE=false` for local http.
+- Runtime env vars come from `.env` (see `.env.example`): `JWT_SECRET`, `GITHUB_CLIENT_ID/SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `WEB_APP_URL` (link target of mail buttons) — every OAuth value and `WEB_APP_URL` are `@NotBlank`, so the app fails to start if any is missing or empty. Mail goes out through AWS SES (`aws.region`, `aws.ses.*`); credentials come from the SDK default chain (`AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY` or the `~/.aws` default profile locally, an IAM role when deployed). Optional: `AUTH_COOKIE_SECURE=false` for local http, `AWS_REGION` (default `ap-northeast-2`).
 
 ## Architecture
 
@@ -57,7 +57,7 @@ Not Spring Security — a custom interceptor-based mechanism:
 - Test method names are Korean sentences in backticks (`` fun `로그인에 성공하면 토큰을 발급하고 리프레시 토큰을 저장한다`() ``) with `// given` / `// when` / `// then` comments.
 - **Test ordering**: within each use case (API/service being tested), the success case comes first, followed by its exception cases.
 - **Unit tests** (`*ServiceTest`, `JwtTokenProviderTest`): no Spring context — MockK (`@ExtendWith(MockKExtension::class)` with `@MockK`/`@SpyK`/`@InjectMockKs`) plus kotest assertions (`shouldBe`, `shouldThrow`).
-- **Integration tests** (`*IntegrationTest`): extend `support/IntegrationTest`, which boots the full app (`@SpringBootTest` + MockMvc) against Testcontainers and replaces the SMTP sender with `FakeVerificationCodeSender` (`@Primary`; read sent codes via `lastCodeFor(email)`). The base class provides `mockMvc`, `loggedInUser()` (persists a user and issues real tokens), `Any.toJson()`, and an `authorization(accessToken)` DSL helper, and after each test truncates all tables and flushes Redis — individual tests never clean up. Use the MockMvc Kotlin DSL (`mockMvc.post("/users") { ... }.andExpect { ... }`).
+- **Integration tests** (`*IntegrationTest`): extend `support/IntegrationTest`, which boots the full app (`@SpringBootTest` + MockMvc) against Testcontainers and replaces the mail senders with `FakeVerificationCodeSender`/`FakeTeamInvitationSender` (`@Primary`; read sent codes via `lastCodeFor(email)`). The base class provides `mockMvc`, `loggedInUser()` (persists a user and issues real tokens), `Any.toJson()`, and an `authorization(accessToken)` DSL helper, and after each test truncates all tables and flushes Redis — individual tests never clean up. Use the MockMvc Kotlin DSL (`mockMvc.post("/users") { ... }.andExpect { ... }`).
 - Entity test data comes from fixture objects with overridable defaults (`UserFixture.user()`).
 
 ## Conventions (from CONTRIBUTING.md)

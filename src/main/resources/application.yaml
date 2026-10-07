@@ -4,21 +4,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-          # JavaMail 기본 타임아웃은 사실상 무한이라 상한을 둔다
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
 
 springdoc:
   default-produces-media-type: application/json
@@ -40,3 +25,12 @@ auth:
   cookie:
     # https 에서만 쿠키가 실린다. 로컬 http 개발에서만 false (AuthCookieProperties)
     secure: ${AUTH_COOKIE_SECURE:true}
+
+aws:
+  region: ${AWS_REGION:ap-northeast-2}
+  ses:
+    from: Kukie <noreply@durokukie.com>
+
+# 메일 버튼이 여는 웹 주소
+web-app:
+  url: ${WEB_APP_URL}
