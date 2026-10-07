@@ -28,18 +28,19 @@ class MailTeamInvitationSenderTest : IntegrationTest() {
     @Test
     fun `팀 이름의 마크업은 본문에서 링크가 되지 않는다`() {
         // given
+        val teamName = """<a href="https://evil.example">계정 확인하기</a>"""
         val htmlBody = slot<String>()
         every { mailClient.send(any(), any(), capture(htmlBody)) } returns Unit
 
         // when
         sender().send(
             email = "invitee@example.com",
-            teamName = """<a href="https://evil.example">계정 확인하기</a>""",
+            teamName = teamName,
             inviterName = "초대한사람",
         )
 
         // then
-        htmlBody.captured shouldNotContain """<a href="https://evil.example""""
+        htmlBody.captured shouldNotContain teamName
         htmlBody.captured shouldContain "&lt;a href"
     }
 }
