@@ -1,9 +1,71 @@
 <!DOCTYPE html>
-<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<html lang="ko" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{mail/layout :: layout('팀 초대 안내', |${inviterName}님이 ${teamName} 팀에 초대했습니다. 초대는 ${expirationDays}일간 유효합니다.|, ~{::content})}">
+<head>
+  <meta charset="utf-8">
+</head>
 <body>
-<h1>[[${teamName}]] 팀 초대</h1>
-<p>[[${inviterName}]]님이 회원님을 [[${teamName}]] 팀에 초대했습니다.</p>
-<p>Kukie 에 가입하면 받은 초대함에서 초대를 수락할 수 있습니다.</p>
-<p>※ 초대는 [[${expirationDays}]]일 동안만 유효합니다.</p>
+<table th:fragment="content" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td class="pad"
+        style="padding:44px 40px 0 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif;">
+      <div class="t1"
+           style="font-size:26px; line-height:34px; mso-line-height-rule:exactly; font-weight:bold; color:#1c1c1a; letter-spacing:-0.4px;"
+           th:text="|${teamName} 팀에 초대받았습니다|">팀에 초대받았습니다
+      </div>
+      <div class="t2"
+           style="padding-top:12px; font-size:15px; line-height:24px; mso-line-height-rule:exactly; color:#5f5e59;">
+        [[${inviterName}]]님이 회원님을 [[${teamName}]] 팀에 초대했습니다.<br>
+        kukie에 가입하면 받은 초대함에서 초대를 수락할 수 있습니다.
+      </div>
+    </td>
+  </tr>
+
+  <!-- Button -->
+  <tr>
+    <td class="pad" style="padding:28px 40px 0 40px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td class="btn" style="background-color:#1c1c1a; border-radius:10px;">
+            <a th:href="${webAppUrl}" href="#" target="_blank"
+               style="display:inline-block; padding:14px 28px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; font-size:15px; line-height:20px; mso-line-height-rule:exactly; font-weight:bold; color:#fbfbf9; text-decoration:none;">kukie
+              시작하기</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="pad t2"
+        style="padding:16px 40px 0 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; mso-line-height-rule:exactly; color:#5f5e59;">
+      이 초대는 <span class="t1" style="color:#1c1c1a; font-weight:bold;"
+                  th:text="|${expirationDays}일|">7일</span> 후 만료됩니다.
+    </td>
+  </tr>
+
+  <!-- Divider -->
+  <tr>
+    <td class="pad" style="padding:32px 40px 0 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td class="rule" style="border-top:1px solid #e4e2db; font-size:0; line-height:0;">&nbsp;</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Security note -->
+  <tr>
+    <td class="pad t2"
+        style="padding:20px 40px 44px 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; mso-line-height-rule:exactly; color:#5f5e59;">
+      버튼이 열리지 않으면 아래 주소를 브라우저에 붙여 넣어 주세요.<br>
+      <a class="t1" th:href="${webAppUrl}" th:text="${webAppUrl}" href="#" target="_blank"
+         style="color:#1c1c1a; word-break:break-all;">web-app-url</a><br><br>
+      이 메일은 kukie 팀 초대에 따라 발송된 자동 메일입니다.<br>
+      초대받을 이유가 없다면 무시하셔도 됩니다.
+    </td>
+  </tr>
+</table>
 </body>
 </html>

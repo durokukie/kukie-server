@@ -1,24 +1,30 @@
 package com.duro.kukie.global.mail
 
-import org.springframework.mail.javamail.JavaMailSender
-import org.springframework.mail.javamail.MimeMessageHelper
+import com.duro.kukie.global.config.properties.AwsSesProperties
 import org.springframework.stereotype.Component
+import software.amazon.awssdk.services.sesv2.SesV2Client
+import software.amazon.awssdk.services.sesv2.model.Content
 
 @Component
 class MailClient(
-    private val mailSender: JavaMailSender,
+    private val sesV2Client: SesV2Client,
+    private val awsSesProperties: AwsSesProperties,
 ) {
 
     fun send(to: String, subject: String, htmlBody: String) {
-        val message = mailSender.createMimeMessage()
-        val helper = MimeMessageHelper(message, true, "UTF-8")
-
-        helper.apply {
-            setTo(to)
-            setSubject(subject)
-            setText(htmlBody, true)
+        sesV2Client.sendEmail { request ->
+            request
+                .fromEmailAddress(awsSesProperties.from)
+                .destination { it.toAddresses(to) }
+                .content { content ->
+                    content.simple { message ->
+                        message
+                            .subject(utf8(subject))
+                            .body { it.html(utf8(htmlBody)) }
+                    }
+                }
         }
-
-        mailSender.send(message)
     }
+
+    private fun utf8(data: String): Content = Content.builder().data(data).charset("UTF-8").build()
 }

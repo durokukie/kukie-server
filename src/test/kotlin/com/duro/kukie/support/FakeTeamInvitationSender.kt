@@ -6,7 +6,7 @@ class FakeTeamInvitationSender : TeamInvitationSender, Resettable {
 
     private val sent = mutableListOf<SentInvitation>()
 
-    /** SMTP 가 죽은 상황을 흉내낸다. */
+    /** 메일 발송이 실패한 상황을 흉내낸다. */
     var shouldFail = false
 
     override fun send(email: String, teamName: String, inviterName: String) {

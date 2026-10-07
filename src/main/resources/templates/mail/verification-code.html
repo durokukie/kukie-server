@@ -1,9 +1,69 @@
 <!DOCTYPE html>
-<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<html lang="ko" xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{mail/layout :: layout('인증 코드 안내', |인증 코드는 ${expirationMinutes}분간 유효합니다. 회원가입 화면에 아래 6자리 코드를 입력해 주세요.|, ~{::content})}">
+<head>
+  <meta charset="utf-8">
+</head>
 <body>
-<h1>이메일 인증 번호</h1>
-<p>아래 인증 번호를 입력하여 가입을 완료해 주세요.</p>
-<h2>[[${code}]]</h2>
-<p>※ 인증 번호는 [[${expirationMinutes}]]분 동안만 유효합니다.</p>
+<table th:fragment="content" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td class="pad"
+        style="padding:44px 40px 0 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif;">
+      <div class="t1"
+           style="font-size:26px; line-height:34px; mso-line-height-rule:exactly; font-weight:bold; color:#1c1c1a; letter-spacing:-0.4px;">
+        이메일 인증 코드
+      </div>
+      <div class="t2"
+           style="padding-top:12px; font-size:15px; line-height:24px; mso-line-height-rule:exactly; color:#5f5e59;">
+        회원가입을 계속하려면 아래 6자리 코드를 인증 화면에 입력해 주세요.
+      </div>
+    </td>
+  </tr>
+
+  <!-- Code -->
+  <tr>
+    <td class="pad" style="padding:28px 40px 0 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td class="codebox" align="center"
+              style="background-color:#f2f1ec; border:1px solid #e4e2db; border-radius:10px; padding:26px 16px;">
+            <div class="code t1"
+                 style="font-family:'Courier New',Courier,monospace; font-size:44px; line-height:52px; mso-line-height-rule:exactly; font-weight:bold; color:#1c1c1a; letter-spacing:12px;"
+                 th:text="${code}">123456
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="pad t2"
+        style="padding:16px 40px 0 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; mso-line-height-rule:exactly; color:#5f5e59;">
+      이 코드는 <span class="t1" style="color:#1c1c1a; font-weight:bold;"
+                  th:text="|${expirationMinutes}분|">3분</span> 후 만료됩니다.
+    </td>
+  </tr>
+
+  <!-- Divider -->
+  <tr>
+    <td class="pad" style="padding:32px 40px 0 40px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td class="rule" style="border-top:1px solid #e4e2db; font-size:0; line-height:0;">&nbsp;</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Security note -->
+  <tr>
+    <td class="pad t2"
+        style="padding:20px 40px 44px 40px; font-family:'Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif; font-size:13px; line-height:21px; mso-line-height-rule:exactly; color:#5f5e59;">
+      이 메일은 kukie 회원가입 요청에 따라 발송된 자동 메일입니다.<br>
+      이 이메일을 요청하지 않으셨다면 무시하셔도 됩니다.
+    </td>
+  </tr>
+</table>
 </body>
 </html>
