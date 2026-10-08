@@ -1,7 +1,7 @@
 package com.duro.kukie.team.domain
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.entity.BaseTimeEntity
-import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.team.exception.InvitationExpiredException
 import com.duro.kukie.team.exception.InvitationNotPendingException
 import com.duro.kukie.team.exception.NotMyInvitationException
@@ -21,7 +21,7 @@ import java.util.UUID
 @Table(name = "tbl_team_invitation")
 class TeamInvitation(
     teamId: UUID,
-    email: String,
+    email: Email,
     invitedBy: UUID,
     expiresAt: LocalDateTime = LocalDateTime.now().plus(VALIDITY),
 ) : BaseTimeEntity() {
@@ -55,8 +55,8 @@ class TeamInvitation(
         get() = expiresAt.isBefore(LocalDateTime.now())
 
     /** 초대는 주소로 사람을 가리키므로 주소 일치가 본인 확인이다. */
-    fun requireOwnedBy(email: String) {
-        if (this.email != email.normalizeEmail()) {
+    fun requireOwnedBy(email: Email) {
+        if (this.email != email) {
             throw NotMyInvitationException()
         }
     }

@@ -36,7 +36,7 @@ class GetUserServiceTest {
         with(response) {
             id shouldBe user.id
             name shouldBe user.name
-            email shouldBe user.email
+            email shouldBe user.email.value
         }
     }
 

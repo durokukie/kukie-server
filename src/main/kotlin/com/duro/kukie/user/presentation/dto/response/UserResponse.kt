@@ -12,7 +12,7 @@ data class UserResponse(
         fun from(user: User) = UserResponse(
             id = user.id,
             name = user.name,
-            email = user.email,
+            email = user.email.value,
         )
     }
 }

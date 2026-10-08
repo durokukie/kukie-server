@@ -3,7 +3,6 @@ package com.duro.kukie.inbox.application
 import com.duro.kukie.inbox.presentation.dto.response.InboxResponse
 import com.duro.kukie.inbox.presentation.dto.response.InvitationResponse
 import com.duro.kukie.inbox.presentation.dto.response.NotificationResponse
-import com.duro.kukie.global.util.normalizeEmail
 import com.duro.kukie.notification.domain.NotificationRepository
 import com.duro.kukie.team.domain.InvitationStatus
 import com.duro.kukie.team.domain.TeamInvitationRepository
@@ -29,7 +28,7 @@ class GetInboxService(
         val user = userRepository.findByIdOrThrow(userId)
 
         val invitations = teamInvitationRepository.findAllByEmailAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
-            user.email.normalizeEmail(),
+            user.email,
             InvitationStatus.PENDING,
             LocalDateTime.now(),
         )

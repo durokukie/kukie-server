@@ -1,5 +1,6 @@
 package com.duro.kukie.user.domain
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.entity.BaseTimeEntity
 import com.github.f4b6a3.uuid.UuidCreator
 import jakarta.persistence.Column
@@ -13,17 +14,17 @@ import java.util.UUID
 @Table(name = "tbl_user")
 class User private constructor(
     name: String,
-    email: String,
+    email: Email,
     password: String?,
 ) : BaseTimeEntity() {
 
-    constructor(name: String, email: String, rawPassword: String, passwordEncoder: PasswordEncoder) : this(
+    constructor(name: String, email: Email, rawPassword: String, passwordEncoder: PasswordEncoder) : this(
         name = name,
         email = email,
         password = checkNotNull(passwordEncoder.encode(rawPassword))
     )
 
-    constructor(name: String, email: String) : this(
+    constructor(name: String, email: Email) : this(
         name = name,
         email = email,
         password = null,

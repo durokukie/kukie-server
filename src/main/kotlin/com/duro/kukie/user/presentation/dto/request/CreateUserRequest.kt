@@ -1,7 +1,8 @@
 package com.duro.kukie.user.presentation.dto.request
 
+import com.duro.kukie.global.domain.Email
+import com.duro.kukie.user.application.port.`in`.CreateUserCommand
 import io.swagger.v3.oas.annotations.media.Schema
-import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
@@ -12,7 +13,7 @@ data class CreateUserRequest(
     val name: String,
 
     @field:NotBlank
-    @field:Email
+    @field:jakarta.validation.constraints.Email
     @field:Size(max = 255)
     val email: String,
 
@@ -25,4 +26,11 @@ data class CreateUserRequest(
     @field:NotBlank
     @field:Size(min = 6, max = 6)
     val verificationCode: String,
-)
+) {
+    fun toCommand() = CreateUserCommand(
+        name = name,
+        email = Email(email),
+        password = password,
+        verificationCode = verificationCode,
+    )
+}

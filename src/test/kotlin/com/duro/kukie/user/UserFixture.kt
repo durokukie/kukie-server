@@ -1,5 +1,6 @@
 package com.duro.kukie.user
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.user.domain.User
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -18,7 +19,7 @@ object UserFixture {
         password: String = DEFAULT_PASSWORD,
     ): User = User(
         name = name,
-        email = email,
+        email = Email(email),
         rawPassword = password,
         passwordEncoder = passwordEncoder,
     )

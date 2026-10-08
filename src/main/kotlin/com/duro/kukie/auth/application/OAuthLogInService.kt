@@ -5,6 +5,7 @@ import com.duro.kukie.auth.application.port.out.OAuthClient
 import com.duro.kukie.auth.application.port.out.OAuthProfile
 import com.duro.kukie.auth.domain.RefreshTokenRepository
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
@@ -33,11 +34,12 @@ class OAuthLogInService(
     }
 
     private fun findOrCreateUser(profile: OAuthProfile): User {
-        userRepository.findByEmail(profile.email)?.let { return it }
+        val email = Email(profile.email)
+        userRepository.findByEmail(email)?.let { return it }
 
         val user = User(
             name = profile.name.take(NAME_MAX_LENGTH),
-            email = profile.email,
+            email = email,
         )
 
         return try {
@@ -45,7 +47,7 @@ class OAuthLogInService(
         } catch (e: DataIntegrityViolationException) {
             val cause = e.cause
             if (cause is ConstraintViolationException && cause.constraintName == User.EMAIL_UNIQUE_CONSTRAINT) {
-                userRepository.findByEmail(profile.email) ?: throw e
+                userRepository.findByEmail(email) ?: throw e
             } else {
                 throw e
             }

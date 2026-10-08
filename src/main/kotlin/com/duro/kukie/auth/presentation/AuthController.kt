@@ -48,7 +48,7 @@ class AuthController(
         @RequestBody @Valid request: LogInRequest,
         response: HttpServletResponse,
     ): ResponseEntity<TokenResponse> {
-        return ResponseEntity.ok(logInService(request).alsoIssueCookies(response))
+        return ResponseEntity.ok(logInService(request.toCommand()).alsoIssueCookies(response))
     }
 
     @PostMapping("/oauth/{provider}")

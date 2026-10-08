@@ -1,7 +1,7 @@
 package com.duro.kukie.auth.application
 
+import com.duro.kukie.auth.application.port.`in`.LogInCommand
 import com.duro.kukie.auth.domain.RefreshTokenRepository
-import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.auth.exception.InvalidCredentialsException
 import com.duro.kukie.global.security.JwtTokenProvider
@@ -19,9 +19,9 @@ class LogInService(
 ) {
 
     @Transactional(readOnly = true)
-    operator fun invoke(request: LogInRequest): TokenResponse {
-        val user = userRepository.findByEmail(request.email)
-            ?.takeIf { it.matchesPassword(request.password, passwordEncoder) }
+    operator fun invoke(command: LogInCommand): TokenResponse {
+        val user = userRepository.findByEmail(command.email)
+            ?.takeIf { it.matchesPassword(command.password, passwordEncoder) }
             ?: throw InvalidCredentialsException()
 
         val accessToken = jwtTokenProvider.generateAccessToken(user.id)

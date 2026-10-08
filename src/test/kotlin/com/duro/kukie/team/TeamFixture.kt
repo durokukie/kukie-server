@@ -1,5 +1,6 @@
 package com.duro.kukie.team
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.team.domain.Team
 import com.duro.kukie.team.domain.TeamInvitation
 import com.duro.kukie.team.domain.TeamMembership
@@ -24,5 +25,5 @@ object TeamFixture {
         email: String,
         invitedBy: UUID,
         expiresAt: LocalDateTime = LocalDateTime.now().plus(TeamInvitation.VALIDITY),
-    ): TeamInvitation = TeamInvitation(teamId = teamId, email = email, invitedBy = invitedBy, expiresAt = expiresAt)
+    ): TeamInvitation = TeamInvitation(teamId = teamId, email = Email(email), invitedBy = invitedBy, expiresAt = expiresAt)
 }

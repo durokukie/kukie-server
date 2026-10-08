@@ -1,5 +1,6 @@
 package com.duro.kukie.user.application
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.application.port.out.VerificationCodeSender
 import com.duro.kukie.user.domain.UserRepository
@@ -32,7 +33,7 @@ class SendVerificationCodeServiceTest {
     @InjectMockKs
     private lateinit var sendVerificationCodeService: SendVerificationCodeService
 
-    private val email = UserFixture.DEFAULT_EMAIL
+    private val email = Email(UserFixture.DEFAULT_EMAIL)
 
     @Test
     fun `6자리 인증 코드를 저장하고 같은 코드를 발송한다`() {
@@ -41,7 +42,7 @@ class SendVerificationCodeServiceTest {
         val sentCode = slot<String>()
         every { userRepository.existsByEmail(email) } returns false
         every { verificationCodeRepository.save(email, capture(savedCode)) } returns Unit
-        every { verificationCodeSender.send(email, capture(sentCode)) } returns Unit
+        every { verificationCodeSender.send(email.value, capture(sentCode)) } returns Unit
 
         // when
         sendVerificationCodeService(email)

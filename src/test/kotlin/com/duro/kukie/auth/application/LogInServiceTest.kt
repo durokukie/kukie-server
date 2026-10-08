@@ -1,8 +1,9 @@
 package com.duro.kukie.auth.application
 
+import com.duro.kukie.auth.application.port.`in`.LogInCommand
 import com.duro.kukie.auth.domain.RefreshTokenRepository
 import com.duro.kukie.auth.exception.InvalidCredentialsException
-import com.duro.kukie.auth.presentation.dto.request.LogInRequest
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.UserRepository
@@ -36,18 +37,18 @@ class LogInServiceTest {
     @InjectMockKs
     private lateinit var logInService: LogInService
 
-    private val request = LogInRequest(UserFixture.DEFAULT_EMAIL, UserFixture.DEFAULT_PASSWORD)
+    private val command = LogInCommand(Email(UserFixture.DEFAULT_EMAIL), UserFixture.DEFAULT_PASSWORD)
 
     @Test
     fun `로그인에 성공하면 토큰을 발급하고 리프레시 토큰을 저장한다`() {
         // given
         val user = UserFixture.user()
-        every { userRepository.findByEmail(request.email) } returns user
+        every { userRepository.findByEmail(command.email) } returns user
         every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
         every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
 
         // when
-        val response = logInService(request)
+        val response = logInService(command)
 
         // then
         response.accessToken shouldBe "access-token"
@@ -58,19 +59,19 @@ class LogInServiceTest {
     @Test
     fun `존재하지 않는 이메일이면 예외가 발생한다`() {
         // given
-        every { userRepository.findByEmail(request.email) } returns null
+        every { userRepository.findByEmail(command.email) } returns null
 
         // when & then
-        shouldThrow<InvalidCredentialsException> { logInService(request) }
+        shouldThrow<InvalidCredentialsException> { logInService(command) }
     }
 
     @Test
     fun `비밀번호가 일치하지 않으면 예외가 발생한다`() {
         // given
-        val request = request.copy(password = "wrong-password")
-        every { userRepository.findByEmail(request.email) } returns UserFixture.user()
+        val command = command.copy(password = "wrong-password")
+        every { userRepository.findByEmail(command.email) } returns UserFixture.user()
 
         // when & then
-        shouldThrow<InvalidCredentialsException> { logInService(request) }
+        shouldThrow<InvalidCredentialsException> { logInService(command) }
     }
 }
