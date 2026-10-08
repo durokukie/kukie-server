@@ -33,7 +33,7 @@ class UserIntegrationTest : IntegrationTest() {
     fun `이미 가입된 이메일로는 인증 코드를 발송할 수 없다`() {
         val user = userRepository.save(UserFixture.user())
 
-        sendVerificationCode(user.email).andExpect {
+        sendVerificationCode(user.email.value).andExpect {
             status { isConflict() }
             jsonPath("$.code") { value(UserErrorCode.DUPLICATED_EMAIL.code) }
         }
@@ -78,7 +78,7 @@ class UserIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.id") { value(user.user.id.toString()) }
             jsonPath("$.name") { value(user.user.name) }
-            jsonPath("$.email") { value(user.user.email) }
+            jsonPath("$.email") { value(user.user.email.value) }
         }
     }
 

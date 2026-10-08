@@ -1,5 +1,6 @@
 package com.duro.kukie.user.application
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
@@ -21,18 +22,19 @@ class CreateUserService(
 
     @Transactional
     operator fun invoke(request: CreateUserRequest) {
-        if (userRepository.existsByEmail(request.email)) {
+        val email = Email(request.email)
+        if (userRepository.existsByEmail(email)) {
             throw DuplicatedEmailException()
         }
 
-        val code = verificationCodeRepository.findByEmail(request.email)
+        val code = verificationCodeRepository.findByEmail(email)
         if (code == null || code != request.verificationCode) {
             throw InvalidVerificationCodeException()
         }
 
         val user = User(
             name = request.name,
-            email = request.email,
+            email = email,
             rawPassword = request.password,
             passwordEncoder = passwordEncoder,
         )
@@ -47,6 +49,6 @@ class CreateUserService(
             throw e
         }
 
-        verificationCodeRepository.deleteByEmail(request.email)
+        verificationCodeRepository.deleteByEmail(email)
     }
 }

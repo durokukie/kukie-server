@@ -1,5 +1,6 @@
 package com.duro.kukie.user.application
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.user.application.port.out.VerificationCodeSender
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
@@ -14,7 +15,7 @@ class SendVerificationCodeService(
     private val verificationCodeSender: VerificationCodeSender,
 ) {
 
-    operator fun invoke(email: String) {
+    operator fun invoke(email: Email) {
         if (userRepository.existsByEmail(email)) {
             throw DuplicatedEmailException()
         }
@@ -22,7 +23,7 @@ class SendVerificationCodeService(
         val code = generateCode()
         verificationCodeRepository.save(email, code)
 
-        verificationCodeSender.send(email, code)
+        verificationCodeSender.send(email.value, code)
     }
 
     private fun generateCode(): String {

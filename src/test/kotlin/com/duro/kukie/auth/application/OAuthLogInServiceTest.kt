@@ -5,6 +5,7 @@ import com.duro.kukie.auth.application.port.out.OAuthClient
 import com.duro.kukie.auth.application.port.out.OAuthProfile
 import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.domain.RefreshTokenRepository
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.User
@@ -45,7 +46,7 @@ class OAuthLogInServiceTest {
         // given
         val user = UserFixture.user()
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByEmail(profile.email) } returns user
+        every { userRepository.findByEmail(Email(profile.email)) } returns user
         every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
         every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
 
@@ -64,7 +65,7 @@ class OAuthLogInServiceTest {
         // given
         val savedUser = slot<User>()
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByEmail(profile.email) } returns null
+        every { userRepository.findByEmail(Email(profile.email)) } returns null
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
         every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
         every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"
@@ -77,7 +78,7 @@ class OAuthLogInServiceTest {
         response.refreshToken shouldBe "refresh-token"
         with(savedUser.captured) {
             name shouldBe profile.name
-            email shouldBe profile.email
+            email shouldBe Email(profile.email)
             password shouldBe null
         }
         verify { refreshTokenRepository.save(savedUser.captured.id, "refresh-token") }
@@ -89,7 +90,7 @@ class OAuthLogInServiceTest {
         val savedUser = slot<User>()
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns
             profile.copy(name = "a".repeat(60))
-        every { userRepository.findByEmail(profile.email) } returns null
+        every { userRepository.findByEmail(Email(profile.email)) } returns null
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
         every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
         every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"

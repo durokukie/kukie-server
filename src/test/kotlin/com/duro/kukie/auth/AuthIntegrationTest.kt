@@ -8,6 +8,7 @@ import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
 import com.duro.kukie.global.config.properties.AuthCookieProperties
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeOAuthClient
 import com.duro.kukie.support.IntegrationTest
@@ -36,7 +37,7 @@ class AuthIntegrationTest : IntegrationTest() {
     @Test
     fun `정상적으로 로그인한다`() {
         val user = userRepository.save(UserFixture.user())
-        val request = LogInRequest(user.email, UserFixture.DEFAULT_PASSWORD)
+        val request = LogInRequest(user.email.value, UserFixture.DEFAULT_PASSWORD)
 
         mockMvc.post("/auth/login") {
             contentType = MediaType.APPLICATION_JSON
@@ -64,7 +65,7 @@ class AuthIntegrationTest : IntegrationTest() {
     @Test
     fun `비밀번호가 일치하지 않으면 로그인할 수 없다`() {
         val user = userRepository.save(UserFixture.user())
-        val request = LogInRequest(user.email, "wrong-password")
+        val request = LogInRequest(user.email.value, "wrong-password")
 
         mockMvc.post("/auth/login") {
             contentType = MediaType.APPLICATION_JSON
@@ -88,7 +89,7 @@ class AuthIntegrationTest : IntegrationTest() {
             jsonPath("$.refreshToken") { isNotEmpty() }
         }
 
-        val user = userRepository.findByEmail(FakeOAuthClient.DEFAULT_PROFILE.email).shouldNotBeNull()
+        val user = userRepository.findByEmail(Email(FakeOAuthClient.DEFAULT_PROFILE.email)).shouldNotBeNull()
         user.name shouldBe FakeOAuthClient.DEFAULT_PROFILE.name
         user.password shouldBe null
     }
@@ -178,7 +179,7 @@ class AuthIntegrationTest : IntegrationTest() {
     fun `로그인 응답은 토큰을 본문과 httpOnly 쿠키로 함께 준다`() {
         // given
         val user = userRepository.save(UserFixture.user())
-        val request = LogInRequest(user.email, UserFixture.DEFAULT_PASSWORD)
+        val request = LogInRequest(user.email.value, UserFixture.DEFAULT_PASSWORD)
 
         // when & then
         mockMvc.post("/auth/login") {
@@ -232,7 +233,7 @@ class AuthIntegrationTest : IntegrationTest() {
             fromSameSite()
         }.andExpect {
             status { isOk() }
-            jsonPath("$.email") { value(user.user.email) }
+            jsonPath("$.email") { value(user.user.email.value) }
         }
     }
 
@@ -249,7 +250,7 @@ class AuthIntegrationTest : IntegrationTest() {
             fromSameSite()
         }.andExpect {
             status { isOk() }
-            jsonPath("$.email") { value(headerUser.user.email) }
+            jsonPath("$.email") { value(headerUser.user.email.value) }
         }
     }
 
@@ -265,7 +266,7 @@ class AuthIntegrationTest : IntegrationTest() {
             fromSameSite()
         }.andExpect {
             status { isOk() }
-            jsonPath("$.email") { value(user.user.email) }
+            jsonPath("$.email") { value(user.user.email.value) }
         }
     }
 

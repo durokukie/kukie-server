@@ -1,6 +1,6 @@
 package com.duro.kukie.team.application
 
-import com.duro.kukie.global.util.normalizeEmail
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.team.application.port.`in`.InviteTeamMemberCommand
 import com.duro.kukie.team.domain.InvitationStatus
 import com.duro.kukie.team.domain.TeamInvitation
@@ -31,11 +31,10 @@ class InviteTeamMemberService(
     @Transactional
     operator fun invoke(command: InviteTeamMemberCommand): TeamInvitationResponse {
         val team = teamRepository.findByIdOrThrow(command.teamId)
-        val email = command.email.normalizeEmail()
+        val email = Email(command.email)
 
-        // email 유니크가 대소문자를 구분해 같은 주소의 변형이 여럿일 수 있다
-        val invitees = userRepository.findAllByEmailIgnoreCase(email)
-        if (invitees.any { teamMembershipRepository.existsByTeamIdAndUserId(command.teamId, it.id) }) {
+        val invitee = userRepository.findByEmail(email)
+        if (invitee != null && teamMembershipRepository.existsByTeamIdAndUserId(command.teamId, invitee.id)) {
             throw AlreadyTeamMemberException()
         }
         expirePendingInvitation(command.teamId, email)
@@ -43,16 +42,17 @@ class InviteTeamMemberService(
         val invitation = teamInvitationRepository.save(
             TeamInvitation(teamId = command.teamId, email = email, invitedBy = command.userId),
         )
-        if (invitees.isEmpty()) {
+        if (invitee == null) {
             // 메일은 커밋 뒤에 나간다 (TeamInvitationMailListener)
-            events.publishEvent(TeamMemberInvited(email, team.name, userRepository.findByIdOrThrow(command.userId).name))
+            val inviterName = userRepository.findByIdOrThrow(command.userId).name
+            events.publishEvent(TeamMemberInvited(email.value, team.name, inviterName))
         }
 
         return TeamInvitationResponse.of(invitation)
     }
 
     /** 아직 유효한 대기 초대가 있으면 409, 기한이 지났으면 EXPIRED 로 바꿔 자리를 비운다. */
-    private fun expirePendingInvitation(teamId: UUID, email: String) {
+    private fun expirePendingInvitation(teamId: UUID, email: Email) {
         val pending = teamInvitationRepository.findByTeamIdAndEmailAndStatus(teamId, email, InvitationStatus.PENDING)
             ?: return
         if (pending.isExpired.not()) {

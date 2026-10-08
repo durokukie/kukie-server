@@ -4,6 +4,7 @@ import com.duro.kukie.auth.domain.RefreshTokenRepository
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.auth.exception.InvalidCredentialsException
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.domain.UserRepository
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -20,7 +21,7 @@ class LogInService(
 
     @Transactional(readOnly = true)
     operator fun invoke(request: LogInRequest): TokenResponse {
-        val user = userRepository.findByEmail(request.email)
+        val user = userRepository.findByEmail(Email(request.email))
             ?.takeIf { it.matchesPassword(request.password, passwordEncoder) }
             ?: throw InvalidCredentialsException()
 

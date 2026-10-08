@@ -1,5 +1,6 @@
 package com.duro.kukie.user.application
 
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
@@ -44,13 +45,14 @@ class CreateUserServiceTest {
         password = UserFixture.DEFAULT_PASSWORD,
         verificationCode = "123456",
     )
+    private val email = Email(request.email)
 
     @Test
     fun `올바른 인증코드를 입력하고 회원가입에 성공한다`() {
         // given
         val savedUser = slot<User>()
-        every { userRepository.existsByEmail(request.email) } returns false
-        every { verificationCodeRepository.findByEmail(request.email) } returns request.verificationCode
+        every { userRepository.existsByEmail(email) } returns false
+        every { verificationCodeRepository.findByEmail(email) } returns request.verificationCode
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
 
         // when
@@ -58,10 +60,10 @@ class CreateUserServiceTest {
 
         // then
         verify(exactly = 1) { userRepository.saveAndFlush(any()) }
-        verify(exactly = 1) { verificationCodeRepository.deleteByEmail(request.email) }
+        verify(exactly = 1) { verificationCodeRepository.deleteByEmail(email) }
         with(savedUser.captured) {
             name shouldBe request.name
-            email shouldBe request.email
+            email shouldBe Email(request.email)
             matchesPassword(request.password, passwordEncoder) shouldBe true
         }
     }
@@ -69,7 +71,7 @@ class CreateUserServiceTest {
     @Test
     fun `이미 가입된 이메일이면 예외가 발생한다`() {
         // given
-        every { userRepository.existsByEmail(request.email) } returns true
+        every { userRepository.existsByEmail(email) } returns true
 
         // when & then
         shouldThrow<DuplicatedEmailException> { createUserService(request) }
@@ -81,8 +83,8 @@ class CreateUserServiceTest {
     @Test
     fun `발급된 인증 코드가 없으면 예외가 발생한다`() {
         // given
-        every { userRepository.existsByEmail(request.email) } returns false
-        every { verificationCodeRepository.findByEmail(request.email) } returns null
+        every { userRepository.existsByEmail(email) } returns false
+        every { verificationCodeRepository.findByEmail(email) } returns null
 
         // when & then
         shouldThrow<InvalidVerificationCodeException> { createUserService(request) }
@@ -94,8 +96,8 @@ class CreateUserServiceTest {
     @Test
     fun `인증 코드가 일치하지 않으면 예외가 발생한다`() {
         // given
-        every { userRepository.existsByEmail(request.email) } returns false
-        every { verificationCodeRepository.findByEmail(request.email) } returns "654321"
+        every { userRepository.existsByEmail(email) } returns false
+        every { verificationCodeRepository.findByEmail(email) } returns "654321"
 
         // when & then
         shouldThrow<InvalidVerificationCodeException> { createUserService(request) }
@@ -107,8 +109,8 @@ class CreateUserServiceTest {
     @Test
     fun `동시 가입으로 저장 시점에 이메일이 중복되면 예외가 발생한다`() {
         // given
-        every { userRepository.existsByEmail(request.email) } returns false
-        every { verificationCodeRepository.findByEmail(request.email) } returns request.verificationCode
+        every { userRepository.existsByEmail(email) } returns false
+        every { verificationCodeRepository.findByEmail(email) } returns request.verificationCode
         every { userRepository.saveAndFlush(any()) } throws DataIntegrityViolationException(
             "could not execute statement",
             ConstraintViolationException("duplicate key", SQLException(), "tbl_user_email_key"),

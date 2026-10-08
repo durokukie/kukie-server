@@ -18,7 +18,7 @@ data class TeamMemberResponse(
         fun of(user: User, membership: TeamMembership) = TeamMemberResponse(
             id = user.id,
             name = user.name,
-            email = user.email,
+            email = user.email.value,
             role = membership.role,
             joinedAt = membership.createdAt,
         )

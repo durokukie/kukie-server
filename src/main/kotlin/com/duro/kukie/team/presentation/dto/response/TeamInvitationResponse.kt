@@ -14,7 +14,7 @@ data class TeamInvitationResponse(
     companion object {
         fun of(invitation: TeamInvitation) = TeamInvitationResponse(
             id = invitation.id,
-            email = invitation.email,
+            email = invitation.email.value,
             status = statusOf(invitation),
             expiresAt = invitation.expiresAt,
         )
