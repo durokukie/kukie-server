@@ -30,7 +30,7 @@ class UserController(
     override fun createUser(
         @RequestBody @Valid request: CreateUserRequest,
     ): ResponseEntity<Unit> {
-        createUserService(request)
+        createUserService(request.toCommand())
 
         return ResponseEntity.status(HttpStatus.CREATED).build()
     }

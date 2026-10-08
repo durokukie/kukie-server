@@ -31,21 +31,20 @@ class InviteTeamMemberService(
     @Transactional
     operator fun invoke(command: InviteTeamMemberCommand): TeamInvitationResponse {
         val team = teamRepository.findByIdOrThrow(command.teamId)
-        val email = Email(command.email)
 
-        val invitee = userRepository.findByEmail(email)
+        val invitee = userRepository.findByEmail(command.email)
         if (invitee != null && teamMembershipRepository.existsByTeamIdAndUserId(command.teamId, invitee.id)) {
             throw AlreadyTeamMemberException()
         }
-        expirePendingInvitation(command.teamId, email)
+        expirePendingInvitation(command.teamId, command.email)
 
         val invitation = teamInvitationRepository.save(
-            TeamInvitation(teamId = command.teamId, email = email, invitedBy = command.userId),
+            TeamInvitation(teamId = command.teamId, email = command.email, invitedBy = command.userId),
         )
         if (invitee == null) {
             // 메일은 커밋 뒤에 나간다 (TeamInvitationMailListener)
             val inviterName = userRepository.findByIdOrThrow(command.userId).name
-            events.publishEvent(TeamMemberInvited(email.value, team.name, inviterName))
+            events.publishEvent(TeamMemberInvited(command.email.value, team.name, inviterName))
         }
 
         return TeamInvitationResponse.of(invitation)

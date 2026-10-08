@@ -1,12 +1,11 @@
 package com.duro.kukie.user.application
 
-import com.duro.kukie.global.domain.Email
+import com.duro.kukie.user.application.port.`in`.CreateUserCommand
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
-import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import org.hibernate.exception.ConstraintViolationException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -21,21 +20,20 @@ class CreateUserService(
 ) {
 
     @Transactional
-    operator fun invoke(request: CreateUserRequest) {
-        val email = Email(request.email)
-        if (userRepository.existsByEmail(email)) {
+    operator fun invoke(command: CreateUserCommand) {
+        if (userRepository.existsByEmail(command.email)) {
             throw DuplicatedEmailException()
         }
 
-        val code = verificationCodeRepository.findByEmail(email)
-        if (code == null || code != request.verificationCode) {
+        val code = verificationCodeRepository.findByEmail(command.email)
+        if (code == null || code != command.verificationCode) {
             throw InvalidVerificationCodeException()
         }
 
         val user = User(
-            name = request.name,
-            email = email,
-            rawPassword = request.password,
+            name = command.name,
+            email = command.email,
+            rawPassword = command.password,
             passwordEncoder = passwordEncoder,
         )
 
@@ -49,6 +47,6 @@ class CreateUserService(
             throw e
         }
 
-        verificationCodeRepository.deleteByEmail(email)
+        verificationCodeRepository.deleteByEmail(command.email)
     }
 }
