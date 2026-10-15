@@ -11,3 +11,6 @@ oauth:
 
 web-app:
   url: http://localhost:5173
+
+internal:
+  token: test-internal-token
