@@ -72,7 +72,7 @@ class GlobalExceptionHandler {
     fun handleBusinessException(e: BusinessException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(e.errorCode.status)
-            .body(ErrorResponse(e.errorCode.code, e.errorCode.message))
+            .body(ErrorResponse(e.errorCode.code, e.message))
     }
 
     /** 위에서 처리하지 못한 모든 예외 — 500 으로 응답하고 로그를 남긴다. */

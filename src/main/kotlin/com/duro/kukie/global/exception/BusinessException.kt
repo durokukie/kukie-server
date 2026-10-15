@@ -2,4 +2,5 @@ package com.duro.kukie.global.exception
 
 open class BusinessException(
     val errorCode: ErrorCode,
-) : RuntimeException(errorCode.message)
+    override val message: String = errorCode.message,
+) : RuntimeException(message)

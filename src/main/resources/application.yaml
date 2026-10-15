@@ -2,6 +2,8 @@ spring:
   application:
     name: kukie
   jpa:
+    # DNS 조회나 메일 발송을 기다리는 동안 DB 연결을 쥐지 않게 끈다
+    open-in-view: false
     hibernate:
       ddl-auto: validate
 
@@ -37,3 +39,7 @@ web-app:
 
 internal:
   token: ${KUKIE_INTERNAL_TOKEN}
+
+cluster:
+  credential-key: ${KUKIE_CREDENTIAL_KEY}
+  allow-local: ${KUKIE_ALLOW_LOCAL_CLUSTER:false}
