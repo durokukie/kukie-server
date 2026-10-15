@@ -18,4 +18,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeTeamInvitationSender(): FakeTeamInvitationSender = FakeTeamInvitationSender()
+
+    @Bean
+    @Primary
+    fun fakeHostResolver(): FakeHostResolver = FakeHostResolver()
 }

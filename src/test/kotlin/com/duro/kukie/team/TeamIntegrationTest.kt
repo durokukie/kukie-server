@@ -1,5 +1,7 @@
 package com.duro.kukie.team
 
+import com.duro.kukie.cluster.ClusterFixture
+import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.domain.TeamMembershipRepository
@@ -27,6 +29,9 @@ class TeamIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var teamMembershipRepository: TeamMembershipRepository
+
+    @Autowired
+    private lateinit var clusterRepository: ClusterRepository
 
     // ── 팀 생성 ────────────────────────────────────────────────
 
@@ -424,6 +429,27 @@ class TeamIntegrationTest : IntegrationTest() {
         // then
         teamRepository.existsById(team.id) shouldBe false
         teamMembershipRepository.findAllByTeamId(team.id).isEmpty() shouldBe true
+    }
+
+    @Test
+    fun `팀을 삭제하면 팀의 클러스터도 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val team = teamRepository.save(TeamFixture.team())
+        teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
+        val teamCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = team.id))
+        val otherTeam = teamRepository.save(TeamFixture.team("다른 팀"))
+        val otherCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = otherTeam.id))
+
+        // when
+        mockMvc.delete("/teams/${team.id}") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(teamCluster.id) shouldBe false
+        teamRepository.existsById(team.id) shouldBe false
+        clusterRepository.existsById(otherCluster.id) shouldBe true
     }
 
     @Test

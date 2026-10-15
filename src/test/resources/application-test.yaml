@@ -14,3 +14,7 @@ web-app:
 
 internal:
   token: test-internal-token
+
+cluster:
+  credential-key: dGVzdC1jcmVkZW50aWFsLWtleS0zMi1ieXRlcy1vayE=
+  allow-local: false
