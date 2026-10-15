@@ -2,6 +2,8 @@ package com.duro.kukie.support
 
 import com.duro.kukie.TestcontainersConfig
 import com.duro.kukie.auth.domain.RefreshTokenRepository
+import com.duro.kukie.global.config.properties.InternalProperties
+import com.duro.kukie.global.security.InternalApiInterceptor
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.User
@@ -45,6 +47,9 @@ abstract class IntegrationTest {
     private lateinit var objectMapper: ObjectMapper
 
     @Autowired
+    private lateinit var internalProperties: InternalProperties
+
+    @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
 
     @Autowired
@@ -63,6 +68,10 @@ abstract class IntegrationTest {
 
     protected fun MockHttpServletRequestDsl.authorization(accessToken: String) {
         header(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+    }
+
+    protected fun MockHttpServletRequestDsl.internalToken(token: String = internalProperties.token) {
+        header(InternalApiInterceptor.INTERNAL_TOKEN_HEADER, token)
     }
 
     @AfterEach
