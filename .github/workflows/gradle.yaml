@@ -50,7 +50,7 @@ jobs:
   # develop 에 머지되고 build(테스트 포함)가 통과하면 개발환경 이미지를 구워 ECR kukie-server 에 올린다.
   # 출입증: kukie-infra 의 kukie-dev-github-member 역할 — 이 레포 develop 에서만 쓸 수 있어 main push 에서는 돌리지 않는다.
   # 레포 Variables 의 AWS_ROLE_ARN 이 그 역할이다. 태그는 다른 앱과 같이 dev-<커밋 SHA> 하나만 쓴다.
-  # 버전은 kukie-manifest envs/dev/kustomization.yaml 의 digest 로 올린다 — 아래 요약에 나오는 값.
+  # 버전은 kukie-manifest envs/dev/kustomization.yaml 의 digest 로 올린다 — 아래 알림 단계가 kukie-manifest 에 이 digest 를 알린다.
   # docker-image.yaml 은 경로 조건이 있어 소스만 바뀐 머지에서는 돌지 않으므로 여기에 둔다.
   image:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
@@ -85,11 +85,12 @@ jobs:
     - name: Log in to ECR
       shell: bash
       run: aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
-    # 창고가 MUTABLE 이라 같은 커밋으로 다시 돌리면 태그를 덮어써 digest 가 바뀐다. manifest 에 이미 옮겨 적은
+    # 창고가 MUTABLE 이라 같은 커밋으로 다시 돌리면 태그를 덮어써 digest 가 바뀐다. manifest 에 이미 반영된
     # digest 가 태그 없는 이미지가 되지 않게, 있으면 굽지 않고 그 digest 를 쓴다.
     # 역할에 ecr:DescribeImages 가 없어서 BatchGetImage 로 확인한다. 받는 매니페스트 종류를 명시해야
     # buildx · attestation 으로 OCI image index 가 올라가도 "태그 없음" 으로 오판하지 않는다.
     - name: Build and push unless this commit is already in ECR
+      id: push
       shell: bash
       run: |
         digest() {
@@ -111,14 +112,61 @@ jobs:
         else
           echo "이미 있는 태그 — 굽지 않는다"
         fi
-        # 요약의 digest 는 사람이 manifest 에 옮겨 적는 값이다 — 모양이 아니면 잡을 실패시킨다
+        # 이 digest 를 요약에 적고 아래 알림 단계에 넘긴다 — 모양이 아니면 잡을 실패시킨다
         case "$existing" in
           sha256:*) ;;
           *) echo "digest 를 읽지 못했다: $existing" >&2; exit 1 ;;
         esac
         echo "### $REPOSITORY 이미지" >> "$GITHUB_STEP_SUMMARY"
         echo "- 태그: \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
-        echo "- digest: \`$existing\` — kukie-manifest envs/dev 의 kukie-server 줄에 넣는 값" >> "$GITHUB_STEP_SUMMARY"
+        echo "- digest: \`$existing\` — develop HEAD 이면 아래 알림 단계가 kukie-manifest 에 보내는 값" >> "$GITHUB_STEP_SUMMARY"
+        echo "digest=$existing" >> "$GITHUB_OUTPUT"
+    # 개발환경 반영 알림 — kukie-manifest 에 image-pushed 이벤트를 보내면 그쪽 수신 워크플로가 envs/dev 의 digest 를 바꿔 커밋한다.
+    # 먼저 develop 이 이 커밋보다 앞서 있는지 본다. 앞서 있으면 그 커밋의 실행이 알리므로 여기서는 건너뛴다 — 늦게 끝난 옛 실행이 새 digest 를 덮지 않게.
+    # 건너뛰는 실행은 아래 토큰도 받지 않는다.
+    - name: Check develop HEAD
+      id: guard
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        head=$(gh api "repos/$GITHUB_REPOSITORY/commits/develop" --jq .sha)
+        if [ "$head" = "$GITHUB_SHA" ]; then
+          echo "latest=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::develop 이 ${head:0:7} 로 앞서가 manifest 알림을 건너뛴다"
+          echo "- manifest 알림 건너뜀: develop 이 \`${head:0:7}\` 로 앞서가 있다 — 그 커밋의 실행이 알린다" >> "$GITHUB_STEP_SUMMARY"
+        fi
+    # 신분: kukie-manifest 에만 설치된 GitHub App kukie-manifest-bot (Variables MANIFEST_APP_CLIENT_ID · Secrets MANIFEST_APP_PRIVATE_KEY).
+    # dispatch 에는 Contents 쓰기가 필요해 그 권한 하나만 받는다. 이 잡은 develop push 에서만 돌아 비밀 값이 PR 실행에 닿지 않는다.
+    - name: Get kukie-manifest bot token
+      if: steps.guard.outputs.latest == 'true'
+      id: bot
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      with:
+        client-id: ${{ vars.MANIFEST_APP_CLIENT_ID }}
+        private-key: ${{ secrets.MANIFEST_APP_PRIVATE_KEY }}
+        owner: durokukie
+        repositories: kukie-manifest
+        permission-contents: write
+    # 수신 워크플로는 kukie-manifest 기본 브랜치(main)에 있어야 이 이벤트로 돈다
+    - name: Notify kukie-manifest
+      if: steps.guard.outputs.latest == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.bot.outputs.token }}
+        APP: kukie-server
+        DIGEST: ${{ steps.push.outputs.digest }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        gh api repos/durokukie/kukie-manifest/dispatches \
+          -f event_type=image-pushed \
+          -f "client_payload[app]=$APP" \
+          -f "client_payload[digest]=$DIGEST" \
+          -f "client_payload[source_repo]=$GITHUB_REPOSITORY" \
+          -f "client_payload[source_sha]=$GITHUB_SHA" \
+          -f "client_payload[run_url]=$RUN_URL"
+        echo "- manifest 알림 보냄 — 반영은 [kukie-manifest Actions](https://github.com/durokukie/kukie-manifest/actions?query=event%3Arepository_dispatch) 에서 확인" >> "$GITHUB_STEP_SUMMARY"
 
   dependency-submission:
 
