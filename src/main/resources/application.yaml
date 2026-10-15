@@ -34,3 +34,6 @@ aws:
 # 메일 버튼이 여는 웹 주소
 web-app:
   url: ${WEB_APP_URL}
+
+internal:
+  token: ${KUKIE_INTERNAL_TOKEN}

@@ -5,6 +5,8 @@ import com.duro.kukie.global.exception.ErrorCode
 import com.duro.kukie.global.exception.ErrorResponse
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.global.security.InternalApi
+import com.duro.kukie.global.security.InternalApiInterceptor
 import io.swagger.v3.core.converter.AnnotatedType
 import io.swagger.v3.core.converter.ModelConverters
 import io.swagger.v3.oas.models.Components
@@ -50,15 +52,24 @@ class SwaggerConfig {
                             .scheme("Bearer")
                             .bearerFormat("JWT"),
                     )
+                    .addSecuritySchemes(
+                        INTERNAL_SCHEME_NAME,
+                        SecurityScheme()
+                            .type(SecurityScheme.Type.APIKEY)
+                            .`in`(SecurityScheme.In.HEADER)
+                            .name(InternalApiInterceptor.INTERNAL_TOKEN_HEADER),
+                    )
                     .addSchemas(ERROR_RESPONSE_SCHEMA_NAME, errorResponseSchema()),
             )
 
     @Bean
     fun authenticatedOperationCustomizer(): OperationCustomizer =
         OperationCustomizer { operation, handlerMethod ->
-            if (handlerMethod.requiresAuthentication()) {
-                operation.addSecurityItem(SecurityRequirement().addList(SECURITY_SCHEME_NAME))
-            }
+            // 한 항목에 함께 담아야 OR 가 아니라 AND 로 문서화된다
+            val requirement = SecurityRequirement()
+            if (handlerMethod.isInternalApi()) requirement.addList(INTERNAL_SCHEME_NAME)
+            if (handlerMethod.requiresAuthentication()) requirement.addList(SECURITY_SCHEME_NAME)
+            if (requirement.isNotEmpty()) operation.addSecurityItem(requirement)
             operation
         }
 
@@ -76,6 +87,10 @@ class SwaggerConfig {
     private fun HandlerMethod.requiresAuthentication(): Boolean =
         hasMethodAnnotation(Authenticated::class.java) ||
             AnnotatedElementUtils.hasAnnotation(beanType, Authenticated::class.java)
+
+    private fun HandlerMethod.isInternalApi(): Boolean =
+        hasMethodAnnotation(InternalApi::class.java) ||
+            AnnotatedElementUtils.hasAnnotation(beanType, InternalApi::class.java)
 
     private fun HandlerMethod.errorCodes(): List<ErrorCode> =
         AnnotatedElementUtils.findMergedAnnotation(method, ApiErrorResponses::class.java)
@@ -98,6 +113,7 @@ class SwaggerConfig {
 
     companion object {
         private const val SECURITY_SCHEME_NAME = "Bearer Auth"
+        private const val INTERNAL_SCHEME_NAME = "Internal Token"
         private const val ERROR_RESPONSE_SCHEMA_NAME = "ErrorResponse"
     }
 }
