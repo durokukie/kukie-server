@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
+import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
@@ -30,6 +31,15 @@ class GlobalExceptionHandler {
     /** 경로 변수·쿼리 파라미터 타입 변환 실패 (예: 형식이 틀린 UUID, 없는 OAuth 제공자). */
     @ExceptionHandler(MethodArgumentTypeMismatchException::class)
     fun handleTypeMismatchException(e: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
+        val errorCode = GlobalErrorCode.BAD_REQUEST
+
+        return ResponseEntity
+            .status(errorCode.status)
+            .body(ErrorResponse(errorCode.code, errorCode.message))
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException::class)
+    fun handleMissingParameterException(e: MissingServletRequestParameterException): ResponseEntity<ErrorResponse> {
         val errorCode = GlobalErrorCode.BAD_REQUEST
 
         return ResponseEntity

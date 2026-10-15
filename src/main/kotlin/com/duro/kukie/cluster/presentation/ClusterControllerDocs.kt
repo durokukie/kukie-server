@@ -1,5 +1,6 @@
 package com.duro.kukie.cluster.presentation
 
+import com.duro.kukie.cluster.exception.ClusterInUseException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import com.duro.kukie.cluster.exception.KubeconfigRejectedException
@@ -58,12 +59,14 @@ interface ClusterControllerDocs {
 
     @Operation(
         summary = "클러스터 삭제",
-        description = "클러스터와 자격증명을 삭제합니다. 팀 관리자만 할 수 있습니다.",
+        description = "클러스터와 자격증명을 삭제합니다. 팀 관리자만 할 수 있습니다. " +
+            "이 클러스터를 쓰는 대화가 있으면 삭제할 수 없습니다.",
     )
     @ApiResponse(responseCode = "204", description = "No Content")
     @ApiErrorResponses(
         NotTeamAdminException::class,
         ClusterNotFoundException::class,
+        ClusterInUseException::class,
     )
     fun deleteCluster(clusterId: UUID, userId: UUID): ResponseEntity<Unit>
 }
