@@ -5,6 +5,10 @@ import com.duro.kukie.auth.domain.RefreshTokenRepository
 import com.duro.kukie.global.config.properties.InternalProperties
 import com.duro.kukie.global.security.InternalApiInterceptor
 import com.duro.kukie.global.security.JwtTokenProvider
+import com.duro.kukie.team.TeamFixture
+import com.duro.kukie.team.domain.TeamMembershipRepository
+import com.duro.kukie.team.domain.TeamRepository
+import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
@@ -21,6 +25,7 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import tools.jackson.databind.ObjectMapper
+import java.util.UUID
 
 @ActiveProfiles("test")
 @Import(TestcontainersConfig::class, FakeBeansConfig::class)
@@ -55,6 +60,12 @@ abstract class IntegrationTest {
     @Autowired
     private lateinit var redisTemplate: StringRedisTemplate
 
+    @Autowired
+    private lateinit var teamRepository: TeamRepository
+
+    @Autowired
+    private lateinit var teamMembershipRepository: TeamMembershipRepository
+
     protected fun loggedInUser(user: User = UserFixture.user()): LoggedInUser {
         val savedUser = userRepository.save(user)
         val accessToken = jwtTokenProvider.generateAccessToken(savedUser.id)
@@ -62,6 +73,12 @@ abstract class IntegrationTest {
         refreshTokenRepository.save(savedUser.id, refreshToken)
 
         return LoggedInUser(savedUser, accessToken, refreshToken)
+    }
+
+    protected fun savedTeam(vararg members: Pair<UUID, TeamRole>): UUID {
+        val team = teamRepository.save(TeamFixture.team())
+        members.forEach { (userId, role) -> teamMembershipRepository.save(TeamFixture.membership(team.id, userId, role)) }
+        return team.id
     }
 
     protected fun Any.toJson(): String = objectMapper.writeValueAsString(this)
