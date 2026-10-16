@@ -1,5 +1,11 @@
 package com.duro.kukie.team
 
+import com.duro.kukie.actionplan.ActionPlanFixture
+import com.duro.kukie.actionplan.domain.ActionPlanRepository
+import com.duro.kukie.chat.ChatFixture
+import com.duro.kukie.chat.domain.ChatRunRepository
+import com.duro.kukie.chat.domain.ChatSessionRepository
+import com.duro.kukie.chat.domain.ChatVisibility
 import com.duro.kukie.cluster.ClusterFixture
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.global.exception.GlobalErrorCode
@@ -32,6 +38,15 @@ class TeamIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var clusterRepository: ClusterRepository
+
+    @Autowired
+    private lateinit var chatSessionRepository: ChatSessionRepository
+
+    @Autowired
+    private lateinit var chatRunRepository: ChatRunRepository
+
+    @Autowired
+    private lateinit var actionPlanRepository: ActionPlanRepository
 
     // ── 팀 생성 ────────────────────────────────────────────────
 
@@ -432,7 +447,7 @@ class TeamIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `팀을 삭제하면 팀의 클러스터도 지운다`() {
+    fun `팀을 삭제하면 팀의 클러스터와 대화도 지운다`() {
         // given
         val admin = loggedInUser()
         val team = teamRepository.save(TeamFixture.team())
@@ -440,6 +455,12 @@ class TeamIntegrationTest : IntegrationTest() {
         val teamCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = team.id))
         val otherTeam = teamRepository.save(TeamFixture.team("다른 팀"))
         val otherCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = otherTeam.id))
+        val teamSession = chatSessionRepository.save(ChatFixture.session(admin.user.id, teamCluster.id, visibility = ChatVisibility.SHARED))
+        val teamRun = chatRunRepository.save(ChatFixture.run(teamSession.id))
+        val teamPlan = actionPlanRepository.save(ActionPlanFixture.plan(teamRun.id, code = "ap-team"))
+        val otherSession = chatSessionRepository.save(ChatFixture.session(admin.user.id, otherCluster.id))
+        val otherRun = chatRunRepository.save(ChatFixture.run(otherSession.id))
+        val otherPlan = actionPlanRepository.save(ActionPlanFixture.plan(otherRun.id, code = "ap-other"))
 
         // when
         mockMvc.delete("/teams/${team.id}") {
@@ -447,9 +468,14 @@ class TeamIntegrationTest : IntegrationTest() {
         }.andExpect { status { isNoContent() } }
 
         // then
+        actionPlanRepository.existsById(teamPlan.id) shouldBe false
+        chatRunRepository.existsById(teamRun.id) shouldBe false
+        chatSessionRepository.existsById(teamSession.id) shouldBe false
         clusterRepository.existsById(teamCluster.id) shouldBe false
         teamRepository.existsById(team.id) shouldBe false
-        clusterRepository.existsById(otherCluster.id) shouldBe true
+        actionPlanRepository.existsById(otherPlan.id) shouldBe true
+        chatRunRepository.existsById(otherRun.id) shouldBe true
+        chatSessionRepository.existsById(otherSession.id) shouldBe true
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.chat.ChatFixture
+import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.cluster.ClusterFixture.kubeconfig
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.domain.ClusterRepository
@@ -51,6 +53,9 @@ class ClusterIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var fakeHostResolver: FakeHostResolver
+
+    @Autowired
+    private lateinit var chatSessionRepository: ChatSessionRepository
 
     @Autowired
     private lateinit var dataSource: DataSource
@@ -306,6 +311,23 @@ class ClusterIntegrationTest : IntegrationTest() {
             authorization(admin.accessToken)
         }.andExpect { status { isNoContent() } }
         clusterRepository.existsById(cluster.id) shouldBe false
+    }
+
+    @Test
+    fun `대화가 있는 클러스터는 삭제할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = savedTeam(me.user.id to TeamRole.ADMIN)))
+        chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_IN_USE.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
     }
 
     private fun activeConnections(): Int =
