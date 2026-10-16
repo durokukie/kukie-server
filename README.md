@@ -2,8 +2,6 @@
 
 Kukie의 REST API 서버입니다.
 
-DB 와 통신하는 유일한 서비스인 Kukie API 서버이며, kukie-agent 는 DB 없이 이 서버의 `/internal` API 로만 저장·조회합니다.
-
 ## 기술 스택
 
 - Kotlin 2.3 / Java 25
