@@ -1,12 +1,16 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.domain.Cluster
+import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.ClusterStatus
 import com.duro.kukie.cluster.exception.ClusterErrorCode
+import com.duro.kukie.support.FakeEksAccessGateway
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.domain.TeamRole
+import com.jayway.jsonpath.JsonPath
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -24,6 +28,9 @@ class InternalClusterIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var credentialCipher: CredentialCipher
+
+    @Autowired
+    private lateinit var fakeEksAccessGateway: FakeEksAccessGateway
 
     @Test
     fun `클러스터 연결 정보를 자격증명과 함께 준다`() {
@@ -47,6 +54,40 @@ class InternalClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.fingerprint") { value(cluster.fingerprint) }
             jsonPath("$.credential.token") { value("secret-token") }
         }
+    }
+
+    @Test
+    fun `EKS 클러스터는 고객 역할로 새로 만든 토큰을 같은 모양으로 준다`() {
+        // given
+        val me = loggedInUser()
+        val externalId = "kukie-0123456789abcdef"
+        val cluster = savedCluster(
+            me.user.id,
+            mapOf(
+                "type" to "eks",
+                "accountId" to "123456789012",
+                "externalId" to externalId,
+                "region" to "ap-northeast-2",
+                "clusterName" to "demo",
+            ),
+            provider = ClusterProvider.EKS,
+        )
+
+        // when
+        val response = mockMvc.get("/internal/clusters/${cluster.id}/connection?expectedFingerprint=${cluster.fingerprint}") {
+            internalToken()
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.clusterId") { value(cluster.id.toString()) }
+            jsonPath("$.apiServer") { value(cluster.apiServer) }
+            jsonPath("$.caData") { value(ClusterFixture.CA) }
+            jsonPath("$.insecure") { value(false) }
+        }.andReturn().response.contentAsString
+
+        // then
+        JsonPath.read<Map<String, Any?>>(response, "$.credential") shouldBe mapOf("token" to FakeEksAccessGateway.tokenFor("demo"))
+        fakeEksAccessGateway.targets shouldBe listOf(AwsTarget(accountId = "123456789012", externalId = externalId))
     }
 
     @Test
@@ -93,6 +134,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         credential: Map<String, String>,
         teamId: UUID = savedTeam(registeredBy to TeamRole.ADMIN),
         name: String = ClusterFixture.DEFAULT_NAME,
+        provider: ClusterProvider = ClusterProvider.GENERIC,
     ): Cluster = clusterRepository.save(
         ClusterFixture.cluster(
             registeredBy = registeredBy,
@@ -100,6 +142,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
             name = name,
             credential = credentialCipher.encrypt(credential),
             fingerprint = "a".repeat(64),
+            provider = provider,
         ),
     )
 }

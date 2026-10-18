@@ -50,6 +50,7 @@ dependencies {
     implementation("software.amazon.awssdk:sesv2:2.55.11")
     // IRSA: 기본 자격증명 체인의 web identity 단계가 이 모듈로 STS AssumeRoleWithWebIdentity 를 부른다
     implementation("software.amazon.awssdk:sts:2.55.11")
+    implementation("software.amazon.awssdk:eks:2.55.11")
 
     // UUID
     implementation("com.github.f4b6a3:uuid-creator:6.1.1")

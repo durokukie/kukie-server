@@ -1,6 +1,7 @@
 package com.duro.kukie.cluster
 
 import com.duro.kukie.cluster.domain.Cluster
+import com.duro.kukie.cluster.domain.ClusterProvider
 import org.yaml.snakeyaml.DumperOptions
 import org.yaml.snakeyaml.Yaml
 import java.util.Base64
@@ -51,6 +52,7 @@ object ClusterFixture {
         apiServer: String = DEFAULT_SERVER,
         credential: String = "암호문",
         fingerprint: String = "fp",
+        provider: ClusterProvider = ClusterProvider.GENERIC,
     ): Cluster = Cluster(
         teamId = teamId,
         registeredBy = registeredBy,
@@ -62,5 +64,6 @@ object ClusterFixture {
         contextName = DEFAULT_CONTEXT,
         defaultNamespace = DEFAULT_NAMESPACE,
         fingerprint = fingerprint,
+        provider = provider,
     )
 }

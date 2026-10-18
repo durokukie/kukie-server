@@ -43,3 +43,12 @@ internal:
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}
   allow-local: ${KUKIE_ALLOW_LOCAL_CLUSTER:false}
+  aws:
+    # 고객이 CloudFormation 으로 만드는 KukieAccess-<ExternalId> 역할 템플릿 (kukie-infra 가 게시한다)
+    template-url: https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v1.yaml
+    stack-name: kukie-access
+    console-region: ap-northeast-2
+    regions:
+      - ap-northeast-2
+    role-name-prefix: KukieAccess-
+    session-seconds: 900

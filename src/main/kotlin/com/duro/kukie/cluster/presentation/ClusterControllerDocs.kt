@@ -3,6 +3,7 @@ package com.duro.kukie.cluster.presentation
 import com.duro.kukie.cluster.exception.ClusterInUseException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
+import com.duro.kukie.cluster.exception.ClusterProviderMismatchException
 import com.duro.kukie.cluster.exception.KubeconfigRejectedException
 import com.duro.kukie.cluster.exception.NothingToUpdateException
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
@@ -46,10 +47,12 @@ interface ClusterControllerDocs {
     @Operation(
         summary = "클러스터 수정",
         description = "이름·기본 namespace·kubeconfig 를 바꿉니다. 팀 관리자만 할 수 있습니다. " +
-            "kubeconfig 를 바꾸면 지문을 다시 계산하고 상태를 disconnected 로 돌립니다.",
+            "kubeconfig 를 바꾸면 지문을 다시 계산하고 상태를 disconnected 로 돌립니다. " +
+            "EKS 클러스터는 이름만 바꿀 수 있습니다.",
     )
     @ApiErrorResponses(
         NothingToUpdateException::class,
+        ClusterProviderMismatchException::class,
         KubeconfigRejectedException::class,
         NotTeamAdminException::class,
         ClusterNotFoundException::class,

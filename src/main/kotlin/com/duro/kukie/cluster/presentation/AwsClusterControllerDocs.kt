@@ -1,0 +1,71 @@
+package com.duro.kukie.cluster.presentation
+
+import com.duro.kukie.cluster.exception.AwsConnectionNotStartedException
+import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
+import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
+import com.duro.kukie.cluster.exception.ClusterNameTakenException
+import com.duro.kukie.cluster.exception.EksAccessDeniedException
+import com.duro.kukie.cluster.exception.EksAccessEntryDisabledException
+import com.duro.kukie.cluster.exception.EksClusterNotFoundException
+import com.duro.kukie.cluster.exception.EksClusterNotReadyException
+import com.duro.kukie.cluster.exception.EksEndpointRejectedException
+import com.duro.kukie.cluster.exception.InvalidNamespaceException
+import com.duro.kukie.cluster.presentation.dto.request.GetEksCandidatesRequest
+import com.duro.kukie.cluster.presentation.dto.request.RegisterEksClusterRequest
+import com.duro.kukie.cluster.presentation.dto.request.StartAwsConnectionRequest
+import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionResponse
+import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
+import com.duro.kukie.cluster.presentation.dto.response.EksClusterCandidateResponse
+import com.duro.kukie.global.docs.ApiErrorResponses
+import com.duro.kukie.team.exception.NotTeamAdminException
+import com.duro.kukie.team.exception.NotTeamMemberException
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import org.springframework.http.ResponseEntity
+import java.util.UUID
+
+interface AwsClusterControllerDocs {
+
+    @Operation(
+        summary = "AWS 연결 시작",
+        description = "팀의 ExternalId 를 발급하고(이미 있으면 그대로) 고객 계정에 KukieAccess-<ExternalId> 역할을 만드는 " +
+            "CloudFormation 빠른 생성 링크를 돌려줍니다. 팀 관리자만 할 수 있습니다.",
+    )
+    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class)
+    fun startAwsConnection(userId: UUID, request: StartAwsConnectionRequest): ResponseEntity<AwsConnectionResponse>
+
+    @Operation(
+        summary = "EKS 클러스터 후보 조회",
+        description = "고객 계정의 KukieAccess 역할을 맡아 설정된 리전의 EKS 클러스터를 나열합니다. 팀 관리자만 할 수 있습니다.",
+    )
+    @ApiErrorResponses(
+        NotTeamMemberException::class,
+        NotTeamAdminException::class,
+        AwsConnectionNotStartedException::class,
+        AwsRoleNotAssumableException::class,
+        EksAccessDeniedException::class,
+    )
+    fun getEksCandidates(userId: UUID, request: GetEksCandidatesRequest): ResponseEntity<List<EksClusterCandidateResponse>>
+
+    @Operation(
+        summary = "EKS 클러스터 등록",
+        description = "KukieAccess 역할을 클러스터의 access entry 로 넣고 고른 namespace 에 AmazonEKSEditPolicy 를 붙인 뒤 " +
+            "클러스터를 등록합니다. 자격증명은 저장하지 않고 연결할 때마다 토큰을 새로 만듭니다. 팀 관리자만 할 수 있습니다.",
+    )
+    @ApiResponse(responseCode = "201", description = "Created")
+    @ApiErrorResponses(
+        NotTeamMemberException::class,
+        NotTeamAdminException::class,
+        AwsRegionNotSupportedException::class,
+        InvalidNamespaceException::class,
+        AwsConnectionNotStartedException::class,
+        AwsRoleNotAssumableException::class,
+        EksClusterNotFoundException::class,
+        EksClusterNotReadyException::class,
+        EksAccessEntryDisabledException::class,
+        EksEndpointRejectedException::class,
+        EksAccessDeniedException::class,
+        ClusterNameTakenException::class,
+    )
+    fun registerEksCluster(userId: UUID, request: RegisterEksClusterRequest): ResponseEntity<ClusterResponse>
+}
