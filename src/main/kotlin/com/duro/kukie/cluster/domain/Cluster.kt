@@ -8,7 +8,9 @@ import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import java.security.MessageDigest
 import java.time.LocalDateTime
+import java.util.HexFormat
 import java.util.UUID
 
 @Entity
@@ -24,6 +26,7 @@ class Cluster(
     contextName: String,
     defaultNamespace: String,
     fingerprint: String,
+    provider: ClusterProvider = ClusterProvider.GENERIC,
 ) : BaseTimeEntity() {
 
     @Id
@@ -44,7 +47,7 @@ class Cluster(
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    var provider = ClusterProvider.GENERIC
+    var provider = provider
         protected set
 
     @Column(name = "api_server", nullable = false, length = 300)
@@ -110,5 +113,12 @@ class Cluster(
     fun recordCheck(status: ClusterStatus, checkedAt: LocalDateTime) {
         this.status = status
         this.lastCheckedAt = checkedAt
+    }
+
+    companion object {
+        fun fingerprintOf(apiServer: String, caData: String?): String =
+            HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest("$apiServer\n${caData.orEmpty()}".toByteArray(Charsets.UTF_8)),
+            )
     }
 }

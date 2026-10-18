@@ -1,21 +1,18 @@
 package com.duro.kukie.cluster.infrastructure
 
+import com.duro.kukie.cluster.application.port.out.ApiServerAddressChecker
 import com.duro.kukie.cluster.application.port.out.KubeconfigParser
 import com.duro.kukie.cluster.application.port.out.ParsedKubeconfig
 import com.duro.kukie.cluster.exception.KubeconfigRejectedException
-import com.duro.kukie.global.config.properties.ClusterProperties
 import org.springframework.stereotype.Component
 import org.yaml.snakeyaml.LoaderOptions
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.constructor.SafeConstructor
 import org.yaml.snakeyaml.error.YAMLException
-import java.net.InetAddress
-import java.net.URI
 
 @Component
 class SnakeYamlKubeconfigParser(
-    private val hostResolver: HostResolver,
-    private val clusterProperties: ClusterProperties,
+    private val apiServerAddressChecker: ApiServerAddressChecker,
 ) : KubeconfigParser {
 
     override fun parse(kubeconfig: String, contextName: String?): ParsedKubeconfig {
@@ -47,7 +44,7 @@ class SnakeYamlKubeconfigParser(
         val rawServer = cluster["server"]
         ensure(rawServer is String && rawServer.isNotBlank(), "클러스터 주소(server)가 없습니다")
         val server = (rawServer as String).trim()
-        checkApiServer(server)
+        apiServerAddressChecker.rejectionOf(server)?.let(::reject)
 
         val insecure = cluster["insecure-skip-tls-verify"] == true
         val ca = cluster["certificate-authority-data"]
@@ -91,23 +88,6 @@ class SnakeYamlKubeconfigParser(
         return found
     }
 
-    private fun checkApiServer(url: String) {
-        ensure(url.none { it.isWhitespace() }, "클러스터 주소에 공백이 들어 있습니다: $url")
-        ensure(url.startsWith("https://"), "클러스터 주소는 https 여야 합니다: $url")
-        val host = runCatching { URI(url).host }.getOrNull()?.removeSurrounding("[", "]")
-        ensure(!host.isNullOrEmpty(), "클러스터 주소에 호스트가 없습니다: $url")
-        host as String
-        if (clusterProperties.allowLocal) return
-
-        ensure(ipLiteral(host)?.let(BlockedAddresses::contains) != true, "사설·로컬 주소는 등록할 수 없습니다: $host")
-        for (address in hostResolver.resolve(host)) {
-            ensure(
-                !BlockedAddresses.contains(address),
-                "사설·로컬 주소로 풀리는 이름은 등록할 수 없습니다: $host → ${address.hostAddress}",
-            )
-        }
-    }
-
     private fun credential(user: Map<*, *>): Map<String, String> {
         ensure(
             !user.containsKey("exec"),
@@ -145,12 +125,6 @@ class SnakeYamlKubeconfigParser(
         return value
     }
 
-    private fun ipLiteral(host: String): InetAddress? {
-        if (!IPV4_LITERAL.matches(host) && ':' !in host) return null
-        // 없는 인터페이스 이름이 붙으면 JDK 가 못 읽어 검사가 새므로 범위 표기(%eth0)를 떼고 본다
-        return runCatching { InetAddress.getByName(host.substringBefore('%')) }.getOrNull()
-    }
-
     private fun ensure(condition: Boolean, message: String) {
         if (!condition) reject(message)
     }
@@ -161,6 +135,5 @@ class SnakeYamlKubeconfigParser(
         private const val DEFAULT_NAMESPACE = "default"
 
         private val STRICT_BASE64 = Regex("(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?")
-        private val IPV4_LITERAL = Regex("(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}")
     }
 }

@@ -1,7 +1,6 @@
 package com.duro.kukie.cluster.application.port.out
 
-import java.security.MessageDigest
-import java.util.HexFormat
+import com.duro.kukie.cluster.domain.Cluster
 
 /** 자격증명이 toString 으로 로그에 새지 않게 data class 로 두지 않는다. */
 class ParsedKubeconfig(
@@ -13,7 +12,5 @@ class ParsedKubeconfig(
     val insecure: Boolean,
 ) {
     val fingerprint: String
-        get() = HexFormat.of().formatHex(
-            MessageDigest.getInstance("SHA-256").digest("$apiServer\n${caData.orEmpty()}".toByteArray(Charsets.UTF_8)),
-        )
+        get() = Cluster.fingerprintOf(apiServer, caData)
 }
