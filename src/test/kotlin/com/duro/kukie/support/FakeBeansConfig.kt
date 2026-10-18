@@ -22,4 +22,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeHostResolver(): FakeHostResolver = FakeHostResolver()
+
+    @Bean
+    @Primary
+    fun fakeEksAccessGateway(): FakeEksAccessGateway = FakeEksAccessGateway()
 }

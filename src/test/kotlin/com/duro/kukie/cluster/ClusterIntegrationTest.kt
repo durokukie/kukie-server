@@ -4,6 +4,7 @@ import com.duro.kukie.chat.ChatFixture
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.cluster.ClusterFixture.kubeconfig
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
+import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.ClusterStatus
 import com.duro.kukie.cluster.exception.ClusterErrorCode
@@ -295,6 +296,40 @@ class ClusterIntegrationTest : IntegrationTest() {
 
         // then
         clusterRepository.findByIdOrNull(id)!!.name shouldBe "다른 관리자가 바꾼 이름"
+    }
+
+    @Test
+    fun `EKS 클러스터는 이름만 바꾸고 kubeconfig 나 namespace 는 바꿀 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val cluster = clusterRepository.save(
+            ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, provider = ClusterProvider.EKS),
+        )
+
+        // when & then
+        mockMvc.patch("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateClusterRequest(name = "새 이름").toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.name") { value("새 이름") }
+            jsonPath("$.provider") { value("EKS") }
+        }
+        for (request in listOf(UpdateClusterRequest(kubeconfig = kubeconfig()), UpdateClusterRequest(namespace = "other"))) {
+            mockMvc.patch("/clusters/${cluster.id}") {
+                authorization(me.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = request.toJson()
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_PROVIDER_MISMATCH.code) }
+            }
+        }
+        val stored = clusterRepository.findByIdOrNull(cluster.id)!!
+        stored.apiServer shouldBe ClusterFixture.DEFAULT_SERVER
+        stored.defaultNamespace shouldBe ClusterFixture.DEFAULT_NAMESPACE
     }
 
     @Test

@@ -1,0 +1,47 @@
+package com.duro.kukie.cluster.domain
+
+import com.duro.kukie.global.entity.BaseTimeEntity
+import com.github.f4b6a3.uuid.UuidCreator
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Id
+import jakarta.persistence.Table
+import java.security.SecureRandom
+import java.util.HexFormat
+import java.util.UUID
+
+/** 팀이 고객 AWS 계정의 KukieAccess-<externalId> 역할을 맡을 때 쓰는 ExternalId. 팀마다 하나다. */
+@Entity
+@Table(name = "tbl_aws_connection")
+class AwsConnection(
+    teamId: UUID,
+    createdBy: UUID,
+    externalId: String = newExternalId(),
+) : BaseTimeEntity() {
+
+    @Id
+    var id: UUID = UuidCreator.getTimeOrderedEpoch()
+        protected set
+
+    @Column(name = "team_id", nullable = false)
+    var teamId = teamId
+        protected set
+
+    @Column(name = "external_id", nullable = false, length = 64)
+    var externalId = externalId
+        protected set
+
+    @Column(name = "created_by", nullable = false)
+    var createdBy = createdBy
+        protected set
+
+    companion object {
+        private const val PREFIX = "kukie-"
+        private const val RANDOM_BYTES = 8
+        private val random = SecureRandom()
+
+        /** 템플릿의 ExternalId 패턴(^kukie-[a-z0-9]{8,40}$)에 맞춘다. */
+        fun newExternalId(): String =
+            PREFIX + HexFormat.of().formatHex(ByteArray(RANDOM_BYTES).also(random::nextBytes))
+    }
+}

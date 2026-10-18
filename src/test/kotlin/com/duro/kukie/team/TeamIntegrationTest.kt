@@ -7,6 +7,8 @@ import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.chat.domain.ChatVisibility
 import com.duro.kukie.cluster.ClusterFixture
+import com.duro.kukie.cluster.domain.AwsConnection
+import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.IntegrationTest
@@ -38,6 +40,9 @@ class TeamIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var clusterRepository: ClusterRepository
+
+    @Autowired
+    private lateinit var awsConnectionRepository: AwsConnectionRepository
 
     @Autowired
     private lateinit var chatSessionRepository: ChatSessionRepository
@@ -453,7 +458,9 @@ class TeamIntegrationTest : IntegrationTest() {
         val team = teamRepository.save(TeamFixture.team())
         teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
         val teamCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = team.id))
+        val teamAwsConnection = awsConnectionRepository.save(AwsConnection(teamId = team.id, createdBy = admin.user.id))
         val otherTeam = teamRepository.save(TeamFixture.team("다른 팀"))
+        val otherAwsConnection = awsConnectionRepository.save(AwsConnection(teamId = otherTeam.id, createdBy = admin.user.id))
         val otherCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = otherTeam.id))
         val teamSession = chatSessionRepository.save(ChatFixture.session(admin.user.id, teamCluster.id, visibility = ChatVisibility.SHARED))
         val teamRun = chatRunRepository.save(ChatFixture.run(teamSession.id))
@@ -472,7 +479,9 @@ class TeamIntegrationTest : IntegrationTest() {
         chatRunRepository.existsById(teamRun.id) shouldBe false
         chatSessionRepository.existsById(teamSession.id) shouldBe false
         clusterRepository.existsById(teamCluster.id) shouldBe false
+        awsConnectionRepository.existsById(teamAwsConnection.id) shouldBe false
         teamRepository.existsById(team.id) shouldBe false
+        awsConnectionRepository.existsById(otherAwsConnection.id) shouldBe true
         actionPlanRepository.existsById(otherPlan.id) shouldBe true
         chatRunRepository.existsById(otherRun.id) shouldBe true
         chatSessionRepository.existsById(otherSession.id) shouldBe true
