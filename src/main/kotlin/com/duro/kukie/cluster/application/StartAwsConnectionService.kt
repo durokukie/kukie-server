@@ -25,6 +25,7 @@ class StartAwsConnectionService(
             quickCreateUrl = quickCreateUrl(connection.externalId),
             templateUrl = clusterAwsProperties.templateUrl,
             stackName = stackName(connection.externalId),
+            accountId = connection.accountId,
         )
     }
 

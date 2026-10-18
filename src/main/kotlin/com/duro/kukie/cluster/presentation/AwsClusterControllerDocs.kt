@@ -14,6 +14,7 @@ import com.duro.kukie.cluster.presentation.dto.request.GetEksCandidatesRequest
 import com.duro.kukie.cluster.presentation.dto.request.RegisterEksClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.StartAwsConnectionRequest
 import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionResponse
+import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionStatusResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.cluster.presentation.dto.response.EksClusterCandidateResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
@@ -33,6 +34,14 @@ interface AwsClusterControllerDocs {
     )
     @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class)
     fun startAwsConnection(userId: UUID, request: StartAwsConnectionRequest): ResponseEntity<AwsConnectionResponse>
+
+    @Operation(
+        summary = "AWS 연결 상태",
+        description = "템플릿 v2 스택이 만들어지면 서버가 그 알림을 확인해 accountId 를 채웁니다. 화면은 스택을 만드는 동안 " +
+            "이 값이 생길 때까지 물어봅니다. 팀 관리자만 할 수 있습니다.",
+    )
+    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, AwsConnectionNotStartedException::class)
+    fun getAwsConnection(userId: UUID, teamId: UUID): ResponseEntity<AwsConnectionStatusResponse>
 
     @Operation(
         summary = "EKS 클러스터 후보 조회",

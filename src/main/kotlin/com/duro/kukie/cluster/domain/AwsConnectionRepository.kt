@@ -8,6 +8,8 @@ interface AwsConnectionRepository : JpaRepository<AwsConnection, UUID> {
 
     fun findByTeamId(teamId: UUID): AwsConnection?
 
+    fun findByExternalId(externalId: String): AwsConnection?
+
     fun deleteAllByTeamId(teamId: UUID)
 }
 

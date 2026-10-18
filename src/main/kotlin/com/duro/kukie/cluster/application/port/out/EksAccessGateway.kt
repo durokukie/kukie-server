@@ -2,6 +2,9 @@ package com.duro.kukie.cluster.application.port.out
 
 interface EksAccessGateway {
 
+    /** 역할을 맡을 수 있는지만 본다. 못 맡으면 AwsRoleNotAssumableException. */
+    fun verify(target: AwsTarget)
+
     fun listClusters(target: AwsTarget, regions: List<String>): List<EksClusterSummary>
 
     fun describeCluster(target: AwsTarget, region: String, clusterName: String): EksClusterEndpoint

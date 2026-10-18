@@ -18,6 +18,10 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     val registrations = mutableListOf<Registration>()
 
+    override fun verify(target: AwsTarget) {
+        record(target)
+    }
+
     override fun listClusters(target: AwsTarget, regions: List<String>): List<EksClusterSummary> {
         record(target)
         return clusters.filter { it.region in regions }
