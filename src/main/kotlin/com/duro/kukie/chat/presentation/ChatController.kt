@@ -1,6 +1,7 @@
 package com.duro.kukie.chat.presentation
 
 import com.duro.kukie.chat.application.CreateChatService
+import com.duro.kukie.chat.application.DeleteChatService
 import com.duro.kukie.chat.application.GetChatService
 import com.duro.kukie.chat.application.GetChatsService
 import com.duro.kukie.chat.presentation.dto.request.CreateChatRequest
@@ -12,6 +13,7 @@ import com.duro.kukie.global.security.Authenticated
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -28,6 +30,7 @@ class ChatController(
     private val createChatService: CreateChatService,
     private val getChatsService: GetChatsService,
     private val getChatService: GetChatService,
+    private val deleteChatService: DeleteChatService,
 ) : ChatControllerDocs {
 
     @PostMapping
@@ -52,5 +55,15 @@ class ChatController(
         @AuthUser userId: UUID,
     ): ResponseEntity<ChatDetailResponse> {
         return ResponseEntity.ok(getChatService(conversationId, userId))
+    }
+
+    @DeleteMapping("/{conversationId}")
+    override fun deleteChat(
+        @PathVariable conversationId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        deleteChatService(conversationId, userId)
+
+        return ResponseEntity.noContent().build()
     }
 }

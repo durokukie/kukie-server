@@ -87,6 +87,10 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
         """,
     )
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)
+
+    @Modifying
+    @Query("delete from ChatRun r where r.sessionId = :sessionId")
+    fun deleteAllBySessionId(@Param("sessionId") sessionId: UUID)
 }
 
 fun ChatRunRepository.findByIdOrThrow(id: UUID): ChatRun =

@@ -15,6 +15,7 @@ import com.duro.kukie.cluster.ClusterFixture
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.support.IntegrationTest
+import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.user.UserFixture
 import com.jayway.jsonpath.JsonPath
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.util.UUID
@@ -228,6 +230,101 @@ class ChatIntegrationTest : IntegrationTest() {
             status { isNotFound() }
             jsonPath("$.code") { value(ChatErrorCode.NOT_FOUND.code) }
         }
+    }
+
+    @Test
+    fun `내 private 대화를 기록과 함께 지우면 클러스터도 지울 수 있다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id)
+        val session = savedSession(me.user.id, cluster.id)
+        val run = chatRunRepository.save(ChatFixture.run(session.id, status = RunStatus.COMPLETED))
+        val plan = actionPlanRepository.save(ActionPlanFixture.plan(run.id, toolCallId = "call-1"))
+
+        // when
+        mockMvc.delete("/conversations/${session.id}") {
+            authorization(me.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        chatSessionRepository.existsById(session.id) shouldBe false
+        chatRunRepository.existsById(run.id) shouldBe false
+        actionPlanRepository.existsById(plan.id) shouldBe false
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+        }.andExpect { status { isNoContent() } }
+    }
+
+    @Test
+    fun `shared 대화는 팀 관리자가 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val member = userRepository.save(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.id to TeamRole.MEMBER)
+        val cluster = savedCluster(member.id, teamId = teamId)
+        val shared = savedSession(member.id, cluster.id, visibility = ChatVisibility.SHARED)
+
+        // when & then
+        mockMvc.delete("/conversations/${shared.id}") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+        chatSessionRepository.existsById(shared.id) shouldBe false
+    }
+
+    @Test
+    fun `팀 관리자가 아니면 shared 대화를 지울 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val admin = userRepository.save(UserFixture.user(email = "admin@example.com"))
+        val teamId = savedTeam(admin.id to TeamRole.ADMIN, me.user.id to TeamRole.MEMBER)
+        val cluster = savedCluster(admin.id, teamId = teamId)
+        val shared = savedSession(me.user.id, cluster.id, visibility = ChatVisibility.SHARED)
+
+        // when & then
+        mockMvc.delete("/conversations/${shared.id}") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        chatSessionRepository.existsById(shared.id) shouldBe true
+    }
+
+    @Test
+    fun `남의 private 대화는 팀 관리자도 지울 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val other = userRepository.save(UserFixture.user(email = "other@example.com"))
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN, other.id to TeamRole.MEMBER)
+        val cluster = savedCluster(me.user.id, teamId = teamId)
+        val othersPrivate = savedSession(other.id, cluster.id)
+
+        // when & then
+        mockMvc.delete("/conversations/${othersPrivate.id}") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ChatErrorCode.NOT_FOUND.code) }
+        }
+        chatSessionRepository.existsById(othersPrivate.id) shouldBe true
+    }
+
+    @Test
+    fun `끝나지 않은 요청이 있는 대화는 지울 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id)
+        val session = savedSession(me.user.id, cluster.id)
+        chatRunRepository.save(ChatFixture.run(session.id))
+
+        // when & then
+        mockMvc.delete("/conversations/${session.id}") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ChatErrorCode.ACTIVE_RUN_EXISTS.code) }
+        }
+        chatSessionRepository.existsById(session.id) shouldBe true
     }
 
     private fun savedCluster(
