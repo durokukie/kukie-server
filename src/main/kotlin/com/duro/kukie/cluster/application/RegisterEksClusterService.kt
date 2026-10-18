@@ -11,6 +11,7 @@ import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.findByTeamIdOrThrow
 import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
 import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
+import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.EksEndpointRejectedException
 import com.duro.kukie.cluster.exception.InvalidNamespaceException
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
@@ -33,6 +34,9 @@ class RegisterEksClusterService(
         clusterPermission.requireTeamAdmin(command.teamId, command.userId)
         if (command.region !in clusterAwsProperties.regions) throw AwsRegionNotSupportedException()
         if (!isAllowedNamespace(command.namespace)) throw InvalidNamespaceException()
+        // 고객 계정에 권한을 붙인 뒤 이름 중복으로 저장이 실패하면 권한만 남으므로 먼저 확인한다.
+        // 동시 등록이 이 검사를 함께 통과하는 경우는 아래 저장의 unique 제약이 막는다.
+        if (clusterRepository.existsByTeamIdAndName(command.teamId, command.name)) throw ClusterNameTakenException()
         val connection = awsConnectionRepository.findByTeamIdOrThrow(command.teamId)
         val credential = EksCredential(
             accountId = command.accountId,

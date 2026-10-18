@@ -23,6 +23,8 @@ interface ClusterRepository : JpaRepository<Cluster, UUID> {
 
     fun findAllByTeamIdOrderByCreatedAt(teamId: UUID): List<Cluster>
 
+    fun existsByTeamIdAndName(teamId: UUID, name: String): Boolean
+
     @Query(value = "select id from tbl_cluster where team_id = :teamId order by id for update", nativeQuery = true)
     fun lockIdsByTeamId(@Param("teamId") teamId: UUID): List<UUID>
 

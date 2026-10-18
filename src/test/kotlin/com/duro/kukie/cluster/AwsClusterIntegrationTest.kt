@@ -416,6 +416,8 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             status { isConflict() }
             jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_NAME_TAKEN.code) }
         }
+        // 고객 계정은 건드리지 않는다
+        fakeEksAccessGateway.targets.shouldBeEmpty()
     }
 
     private fun startConnection(user: LoggedInUser, teamId: UUID): String {
