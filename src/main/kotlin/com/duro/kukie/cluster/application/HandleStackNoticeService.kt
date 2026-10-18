@@ -32,9 +32,10 @@ class HandleStackNoticeService(
 
     /**
      * 처리를 끝냈으면 true — 보관함에서 지운다. 방금 만든 역할이 아직 안 보이면(IAM 전파) false 로 두어
-     * 보관함이 잠시 뒤 다시 준다. 몇 번 실패하면 보관함이 dead 큐로 옮긴다.
+     * 보관함이 잠시 뒤 다시 준다. 마지막 시도(lastAttempt)에도 못 맡으면 FAILED 를 회신해 고객 스택이
+     * 한 시간 멈춰 있지 않게 한다(신뢰 정책을 고친 경우 등).
      */
-    operator fun invoke(notice: StackNoticeCommand): Boolean {
+    operator fun invoke(notice: StackNoticeCommand, lastAttempt: Boolean = false): Boolean {
         if (!stackNoticeResponder.accepts(notice.responseUrl)) {
             log.warn("CloudFormation 응답 주소가 아닌 스택 알림을 버립니다: stack={}", notice.stackId)
             return true
@@ -52,6 +53,7 @@ class HandleStackNoticeService(
         try {
             eksAccessGateway.verify(AwsTarget(accountId = accountId, externalId = connection.externalId))
         } catch (_: AwsRoleNotAssumableException) {
+            if (lastAttempt) return fail(notice, NOT_ASSUMABLE)
             log.info("스택 알림의 역할을 아직 맡을 수 없어 다시 받습니다: stack={}", notice.stackId)
             return false
         }
@@ -69,8 +71,9 @@ class HandleStackNoticeService(
 
     /** 역할 ARN 이 이 ExternalId 의 KukieAccess 역할일 때만 그 계정 번호. */
     private fun accountOf(roleArn: String?, externalId: String): String? {
-        val pattern = Regex("arn:aws:iam::(\\d{12}):role/${Regex.escape(clusterAwsProperties.roleNamePrefix + externalId)}")
-        return roleArn?.let(pattern::matchEntire)?.groupValues?.get(1)
+        val match = roleArn?.let(ROLE_ARN::matchEntire) ?: return null
+        val (accountId, roleName) = match.destructured
+        return accountId.takeIf { roleName == clusterAwsProperties.roleNamePrefix + externalId }
     }
 
     /** 만들 때는 우리가 정하고, 바꾸거나 지울 때는 CloudFormation 이 준 값을 그대로 돌려준다(달라지면 교체로 본다). */
@@ -78,6 +81,8 @@ class HandleStackNoticeService(
         notice.physicalResourceId ?: "kukie-connection-${notice.externalId ?: "unknown"}"
 
     companion object {
+        private val ROLE_ARN = Regex("arn:aws:iam::(\\d{12}):role/([\\w+=,.@-]+)")
+        private const val NOT_ASSUMABLE = "Kukie 가 역할을 맡을 수 없습니다. 템플릿을 고치지 말고 스택을 다시 만들어 주세요."
         private const val UNKNOWN_CONNECTION = "Kukie 에서 시작한 AWS 연결이 아닙니다. Kukie 화면의 링크로 다시 만들어 주세요."
         private const val ROLE_MISMATCH = "역할 이름이 ExternalId 와 맞지 않습니다. Kukie 템플릿을 고치지 말고 그대로 써 주세요."
     }

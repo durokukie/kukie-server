@@ -81,6 +81,23 @@ class StackNoticeIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `마지막 시도에도 역할을 맡을 수 없으면 실패를 회신한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
+
+        // when
+        val done = handleStackNoticeService(notice(connection.externalId), lastAttempt = true)
+
+        // then
+        done shouldBe true
+        fakeStackNoticeResponder.responses.single().success shouldBe false
+        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+    }
+
+    @Test
     fun `Kukie 가 만들지 않은 ExternalId 면 실패를 회신한다`() {
         // when
         val done = handleStackNoticeService(notice("kukie-0000000000000000"))
