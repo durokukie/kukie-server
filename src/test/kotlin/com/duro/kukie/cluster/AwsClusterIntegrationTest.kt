@@ -71,16 +71,16 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isOk() }
             jsonPath("$.templateUrl") { value(TEMPLATE_URL) }
-            jsonPath("$.stackName") { value("kukie-access") }
         }.andReturn().response.contentAsString
 
         // then
         val externalId = JsonPath.read<String>(response, "$.externalId")
         externalId shouldMatch Regex("kukie-[0-9a-f]{16}")
+        JsonPath.read<String>(response, "$.stackName") shouldBe "kukie-access-$externalId"
         JsonPath.read<String>(response, "$.quickCreateUrl") shouldBe
             "https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-2#/stacks/quickcreate" +
             "?templateURL=https%3A%2F%2Fkukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com" +
-            "%2Fkukie-access%2Fv1.yaml&stackName=kukie-access&param_ExternalId=$externalId"
+            "%2Fkukie-access%2Fv1.yaml&stackName=kukie-access-$externalId&param_ExternalId=$externalId"
         val stored = awsConnectionRepository.findByTeamId(teamId)!!
         stored.externalId shouldBe externalId
         stored.createdBy shouldBe admin.user.id
