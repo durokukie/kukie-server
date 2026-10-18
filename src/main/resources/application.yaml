@@ -45,10 +45,11 @@ cluster:
   allow-local: ${KUKIE_ALLOW_LOCAL_CLUSTER:false}
   aws:
     # 고객이 CloudFormation 으로 만드는 KukieAccess-<ExternalId> 역할 템플릿 (kukie-infra 가 게시한다)
-    template-url: https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v1.yaml
+    template-url: https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v2.yaml
     stack-name: kukie-access
     console-region: ap-northeast-2
     regions:
       - ap-northeast-2
     role-name-prefix: KukieAccess-
     session-seconds: 900
+    # 템플릿 v2 스택 알림 보관함(SQS) — 환경 변수 CLUSTER_AWS_NOTICE_QUEUE_URL 로만 준다. 없으면 알림을 읽지 않는다

@@ -38,6 +38,10 @@ class AwsEksAccessGateway(
     private val tokenSigner = EksTokenSigner(clock)
     private val sessions = ConcurrentHashMap<AwsTarget, AwsSessionCredentials>()
 
+    override fun verify(target: AwsTarget) {
+        assume(target)
+    }
+
     override fun listClusters(target: AwsTarget, regions: List<String>): List<EksClusterSummary> {
         val credentials = assume(target)
         return regions.flatMap { region ->

@@ -26,4 +26,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeEksAccessGateway(): FakeEksAccessGateway = FakeEksAccessGateway()
+
+    @Bean
+    @Primary
+    fun fakeStackNoticeResponder(): FakeStackNoticeResponder = FakeStackNoticeResponder()
 }
