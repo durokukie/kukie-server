@@ -82,8 +82,12 @@ class HandleStackNoticeService(
 
     companion object {
         private val ROLE_ARN = Regex("arn:aws:iam::(\\d{12}):role/([\\w+=,.@-]+)")
-        private const val NOT_ASSUMABLE = "Kukie 가 역할을 맡을 수 없습니다. 템플릿을 고치지 말고 스택을 다시 만들어 주세요."
-        private const val UNKNOWN_CONNECTION = "Kukie 에서 시작한 AWS 연결이 아닙니다. Kukie 화면의 링크로 다시 만들어 주세요."
-        private const val ROLE_MISMATCH = "역할 이름이 ExternalId 와 맞지 않습니다. Kukie 템플릿을 고치지 말고 그대로 써 주세요."
+        // 고객이 AWS 콘솔의 스택 이벤트에서 읽는다. CloudFormation 이 ASCII 밖의 글자를 ?로 바꿔 보여 줘서 영어로 쓴다
+        private const val NOT_ASSUMABLE =
+            "Kukie could not assume the KukieAccess role. Recreate the stack from the Kukie link without editing the template."
+        private const val UNKNOWN_CONNECTION =
+            "This ExternalId was not issued by Kukie. Start again from the AWS connect button in Kukie."
+        private const val ROLE_MISMATCH =
+            "The role name does not match the ExternalId. Use the Kukie template as is."
     }
 }
