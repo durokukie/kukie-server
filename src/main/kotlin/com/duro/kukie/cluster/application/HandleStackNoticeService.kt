@@ -83,7 +83,6 @@ class HandleStackNoticeService(
     companion object {
         private val ROLE_ARN = Regex("arn:aws:iam::(\\d{12}):role/([\\w+=,.@-]+)")
         // 고객이 AWS 콘솔의 스택 이벤트에서 읽는다. CloudFormation 이 ASCII 밖의 글자를 ?로 바꿔 보여 줘서 영어로 쓴다
-        // (2026-10-19 시험 스택에서 확인)
         private const val NOT_ASSUMABLE =
             "Kukie could not assume the KukieAccess role. Recreate the stack from the Kukie link without editing the template."
         private const val UNKNOWN_CONNECTION =
