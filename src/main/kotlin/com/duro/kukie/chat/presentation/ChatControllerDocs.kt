@@ -1,5 +1,6 @@
 package com.duro.kukie.chat.presentation
 
+import com.duro.kukie.chat.exception.ActiveRunExistsException
 import com.duro.kukie.chat.exception.ChatNotFoundException
 import com.duro.kukie.chat.exception.ClusterRequiredException
 import com.duro.kukie.chat.exception.ClusterTeamMismatchException
@@ -9,6 +10,7 @@ import com.duro.kukie.chat.presentation.dto.response.ChatResponse
 import com.duro.kukie.chat.presentation.dto.response.CreateChatResponse
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import com.duro.kukie.global.docs.ApiErrorResponses
+import com.duro.kukie.team.exception.NotTeamAdminException
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
@@ -37,4 +39,13 @@ interface ChatControllerDocs {
     )
     @ApiErrorResponses(ChatNotFoundException::class)
     fun getChat(conversationId: UUID, userId: UUID): ResponseEntity<ChatDetailResponse>
+
+    @Operation(
+        summary = "대화 삭제",
+        description = "대화와 그 기록·조치 계획을 지웁니다. private 대화는 만든 사람이, shared 대화는 팀 관리자가 지울 수 있고, " +
+            "끝나지 않은 요청이 있으면 지울 수 없습니다. 클러스터의 대화를 모두 지우면 클러스터를 삭제할 수 있습니다.",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(ChatNotFoundException::class, NotTeamAdminException::class, ActiveRunExistsException::class)
+    fun deleteChat(conversationId: UUID, userId: UUID): ResponseEntity<Unit>
 }
