@@ -12,7 +12,7 @@ import org.springframework.validation.annotation.Validated
 @ConfigurationProperties(prefix = "cluster.aws")
 data class ClusterAwsProperties(
     @field:NotBlank val templateUrl: String =
-        "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v2.yaml",
+        "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v3.yaml",
     @field:NotBlank val stackName: String = "kukie-access",
     @field:NotBlank val consoleRegion: String = "ap-northeast-2",
     @field:NotEmpty val regions: List<String> = listOf("ap-northeast-2"),

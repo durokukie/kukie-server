@@ -2,12 +2,14 @@ package com.duro.kukie.cluster.presentation
 
 import com.duro.kukie.cluster.application.DeleteClusterService
 import com.duro.kukie.cluster.application.GetClusterService
+import com.duro.kukie.cluster.application.GetClusterSetupService
 import com.duro.kukie.cluster.application.GetClustersService
 import com.duro.kukie.cluster.application.RegisterClusterService
 import com.duro.kukie.cluster.application.UpdateClusterService
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterRequest
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
+import com.duro.kukie.cluster.presentation.dto.response.ClusterSetupResponse
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
 import jakarta.validation.Valid
@@ -31,6 +33,7 @@ class ClusterController(
     private val registerClusterService: RegisterClusterService,
     private val getClustersService: GetClustersService,
     private val getClusterService: GetClusterService,
+    private val getClusterSetupService: GetClusterSetupService,
     private val updateClusterService: UpdateClusterService,
     private val deleteClusterService: DeleteClusterService,
 ) : ClusterControllerDocs {
@@ -57,6 +60,14 @@ class ClusterController(
         @AuthUser userId: UUID,
     ): ResponseEntity<ClusterResponse> {
         return ResponseEntity.ok(getClusterService(clusterId, userId))
+    }
+
+    @GetMapping("/{clusterId}/setup")
+    override fun getClusterSetup(
+        @PathVariable clusterId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<ClusterSetupResponse> {
+        return ResponseEntity.ok(getClusterSetupService(clusterId, userId))
     }
 
     @PatchMapping("/{clusterId}")

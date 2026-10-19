@@ -1,14 +1,18 @@
 package com.duro.kukie.cluster.presentation
 
+import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.ClusterInUseException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import com.duro.kukie.cluster.exception.ClusterProviderMismatchException
+import com.duro.kukie.cluster.exception.EksAccessDeniedException
+import com.duro.kukie.cluster.exception.EksClusterNotFoundException
 import com.duro.kukie.cluster.exception.KubeconfigRejectedException
 import com.duro.kukie.cluster.exception.NothingToUpdateException
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterRequest
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
+import com.duro.kukie.cluster.presentation.dto.response.ClusterSetupResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.team.exception.NotTeamAdminException
 import com.duro.kukie.team.exception.NotTeamMemberException
@@ -43,6 +47,20 @@ interface ClusterControllerDocs {
     @Operation(summary = "클러스터 조회", description = "클러스터 하나를 조회합니다. 자격증명은 응답에 없습니다.")
     @ApiErrorResponses(ClusterNotFoundException::class)
     fun getCluster(clusterId: UUID, userId: UUID): ResponseEntity<ClusterResponse>
+
+    @Operation(
+        summary = "클러스터 구성 조회",
+        description = "EKS 클러스터의 버전·엔드포인트 공개 여부·서비스 CIDR 과 애드온·노드 그룹·서브넷(가용 영역·CIDR)을 조회합니다. " +
+            "AWS 역할로 연결하지 않은 클러스터는 status 가 unsupported 이고, 고객 역할이 템플릿 v3 이전이라 " +
+            "애드온·노드 그룹·서브넷을 읽지 못하면 status 가 permission_required 이며 목록은 비어 있습니다.",
+    )
+    @ApiErrorResponses(
+        ClusterNotFoundException::class,
+        AwsRoleNotAssumableException::class,
+        EksClusterNotFoundException::class,
+        EksAccessDeniedException::class,
+    )
+    fun getClusterSetup(clusterId: UUID, userId: UUID): ResponseEntity<ClusterSetupResponse>
 
     @Operation(
         summary = "클러스터 수정",

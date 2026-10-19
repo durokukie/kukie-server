@@ -35,6 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.delete
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.net.InetAddress
 import java.util.UUID
@@ -81,7 +82,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         JsonPath.read<String>(response, "$.quickCreateUrl") shouldBe
             "https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-2#/stacks/quickcreate" +
             "?templateURL=https%3A%2F%2Fkukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com" +
-            "%2Fkukie-access%2Fv2.yaml&stackName=kukie-access-$externalId&param_ExternalId=$externalId"
+            "%2Fkukie-access%2Fv3.yaml&stackName=kukie-access-$externalId&param_ExternalId=$externalId"
         val stored = awsConnectionRepository.findByTeamId(teamId)!!
         stored.externalId shouldBe externalId
         stored.createdBy shouldBe admin.user.id
@@ -421,6 +422,140 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         fakeEksAccessGateway.targets.shouldBeEmpty()
     }
 
+    // ── 클러스터 구성 조회 ──────────────────────────────────────
+
+    @Test
+    fun `구성원은 EKS 클러스터의 애드온·노드 그룹·서브넷을 본다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // when
+        val response = mockMvc.get("/clusters/$clusterId/setup") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("ok") }
+            jsonPath("$.kubernetesVersion") { value("1.31") }
+            jsonPath("$.platformVersion") { value("eks.12") }
+            jsonPath("$.endpointPublic") { value(true) }
+            jsonPath("$.endpointPrivate") { value(false) }
+            jsonPath("$.serviceCidr") { value("172.20.0.0/16") }
+            jsonPath("$.addons[1].name") { value("vpc-cni") }
+            jsonPath("$.addons[1].version") { value("v1.19.0-eksbuild.1") }
+            jsonPath("$.addons[1].status") { value("ACTIVE") }
+            jsonPath("$.nodegroups[0].name") { value("ng-1") }
+            jsonPath("$.nodegroups[0].instanceTypes[0]") { value("t3.large") }
+            jsonPath("$.nodegroups[0].capacityType") { value("ON_DEMAND") }
+            jsonPath("$.nodegroups[0].desired") { value(2) }
+            jsonPath("$.nodegroups[0].min") { value(1) }
+            jsonPath("$.nodegroups[0].max") { value(3) }
+            jsonPath("$.subnets[0].zone") { value("ap-northeast-2a") }
+            jsonPath("$.subnets[0].cidr") { value("10.60.0.0/19") }
+        }.andReturn().response.contentAsString
+
+        // then
+        JsonPath.read<Map<String, Any?>>(response, "$").keys shouldBe setOf(
+            "status", "kubernetesVersion", "platformVersion", "endpointPublic", "endpointPrivate", "serviceCidr",
+            "addons", "nodegroups", "subnets",
+        )
+        JsonPath.read<List<String>>(response, "$.nodegroups[0].zones") shouldBe listOf("ap-northeast-2a", "ap-northeast-2c")
+        JsonPath.read<Map<String, Any?>>(response, "$.subnets[0]").keys shouldBe setOf("zone", "cidr")
+        fakeEksAccessGateway.setupRequests shouldBe listOf(
+            FakeEksAccessGateway.SetupRequest(
+                AwsTarget(accountId = ACCOUNT_ID, externalId = externalId),
+                DEFAULT_REGION,
+                DEFAULT_CLUSTER_NAME,
+            ),
+        )
+    }
+
+    @Test
+    fun `템플릿 v3 이전 역할이면 버전만 주고 권한이 필요하다고 알린다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        startConnection(admin, teamId)
+        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        fakeEksAccessGateway.setup = FakeEksAccessGateway.DEFAULT_SETUP.copy(inventory = null)
+
+        // when & then
+        mockMvc.get("/clusters/$clusterId/setup") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("permission_required") }
+            jsonPath("$.kubernetesVersion") { value("1.31") }
+            jsonPath("$.serviceCidr") { value("172.20.0.0/16") }
+            jsonPath("$.addons.length()") { value(0) }
+            jsonPath("$.nodegroups.length()") { value(0) }
+            jsonPath("$.subnets.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `kubeconfig 로 등록한 클러스터는 구성을 지원하지 않는다고 알린다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+
+        // when & then
+        mockMvc.get("/clusters/${cluster.id}/setup") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("unsupported") }
+            jsonPath("$.kubernetesVersion") { value(null) }
+            jsonPath("$.endpointPublic") { value(null) }
+            jsonPath("$.addons.length()") { value(0) }
+            jsonPath("$.nodegroups.length()") { value(0) }
+            jsonPath("$.subnets.length()") { value(0) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `다른 팀의 클러스터 구성은 볼 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val stranger = loggedInUser(UserFixture.user(email = "stranger@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        startConnection(admin, teamId)
+        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        fakeEksAccessGateway.targets.clear()
+
+        // when & then
+        mockMvc.get("/clusters/$clusterId/setup") {
+            authorization(stranger.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.NOT_FOUND.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `고객 계정의 역할을 맡지 못하면 구성 대신 알려 준다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        startConnection(admin, teamId)
+        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
+
+        // when & then
+        mockMvc.get("/clusters/$clusterId/setup") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.AWS_ROLE_NOT_ASSUMABLE.code) }
+        }
+    }
+
     // ── EKS 클러스터 삭제 ────────────────────────────────────────
 
     @Test
@@ -520,6 +655,6 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     companion object {
         private const val ACCOUNT_ID = "123456789012"
         private const val TEMPLATE_URL =
-            "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v2.yaml"
+            "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v3.yaml"
     }
 }
