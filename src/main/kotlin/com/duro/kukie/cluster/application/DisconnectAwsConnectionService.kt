@@ -39,6 +39,7 @@ class DisconnectAwsConnectionService(
         val stackConsoleUrl = StackConsoleUrl.of(connection.stackId, stackName, clusterAwsProperties.consoleRegion)
 
         releaseEksAccess(teamId)
+        // 정리와 저장 사이에 다시 만든 스택의 알림이 끼어들면 붙인 entry 와 달리 연결이 비워진다. 창이 짧아 받아들인다
         connection.disconnect()
         awsConnectionRepository.save(connection)
 

@@ -21,6 +21,7 @@ import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.exception.TeamErrorCode
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -84,11 +85,11 @@ class StackNoticeIntegrationTest : IntegrationTest() {
             }
         }
         // 이 팀에는 아직 EKS 가 없다
-        fakeEksAccessGateway.registrations.shouldBeEmpty()
+        fakeEksAccessGateway.accessChanges.shouldBeEmpty()
     }
 
     @Test
-    fun `연결을 해제했다가 스택을 다시 만들면 등록해 둔 EKS 에 access entry 를 다시 붙인다`() {
+    fun `스택을 다시 만들면 등록해 둔 EKS 마다 옛 access entry 를 지우고 다시 붙인다`() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
@@ -96,6 +97,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         val externalId = connection.externalId
         saveEks(teamId, admin.user.id, "데모", eksCredential(externalId), "kukie-demo")
         saveEks(teamId, admin.user.id, "앱", eksCredential(externalId), "kukie-app")
+        saveEks(teamId, admin.user.id, "다른 EKS", eksCredential(externalId, clusterName = "other"), "kukie-demo")
         // 다른 계정의 EKS 와 kubeconfig 클러스터는 건드리지 않는다
         saveEks(teamId, admin.user.id, "다른 계정", eksCredential(externalId, accountId = "210987654321"), "kukie-demo")
         clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId, name = "kubeconfig"))
@@ -105,9 +107,21 @@ class StackNoticeIntegrationTest : IntegrationTest() {
 
         // then
         val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        val changes = fakeEksAccessGateway.accessChanges
+        changes shouldHaveSize 5
+        // EKS 마다 지우기 한 번이 그 EKS 의 다시 붙이기보다 먼저다
+        for (clusterName in listOf(DEFAULT_CLUSTER_NAME, "other")) {
+            val unregister = FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, clusterName, emptySet())
+            changes.count { it == unregister } shouldBe 1
+            val registers = changes.withIndex().filter {
+                (it.value as? FakeEksAccessGateway.Registration)?.clusterName == clusterName
+            }
+            registers.forEach { (it.index > changes.indexOf(unregister)) shouldBe true }
+        }
         fakeEksAccessGateway.registrations shouldContainExactlyInAnyOrder listOf(
             FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo"),
             FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-app"),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, "other", "kukie-demo"),
         )
         fakeStackNoticeResponder.responses.single().success shouldBe true
     }
@@ -124,7 +138,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         handleStackNoticeService(notice(connection.externalId, requestType = "Update", physicalResourceId = "kukie-connection-x"))
 
         // then
-        fakeEksAccessGateway.registrations.shouldBeEmpty()
+        fakeEksAccessGateway.accessChanges.shouldBeEmpty()
         awsConnectionRepository.findByTeamId(teamId)!!.accountId shouldBe ACCOUNT_ID
     }
 
@@ -268,11 +282,15 @@ class StackNoticeIntegrationTest : IntegrationTest() {
     private fun stackIdOf(externalId: String) =
         "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/1a2b3c4d-0000-1111-2222-333344445555"
 
-    private fun eksCredential(externalId: String, accountId: String = ACCOUNT_ID) = EksCredential(
+    private fun eksCredential(
+        externalId: String,
+        accountId: String = ACCOUNT_ID,
+        clusterName: String = DEFAULT_CLUSTER_NAME,
+    ) = EksCredential(
         accountId = accountId,
         externalId = externalId,
         region = DEFAULT_REGION,
-        clusterName = DEFAULT_CLUSTER_NAME,
+        clusterName = clusterName,
     )
 
     private fun saveEks(teamId: UUID, userId: UUID, name: String, credential: EksCredential, namespace: String) {
