@@ -1,25 +1,35 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.cluster.application.EksCredential
 import com.duro.kukie.cluster.application.HandleStackNoticeService
 import com.duro.kukie.cluster.application.port.`in`.StackNoticeCommand
 import com.duro.kukie.cluster.application.port.out.AwsTarget
+import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.StackNoticeResult
 import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
+import com.duro.kukie.cluster.domain.ClusterProvider
+import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.ClusterErrorCode
 import com.duro.kukie.support.FakeEksAccessGateway
+import com.duro.kukie.support.FakeEksAccessGateway.Companion.DEFAULT_CLUSTER_NAME
+import com.duro.kukie.support.FakeEksAccessGateway.Companion.DEFAULT_REGION
 import com.duro.kukie.support.FakeStackNoticeResponder
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.exception.TeamErrorCode
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.web.servlet.get
+import java.net.URLEncoder
+import java.util.UUID
 
 class StackNoticeIntegrationTest : IntegrationTest() {
 
@@ -31,6 +41,12 @@ class StackNoticeIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var fakeEksAccessGateway: FakeEksAccessGateway
+
+    @Autowired
+    private lateinit var clusterRepository: ClusterRepository
+
+    @Autowired
+    private lateinit var credentialCipher: CredentialCipher
 
     @Autowired
     private lateinit var fakeStackNoticeResponder: FakeStackNoticeResponder
@@ -51,6 +67,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         awsConnectionRepository.findByTeamId(teamId)!!.run {
             accountId shouldBe ACCOUNT_ID
             connectedAt.shouldNotBeNull()
+            stackId shouldBe stackIdOf(connection.externalId)
         }
         fakeStackNoticeResponder.responses shouldBe
             listOf(StackNoticeResult(true, "kukie-connection-${connection.externalId}", ""))
@@ -60,7 +77,69 @@ class StackNoticeIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.externalId") { value(connection.externalId) }
             jsonPath("$.accountId") { value(ACCOUNT_ID) }
+            jsonPath("$.stackConsoleUrl") {
+                value(
+                    "https://ap-northeast-2.console.aws.amazon.com/cloudformation/home?region=ap-northeast-2" +
+                        "#/stacks/stackinfo?stackId=" + URLEncoder.encode(stackIdOf(connection.externalId), Charsets.UTF_8),
+                )
+            }
         }
+        // 이 팀에는 아직 EKS 가 없다
+        fakeEksAccessGateway.accessChanges.shouldBeEmpty()
+    }
+
+    @Test
+    fun `스택을 다시 만들면 등록해 둔 EKS 마다 옛 access entry 를 지우고 다시 붙인다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        val externalId = connection.externalId
+        saveEks(teamId, admin.user.id, "데모", eksCredential(externalId), "kukie-demo")
+        saveEks(teamId, admin.user.id, "앱", eksCredential(externalId), "kukie-app")
+        saveEks(teamId, admin.user.id, "다른 EKS", eksCredential(externalId, clusterName = "other"), "kukie-demo")
+        // 다른 계정의 EKS 와 kubeconfig 클러스터는 건드리지 않는다
+        saveEks(teamId, admin.user.id, "다른 계정", eksCredential(externalId, accountId = "210987654321"), "kukie-demo")
+        clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId, name = "kubeconfig"))
+
+        // when
+        handleStackNoticeService(notice(externalId))
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        val changes = fakeEksAccessGateway.accessChanges
+        changes shouldHaveSize 5
+        // EKS 마다 지우기 한 번이 그 EKS 의 다시 붙이기보다 먼저다
+        for (clusterName in listOf(DEFAULT_CLUSTER_NAME, "other")) {
+            val unregister = FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, clusterName, emptySet())
+            changes.count { it == unregister } shouldBe 1
+            val registers = changes.withIndex().filter {
+                (it.value as? FakeEksAccessGateway.Registration)?.clusterName == clusterName
+            }
+            registers.forEach { (it.index > changes.indexOf(unregister)) shouldBe true }
+        }
+        fakeEksAccessGateway.registrations shouldContainExactlyInAnyOrder listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo"),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-app"),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, "other", "kukie-demo"),
+        )
+        fakeStackNoticeResponder.responses.single().success shouldBe true
+    }
+
+    @Test
+    fun `스택을 바꾼 알림에는 access entry 를 다시 붙이지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        saveEks(teamId, admin.user.id, "데모", eksCredential(connection.externalId), "kukie-demo")
+
+        // when
+        handleStackNoticeService(notice(connection.externalId, requestType = "Update", physicalResourceId = "kukie-connection-x"))
+
+        // then
+        fakeEksAccessGateway.accessChanges.shouldBeEmpty()
+        awsConnectionRepository.findByTeamId(teamId)!!.accountId shouldBe ACCOUNT_ID
     }
 
     @Test
@@ -192,13 +271,40 @@ class StackNoticeIntegrationTest : IntegrationTest() {
     ) = StackNoticeCommand(
         requestType = requestType,
         responseUrl = responseUrl,
-        stackId = "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/1",
+        stackId = stackIdOf(externalId),
         requestId = "request-1",
         logicalResourceId = "KukieNotice",
         physicalResourceId = physicalResourceId,
         externalId = externalId,
         roleArn = roleArn,
     )
+
+    private fun stackIdOf(externalId: String) =
+        "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/1a2b3c4d-0000-1111-2222-333344445555"
+
+    private fun eksCredential(
+        externalId: String,
+        accountId: String = ACCOUNT_ID,
+        clusterName: String = DEFAULT_CLUSTER_NAME,
+    ) = EksCredential(
+        accountId = accountId,
+        externalId = externalId,
+        region = DEFAULT_REGION,
+        clusterName = clusterName,
+    )
+
+    private fun saveEks(teamId: UUID, userId: UUID, name: String, credential: EksCredential, namespace: String) {
+        clusterRepository.save(
+            ClusterFixture.cluster(
+                registeredBy = userId,
+                teamId = teamId,
+                name = name,
+                credential = credentialCipher.encrypt(credential.toMap()),
+                defaultNamespace = namespace,
+                provider = ClusterProvider.EKS,
+            ),
+        )
+    }
 
     companion object {
         private const val ACCOUNT_ID = "123456789012"

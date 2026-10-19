@@ -26,6 +26,8 @@ import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.user.UserFixture
 import com.jayway.jsonpath.JsonPath
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
@@ -38,6 +40,8 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.net.InetAddress
+import java.net.URLEncoder
+import java.time.LocalDateTime
 import java.util.UUID
 
 class AwsClusterIntegrationTest : IntegrationTest() {
@@ -615,6 +619,148 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             authorization(admin.accessToken)
         }.andExpect { status { isNoContent() } }
         clusterRepository.existsById(clusterId) shouldBe false
+    }
+
+    // ── AWS 연결 해제 ────────────────────────────────────────────
+
+    @Test
+    fun `관리자가 연결을 해제하면 EKS 마다 access entry 를 한 번씩 지우고 스택 콘솔 주소를 준다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val stackId = "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/uuid-1"
+        connect(teamId, stackId)
+        registerEks(admin, teamId, namespace = "kukie-demo", name = "데모")
+        registerEks(admin, teamId, namespace = "kukie-app", name = "앱")
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(teamId, name = "다른 EKS").copy(clusterName = "other").toJson()
+        }.andExpect { status { isCreated() } }
+
+        // when
+        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.stackName") { value("kukie-access-$externalId") }
+            jsonPath("$.stackConsoleUrl") {
+                value(
+                    "https://ap-northeast-2.console.aws.amazon.com/cloudformation/home?region=ap-northeast-2" +
+                        "#/stacks/stackinfo?stackId=" + URLEncoder.encode(stackId, Charsets.UTF_8),
+                )
+            }
+        }
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.unregistrations shouldContainExactlyInAnyOrder listOf(
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, emptySet()),
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, "other", emptySet()),
+        )
+        clusterRepository.count() shouldBe 3
+        awsConnectionRepository.findByTeamId(teamId)!!.run {
+            this.externalId shouldBe externalId
+            accountId.shouldBeNull()
+            connectedAt.shouldBeNull()
+            this.stackId.shouldBeNull()
+        }
+        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.externalId") { value(externalId) }
+            jsonPath("$.accountId") { value(null) }
+            jsonPath("$.stackConsoleUrl") { value(null) }
+        }
+    }
+
+    @Test
+    fun `스택 ARN 을 모르면 스택 이름으로 거른 목록 주소를 준다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(teamId, stackId = null)
+
+        // when & then
+        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.stackName") { value("kukie-access-$externalId") }
+            jsonPath("$.stackConsoleUrl") {
+                value(
+                    "https://ap-northeast-2.console.aws.amazon.com/cloudformation/home?region=ap-northeast-2" +
+                        "#/stacks?filteringText=kukie-access-$externalId&filteringStatus=active&viewNested=true",
+                )
+            }
+        }
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+    }
+
+    @Test
+    fun `access entry 를 정리하지 못해도 연결은 해제한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        startConnection(admin, teamId)
+        connect(teamId, stackId = null)
+        registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
+
+        // when & then
+        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.stackConsoleUrl") { exists() }
+        }
+        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+        clusterRepository.count() shouldBe 1
+    }
+
+    @Test
+    fun `구성원은 연결을 해제할 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        startConnection(admin, teamId)
+        connect(teamId, stackId = null)
+
+        // when & then
+        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        awsConnectionRepository.findByTeamId(teamId)!!.accountId shouldBe ACCOUNT_ID
+    }
+
+    @Test
+    fun `연결을 시작하지 않은 팀은 해제할 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+
+        // when & then
+        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.AWS_CONNECTION_NOT_STARTED.code) }
+        }
+    }
+
+    /** 스택 알림을 확인한 것처럼 계정을 채운다. */
+    private fun connect(teamId: UUID, stackId: String?) {
+        val connection = awsConnectionRepository.findByTeamId(teamId)!!
+        connection.connect(ACCOUNT_ID, LocalDateTime.now(), stackId)
+        awsConnectionRepository.save(connection)
     }
 
     private fun startConnection(user: LoggedInUser, teamId: UUID): String {

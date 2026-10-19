@@ -3,6 +3,7 @@ package com.duro.kukie.cluster.application
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.findByTeamIdOrThrow
 import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionStatusResponse
+import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -11,10 +12,21 @@ import java.util.UUID
 class GetAwsConnectionService(
     private val awsConnectionRepository: AwsConnectionRepository,
     private val clusterPermission: ClusterPermission,
+    private val clusterAwsProperties: ClusterAwsProperties,
 ) {
 
     operator fun invoke(teamId: UUID, userId: UUID): AwsConnectionStatusResponse {
         clusterPermission.requireTeamAdmin(teamId, userId)
-        return AwsConnectionStatusResponse.from(awsConnectionRepository.findByTeamIdOrThrow(teamId))
+        val connection = awsConnectionRepository.findByTeamIdOrThrow(teamId)
+        val stackConsoleUrl = if (connection.connected) {
+            StackConsoleUrl.of(
+                connection.stackId,
+                clusterAwsProperties.stackNameFor(connection.externalId),
+                clusterAwsProperties.consoleRegion,
+            )
+        } else {
+            null
+        }
+        return AwsConnectionStatusResponse.from(connection, stackConsoleUrl)
     }
 }

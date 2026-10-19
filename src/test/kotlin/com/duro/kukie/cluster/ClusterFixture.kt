@@ -52,6 +52,7 @@ object ClusterFixture {
         apiServer: String = DEFAULT_SERVER,
         credential: String = "암호문",
         fingerprint: String = "fp",
+        defaultNamespace: String = DEFAULT_NAMESPACE,
         provider: ClusterProvider = ClusterProvider.GENERIC,
     ): Cluster = Cluster(
         teamId = teamId,
@@ -62,7 +63,7 @@ object ClusterFixture {
         insecure = false,
         credential = credential,
         contextName = DEFAULT_CONTEXT,
-        defaultNamespace = DEFAULT_NAMESPACE,
+        defaultNamespace = defaultNamespace,
         fingerprint = fingerprint,
         provider = provider,
     )

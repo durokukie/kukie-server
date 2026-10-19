@@ -24,13 +24,10 @@ class StartAwsConnectionService(
             externalId = connection.externalId,
             quickCreateUrl = quickCreateUrl(connection.externalId),
             templateUrl = clusterAwsProperties.templateUrl,
-            stackName = stackName(connection.externalId),
+            stackName = clusterAwsProperties.stackNameFor(connection.externalId),
             accountId = connection.accountId,
         )
     }
-
-    /** 한 AWS 계정에 여러 팀이 연결해도 스택 이름이 겹치지 않게 팀마다 다른 ExternalId 를 붙인다. */
-    private fun stackName(externalId: String): String = "${clusterAwsProperties.stackName}-$externalId"
 
     /** 동시에 시작해 팀 unique 에 걸리면 먼저 만든 것을 쓴다. */
     private fun create(command: StartAwsConnectionCommand): AwsConnection =
@@ -43,7 +40,7 @@ class StartAwsConnectionService(
     private fun quickCreateUrl(externalId: String): String =
         "https://console.aws.amazon.com/cloudformation/home?region=${encode(clusterAwsProperties.consoleRegion)}" +
             "#/stacks/quickcreate?templateURL=${encode(clusterAwsProperties.templateUrl)}" +
-            "&stackName=${encode(stackName(externalId))}" +
+            "&stackName=${encode(clusterAwsProperties.stackNameFor(externalId))}" +
             "&param_ExternalId=${encode(externalId)}"
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)

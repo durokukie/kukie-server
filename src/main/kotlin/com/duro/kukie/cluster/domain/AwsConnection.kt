@@ -45,9 +45,25 @@ class AwsConnection(
     var connectedAt: LocalDateTime? = null
         protected set
 
-    fun connect(accountId: String, at: LocalDateTime) {
+    /** 계정을 알려 준 스택의 ARN. 연결 해제 때 고객이 지울 스택을 콘솔에서 바로 열게 한다. 이 칸이 생기기 전에 연결했으면 null. */
+    @Column(name = "stack_id", length = 512)
+    var stackId: String? = null
+        protected set
+
+    val connected: Boolean
+        get() = accountId != null
+
+    fun connect(accountId: String, at: LocalDateTime, stackId: String?) {
         this.accountId = accountId
         this.connectedAt = at
+        this.stackId = stackId
+    }
+
+    /** 연결 해제. 다시 연결할 때 같은 스택 이름을 쓰도록 ExternalId 는 그대로 둔다. */
+    fun disconnect() {
+        this.accountId = null
+        this.connectedAt = null
+        this.stackId = null
     }
 
     companion object {

@@ -20,4 +20,7 @@ data class ClusterAwsProperties(
     @field:Min(900) @field:Max(43200) val sessionSeconds: Int = 900,
     /** 템플릿 v2 스택 알림 보관함(SQS) 주소. 없으면 알림을 읽지 않는다(로컬·테스트). */
     val noticeQueueUrl: String? = null,
-)
+) {
+    /** 한 AWS 계정에 여러 팀이 연결해도 스택 이름이 겹치지 않게 팀마다 다른 ExternalId 를 붙인다. */
+    fun stackNameFor(externalId: String): String = "$stackName-$externalId"
+}

@@ -15,6 +15,7 @@ import com.duro.kukie.cluster.presentation.dto.request.RegisterEksClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.StartAwsConnectionRequest
 import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionStatusResponse
+import com.duro.kukie.cluster.presentation.dto.response.AwsDisconnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.cluster.presentation.dto.response.EksClusterCandidateResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
@@ -38,10 +39,20 @@ interface AwsClusterControllerDocs {
     @Operation(
         summary = "AWS 연결 상태",
         description = "템플릿 v2 스택이 만들어지면 서버가 그 알림을 확인해 accountId 를 채웁니다. 화면은 스택을 만드는 동안 " +
-            "이 값이 생길 때까지 물어봅니다. 팀 관리자만 할 수 있습니다.",
+            "이 값이 생길 때까지 물어봅니다. 연결되어 있으면 그 스택을 여는 콘솔 주소(stackConsoleUrl)도 줍니다. " +
+            "팀 관리자만 할 수 있습니다.",
     )
     @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, AwsConnectionNotStartedException::class)
     fun getAwsConnection(userId: UUID, teamId: UUID): ResponseEntity<AwsConnectionStatusResponse>
+
+    @Operation(
+        summary = "AWS 연결 해제",
+        description = "팀이 등록한 EKS 마다 Kukie 의 access entry 를 지우고(실패해도 해제는 계속합니다) 연결 상태를 비웁니다. " +
+            "Kukie 는 고객 스택을 지울 수 없으므로 고객이 스택을 지울 CloudFormation 콘솔 주소를 돌려줍니다. 등록한 클러스터와 " +
+            "ExternalId 는 남아, 같은 스택 이름으로 다시 연결하면 access entry 를 다시 붙입니다. 팀 관리자만 할 수 있습니다.",
+    )
+    @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, AwsConnectionNotStartedException::class)
+    fun disconnectAwsConnection(userId: UUID, teamId: UUID): ResponseEntity<AwsDisconnectionResponse>
 
     @Operation(
         summary = "EKS 클러스터 후보 조회",
