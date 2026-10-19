@@ -18,5 +18,8 @@ interface EksAccessGateway {
      */
     fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>)
 
+    /** 버전·엔드포인트와 애드온·노드 그룹·서브넷을 읽는다. v3 권한이 없으면 inventory 를 비워 돌려준다. */
+    fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup
+
     fun issueToken(target: AwsTarget, region: String, clusterName: String): String
 }

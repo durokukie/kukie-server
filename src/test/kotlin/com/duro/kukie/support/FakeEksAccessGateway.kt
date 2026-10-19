@@ -2,14 +2,23 @@ package com.duro.kukie.support
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
+import com.duro.kukie.cluster.application.port.out.EksAddon
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.EksClusterInventory
+import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
+import com.duro.kukie.cluster.application.port.out.EksNodegroup
+import com.duro.kukie.cluster.application.port.out.EksSubnet
 
 class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     var clusters: List<EksClusterSummary> = DEFAULT_CLUSTERS
 
     var endpoint: EksClusterEndpoint = DEFAULT_ENDPOINT
+
+    var setup: EksClusterSetup = DEFAULT_SETUP
+
+    val setupRequests = mutableListOf<SetupRequest>()
 
     /** 설정하면 모든 호출이 이 예외로 실패한다 (역할을 맡지 못함, 권한 없음 등). */
     var failure: RuntimeException? = null
@@ -44,6 +53,12 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         unregistrations += Unregistration(target, region, clusterName, keepNamespaces)
     }
 
+    override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
+        record(target)
+        setupRequests += SetupRequest(target, region, clusterName)
+        return setup
+    }
+
     override fun issueToken(target: AwsTarget, region: String, clusterName: String): String {
         record(target)
         return tokenFor(clusterName)
@@ -57,11 +72,19 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     override fun clear() {
         clusters = DEFAULT_CLUSTERS
         endpoint = DEFAULT_ENDPOINT
+        setup = DEFAULT_SETUP
+        setupRequests.clear()
         failure = null
         targets.clear()
         registrations.clear()
         unregistrations.clear()
     }
+
+    data class SetupRequest(
+        val target: AwsTarget,
+        val region: String,
+        val clusterName: String,
+    )
 
     data class Unregistration(
         val target: AwsTarget,
@@ -89,6 +112,35 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val DEFAULT_ENDPOINT = EksClusterEndpoint(
             endpoint = "https://ABCDEF0123456789.gr7.ap-northeast-2.eks.amazonaws.com",
             caData = "ZWtzLWNh",
+        )
+
+        val DEFAULT_SETUP = EksClusterSetup(
+            kubernetesVersion = "1.31",
+            platformVersion = "eks.12",
+            endpointPublic = true,
+            endpointPrivate = false,
+            serviceCidr = "172.20.0.0/16",
+            inventory = EksClusterInventory(
+                addons = listOf(
+                    EksAddon(name = "coredns", version = "v1.11.3-eksbuild.1", status = "ACTIVE"),
+                    EksAddon(name = "vpc-cni", version = "v1.19.0-eksbuild.1", status = "ACTIVE"),
+                ),
+                nodegroups = listOf(
+                    EksNodegroup(
+                        name = "ng-1",
+                        instanceTypes = listOf("t3.large"),
+                        capacityType = "ON_DEMAND",
+                        desired = 2,
+                        min = 1,
+                        max = 3,
+                        zones = listOf("ap-northeast-2a", "ap-northeast-2c"),
+                    ),
+                ),
+                subnets = listOf(
+                    EksSubnet(zone = "ap-northeast-2a", cidr = "10.60.0.0/19"),
+                    EksSubnet(zone = "ap-northeast-2c", cidr = "10.60.32.0/19"),
+                ),
+            ),
         )
 
         fun tokenFor(clusterName: String): String = "k8s-aws-v1.fake-$clusterName"

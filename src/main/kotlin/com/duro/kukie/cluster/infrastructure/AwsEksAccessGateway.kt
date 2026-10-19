@@ -1,9 +1,14 @@
 package com.duro.kukie.cluster.infrastructure
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
+import com.duro.kukie.cluster.application.port.out.EksAddon
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.EksClusterInventory
+import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
+import com.duro.kukie.cluster.application.port.out.EksNodegroup
+import com.duro.kukie.cluster.application.port.out.EksSubnet
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
 import com.duro.kukie.cluster.exception.EksAccessEntryDisabledException
@@ -14,6 +19,10 @@ import org.springframework.stereotype.Component
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.ec2.Ec2Client
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
+import software.amazon.awssdk.services.ec2.model.Filter
+import software.amazon.awssdk.services.ec2.model.Subnet
 import software.amazon.awssdk.services.eks.EksClient
 import software.amazon.awssdk.services.eks.model.AccessDeniedException
 import software.amazon.awssdk.services.eks.model.AccessScope
@@ -120,6 +129,24 @@ class AwsEksAccessGateway(
         }
     }
 
+    override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
+        val credentials = assume(target)
+        return eks(credentials, region).use { eks ->
+            translate {
+                val cluster = eks.describeCluster { it.name(clusterName) }.cluster()
+                val vpc = cluster.resourcesVpcConfig()
+                EksClusterSetup(
+                    kubernetesVersion = cluster.version(),
+                    platformVersion = cluster.platformVersion(),
+                    endpointPublic = vpc?.endpointPublicAccess(),
+                    endpointPrivate = vpc?.endpointPrivateAccess(),
+                    serviceCidr = cluster.kubernetesNetworkConfig()?.serviceIpv4Cidr(),
+                    inventory = unlessV3Denied { inventory(eks, credentials, region, clusterName, vpc?.vpcId()) },
+                )
+            }
+        }
+    }
+
     override fun issueToken(target: AwsTarget, region: String, clusterName: String): String =
         tokenSigner.sign(assume(target), region, clusterName)
 
@@ -149,6 +176,79 @@ class AwsEksAccessGateway(
             .also { sessions[target] = it }
     }
 
+    private fun inventory(
+        eks: EksClient,
+        credentials: AwsSessionCredentials,
+        region: String,
+        clusterName: String,
+        vpcId: String?,
+    ): EksClusterInventory {
+        val subnets = vpcId?.let { subnets(credentials, region, it) }.orEmpty()
+        val zoneBySubnet = subnets.associate { it.subnetId() to it.availabilityZone() }
+
+        // 목록과 상세 조회 사이에 지워진 애드온·노드 그룹은 건너뛴다
+        val addons = eks.listAddonsPaginator { it.clusterName(clusterName) }.addons().mapNotNull { name ->
+            val addon = ignoringNotFound { eks.describeAddon { it.clusterName(clusterName).addonName(name) }.addon() }
+                ?: return@mapNotNull null
+            EksAddon(name = name, version = addon.addonVersion(), status = addon.statusAsString())
+        }
+        val nodegroups = eks.listNodegroupsPaginator { it.clusterName(clusterName) }.nodegroups().mapNotNull { name ->
+            val nodegroup = ignoringNotFound { eks.describeNodegroup { it.clusterName(clusterName).nodegroupName(name) }.nodegroup() }
+                ?: return@mapNotNull null
+            val scaling = nodegroup.scalingConfig()
+            EksNodegroup(
+                name = name,
+                instanceTypes = nodegroup.instanceTypes().orEmpty(),
+                capacityType = nodegroup.capacityTypeAsString(),
+                desired = scaling?.desiredSize(),
+                min = scaling?.minSize(),
+                max = scaling?.maxSize(),
+                zones = nodegroup.subnets().orEmpty().mapNotNull(zoneBySubnet::get).distinct().sorted(),
+            )
+        }
+
+        return EksClusterInventory(
+            addons = addons.sortedBy { it.name },
+            nodegroups = nodegroups.sortedBy { it.name },
+            subnets = subnets
+                .mapNotNull { subnet ->
+                    val zone = subnet.availabilityZone() ?: return@mapNotNull null
+                    val cidr = subnet.cidrBlock() ?: return@mapNotNull null
+                    EksSubnet(zone = zone, cidr = cidr)
+                }
+                .sortedWith(compareBy({ it.zone }, { it.cidr })),
+        )
+    }
+
+    private fun subnets(credentials: AwsSessionCredentials, region: String, vpcId: String): List<Subnet> =
+        Ec2Client.builder()
+            .region(Region.of(region))
+            .credentialsProvider(StaticCredentialsProvider.create(credentials))
+            .overrideConfiguration { it.apiCallTimeout(API_CALL_TIMEOUT) }
+            .build()
+            .use { ec2 ->
+                ec2.describeSubnetsPaginator { it.filters(Filter.builder().name("vpc-id").values(vpcId).build()) }
+                    .subnets()
+                    .toList()
+            }
+
+    /** 템플릿 v3 이전 역할은 애드온·노드 그룹·서브넷 읽기 권한이 없다 — 오류 대신 null 로 알린다. */
+    private fun <T> unlessV3Denied(block: () -> T): T? =
+        try {
+            block()
+        } catch (_: AccessDeniedException) {
+            null
+        } catch (exception: Ec2Exception) {
+            if (exception.awsErrorDetails()?.errorCode() == EC2_UNAUTHORIZED) null else throw exception
+        }
+
+    private fun <T> ignoringNotFound(block: () -> T): T? =
+        try {
+            block()
+        } catch (_: ResourceNotFoundException) {
+            null
+        }
+
     private fun eks(credentials: AwsSessionCredentials, region: String): EksClient =
         EksClient.builder()
             .region(Region.of(region))
@@ -172,6 +272,7 @@ class AwsEksAccessGateway(
         private const val STANDARD_ENTRY = "STANDARD"
         private const val EDIT_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
         private const val FORBIDDEN = 403
+        private const val EC2_UNAUTHORIZED = "UnauthorizedOperation"
         private val API_CALL_TIMEOUT: Duration = Duration.ofSeconds(10)
 
         /** 재사용한 세션으로 만든 토큰도 kubectl 이 끝날 때까지는 살아 있어야 한다. */
