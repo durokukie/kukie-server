@@ -20,6 +20,17 @@ data class ActionPlanDetailResponse(
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime,
     val markdown: String,
+    /** 아래는 payload 를 항목별로 꺼낸 것 — 화면이 계획서(markdown) 원문 대신 나눠 그린다 */
+    val title: String,
+    val toolName: String,
+    val command: List<Any?>,
+    val args: Map<String, Any?>,
+    val target: Map<String, Any?>,
+    val skill: String?,
+    val expectedEffects: List<String>,
+    val sideEffects: List<String>,
+    val dryRunResult: Map<String, Any?>?,
+    val decisionGuidance: String?,
 ) {
     companion object {
         fun of(plan: ActionPlan, markdown: String) = ActionPlanDetailResponse(
@@ -35,6 +46,22 @@ data class ActionPlanDetailResponse(
             createdAt = plan.createdAt,
             updatedAt = plan.updatedAt,
             markdown = markdown,
+            title = plan.title,
+            toolName = plan.toolName,
+            command = (plan.payload["command"] as? List<*>).orEmpty().toList(),
+            args = stringKeyed(plan.payload["args"]).orEmpty(),
+            target = stringKeyed(plan.payload["target"]).orEmpty(),
+            skill = (plan.payload["skill"] as? String)?.ifBlank { null },
+            expectedEffects = strings(plan.payload["expected_effects"]),
+            sideEffects = strings(plan.payload["side_effects"]),
+            dryRunResult = stringKeyed(plan.payload[ActionPlan.DRY_RUN_RESULT]),
+            decisionGuidance = (plan.payload[ActionPlan.DECISION_GUIDANCE] as? String)?.ifBlank { null },
         )
+
+        private fun stringKeyed(value: Any?): Map<String, Any?>? =
+            (value as? Map<*, *>)?.entries?.associate { (key, item) -> key.toString() to item }
+
+        private fun strings(value: Any?): List<String> =
+            (value as? List<*>).orEmpty().mapNotNull { it?.toString() }
     }
 }

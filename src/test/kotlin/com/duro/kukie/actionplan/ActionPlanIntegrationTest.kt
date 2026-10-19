@@ -98,6 +98,11 @@ class ActionPlanIntegrationTest : IntegrationTest() {
             jsonPath("$.markdown") { value(startsWith("# Action Plan\n\n```yaml\nid: ${plan.code}\n")) }
             jsonPath("$.markdown") { value(containsString("status: APPLIED\n")) }
             jsonPath("$.markdown") { value(containsString("# Intent\n\n${ActionPlanFixture.INTENT}\n")) }
+            jsonPath("$.title") { value(ActionPlanFixture.INTENT) }
+            jsonPath("$.toolName") { value(plan.toolName) }
+            jsonPath("$.command.length()") { value(ActionPlanFixture.COMMAND.size) }
+            jsonPath("$.expectedEffects[0]") { value("파드가 3개가 된다") }
+            jsonPath("$.sideEffects[0]") { value("잠깐 부하가 늘 수 있다") }
         }
     }
 
