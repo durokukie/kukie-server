@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   auto-assign:
-    runs-on: ubuntu-latest
+    runs-on: kukie-ci
     steps:
       - name: Auto-assign issue or PR
         uses: actions/github-script@v7

@@ -16,7 +16,7 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: kukie-ci
     permissions:
       contents: read
 
@@ -55,7 +55,7 @@ jobs:
   image:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: kukie-ci
     timeout-minutes: 20
     permissions:
       contents: read
@@ -170,7 +170,7 @@ jobs:
 
   dependency-submission:
 
-    runs-on: ubuntu-latest
+    runs-on: kukie-ci
     permissions:
       contents: write
 
