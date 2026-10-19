@@ -38,11 +38,12 @@ interface ActionPlanRepository : JpaRepository<ActionPlan, UUID> {
     /** 범위가 ChatSessionRepository.findAllVisibleTo 와 같아야 한다. */
     @Query(
         """
-        select new com.duro.kukie.actionplan.domain.VisibleActionPlan(p, s.clusterId, s.userId)
+        select new com.duro.kukie.actionplan.domain.VisibleActionPlan(p, s.clusterId, s.userId, u.name)
         from ActionPlan p
             join ChatRun r on r.id = p.runId
             join ChatSession s on s.id = r.sessionId
             join Cluster c on c.id = s.clusterId
+            join User u on u.id = s.userId
         where ((s.userId = :userId and s.visibility = com.duro.kukie.chat.domain.ChatVisibility.PRIVATE)
             or (s.visibility = com.duro.kukie.chat.domain.ChatVisibility.SHARED
                 and c.teamId in (select m.teamId from TeamMembership m where m.userId = :userId)))

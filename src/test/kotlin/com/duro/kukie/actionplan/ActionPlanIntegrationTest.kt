@@ -40,7 +40,7 @@ class ActionPlanIntegrationTest : IntegrationTest() {
     fun `볼 수 있는 대화의 계획만 최근에 바뀐 순으로 조회한다`() {
         // given
         val me = loggedInUser()
-        val other = userRepository.save(UserFixture.user(email = "other@example.com"))
+        val other = userRepository.save(UserFixture.user(name = "배재현", email = "other@example.com"))
         val teamId = savedTeam(other.id to TeamRole.ADMIN, me.user.id to TeamRole.MEMBER)
         val leftTeam = savedTeam(other.id to TeamRole.ADMIN)
         val myCluster = savedCluster(me.user.id, name = "내 것")
@@ -65,6 +65,7 @@ class ActionPlanIntegrationTest : IntegrationTest() {
             jsonPath("$[0].running") { value(false) }
             jsonPath("$[0].risk") { value("caution") }
             jsonPath("$[0].requestedBy") { value(other.id.toString()) }
+            jsonPath("$[0].requestedByName") { value("배재현") }
             jsonPath("$[0].approvals") { value(1) }
             jsonPath("$[0].updatedAt") { exists() }
         }
