@@ -98,6 +98,28 @@ class AwsEksAccessGateway(
         }
     }
 
+    override fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>) {
+        val principalArn = roleArn(target)
+        eks(assume(target), region).use { eks ->
+            translate<Unit> {
+                if (keepNamespaces.isEmpty()) {
+                    try {
+                        eks.deleteAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }
+                    } catch (_: ResourceNotFoundException) {
+                        // 이미 지운 entry 다
+                    }
+                    return@translate
+                }
+                eks.associateAccessPolicy {
+                    it.clusterName(clusterName)
+                        .principalArn(principalArn)
+                        .policyArn(EDIT_POLICY_ARN)
+                        .accessScope(AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(keepNamespaces.sorted()).build())
+                }
+            }
+        }
+    }
+
     override fun issueToken(target: AwsTarget, region: String, clusterName: String): String =
         tokenSigner.sign(assume(target), region, clusterName)
 
