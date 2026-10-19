@@ -15,6 +15,7 @@ data class ActionPlanSummaryResponse(
     val running: Boolean,
     val risk: PlanRisk,
     val requestedBy: UUID,
+    val requestedByName: String,
     val updatedAt: LocalDateTime,
     val approvals: Long,
 ) {
@@ -30,6 +31,7 @@ data class ActionPlanSummaryResponse(
                 running = plan.status == PlanStatus.EXECUTING,
                 risk = plan.risk,
                 requestedBy = row.ownerId,
+                requestedByName = row.ownerName,
                 updatedAt = plan.updatedAt,
                 approvals = approvals,
             )
