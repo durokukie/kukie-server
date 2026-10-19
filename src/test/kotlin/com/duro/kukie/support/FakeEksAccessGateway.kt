@@ -25,6 +25,12 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     val targets = mutableListOf<AwsTarget>()
 
+    /** roleExists 가 돌려줄 값. */
+    var roleExists: Boolean = true
+
+    /** roleExists 를 부른 대상. 캐시를 거치지 않는 확인이 몇 번 갔는지 본다. */
+    val roleChecks = mutableListOf<AwsTarget>()
+
     val registrations = mutableListOf<Registration>()
 
     val unregistrations = mutableListOf<Unregistration>()
@@ -34,6 +40,12 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     override fun verify(target: AwsTarget) {
         record(target)
+    }
+
+    override fun roleExists(target: AwsTarget): Boolean {
+        failure?.let { throw it }
+        roleChecks += target
+        return roleExists
     }
 
     override fun listClusters(target: AwsTarget, regions: List<String>): List<EksClusterSummary> {
@@ -81,6 +93,8 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         setupRequests.clear()
         failure = null
         targets.clear()
+        roleExists = true
+        roleChecks.clear()
         registrations.clear()
         unregistrations.clear()
         accessChanges.clear()
