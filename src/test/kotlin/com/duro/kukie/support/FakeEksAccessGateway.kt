@@ -18,6 +18,8 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     val registrations = mutableListOf<Registration>()
 
+    val unregistrations = mutableListOf<Unregistration>()
+
     override fun verify(target: AwsTarget) {
         record(target)
     }
@@ -37,6 +39,11 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         registrations += Registration(target, region, clusterName, namespace)
     }
 
+    override fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>) {
+        record(target)
+        unregistrations += Unregistration(target, region, clusterName, keepNamespaces)
+    }
+
     override fun issueToken(target: AwsTarget, region: String, clusterName: String): String {
         record(target)
         return tokenFor(clusterName)
@@ -53,7 +60,15 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         failure = null
         targets.clear()
         registrations.clear()
+        unregistrations.clear()
     }
+
+    data class Unregistration(
+        val target: AwsTarget,
+        val region: String,
+        val clusterName: String,
+        val keepNamespaces: Set<String>,
+    )
 
     data class Registration(
         val target: AwsTarget,

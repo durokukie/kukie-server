@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.post
 import java.net.InetAddress
 import java.util.UUID
@@ -420,6 +421,67 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         fakeEksAccessGateway.targets.shouldBeEmpty()
     }
 
+    // ── EKS 클러스터 삭제 ────────────────────────────────────────
+
+    @Test
+    fun `EKS 클러스터를 지우면 고객 EKS 의 access entry 도 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // when
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(clusterId) shouldBe false
+        fakeEksAccessGateway.unregistrations shouldBe listOf(
+            FakeEksAccessGateway.Unregistration(
+                AwsTarget(accountId = ACCOUNT_ID, externalId = externalId),
+                DEFAULT_REGION,
+                DEFAULT_CLUSTER_NAME,
+                emptySet(),
+            ),
+        )
+    }
+
+    @Test
+    fun `같은 EKS 를 다른 namespace 로 연결해 두었으면 그 namespace 는 남긴다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        startConnection(admin, teamId)
+        val demo = registerEks(admin, teamId, namespace = "kukie-demo", name = "데모")
+        registerEks(admin, teamId, namespace = "kukie-app", name = "앱")
+
+        // when
+        mockMvc.delete("/clusters/$demo") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        fakeEksAccessGateway.unregistrations.single().keepNamespaces shouldBe setOf("kukie-app")
+    }
+
+    @Test
+    fun `access entry 를 정리하지 못해도 클러스터는 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        startConnection(admin, teamId)
+        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
+
+        // when & then
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+        clusterRepository.existsById(clusterId) shouldBe false
+    }
+
     private fun startConnection(user: LoggedInUser, teamId: UUID): String {
         val response = mockMvc.post("/clusters/aws/connection") {
             authorization(user.accessToken)
@@ -436,14 +498,24 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         teamId: UUID,
         region: String = DEFAULT_REGION,
         namespace: String = "kukie-demo",
+        name: String = "운영 EKS",
     ) = RegisterEksClusterRequest(
         teamId = teamId,
         accountId = ACCOUNT_ID,
         region = region,
         clusterName = DEFAULT_CLUSTER_NAME,
         namespace = namespace,
-        name = "운영 EKS",
+        name = name,
     )
+
+    private fun registerEks(user: LoggedInUser, teamId: UUID, namespace: String, name: String): UUID {
+        val response = mockMvc.post("/clusters/aws") {
+            authorization(user.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(teamId, namespace = namespace, name = name).toJson()
+        }.andExpect { status { isCreated() } }.andReturn().response.contentAsString
+        return UUID.fromString(JsonPath.read(response, "$.id"))
+    }
 
     companion object {
         private const val ACCOUNT_ID = "123456789012"
