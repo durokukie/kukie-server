@@ -39,16 +39,17 @@ class DeleteClusterService(
      * 권한·네트워크 오류는 고객이 EKS 콘솔에서 지울 수 있다.
      */
     private fun releaseEksAccess(cluster: Cluster) {
-        val credential = EksCredential.from(credentialCipher.decrypt(cluster.credential))
-        val keepNamespaces = clusterRepository.findAllByTeamIdAndProvider(cluster.teamId, ClusterProvider.EKS)
-            .filter { it.id != cluster.id }
-            .filter { sameEks(EksCredential.from(credentialCipher.decrypt(it.credential)), credential) }
-            .map { it.defaultNamespace }
-            .toSet()
+        // 같은 EKS 의 다른 등록을 하나라도 못 읽으면 남길 namespace 를 모르므로 정리를 건너뛴다 — 비운 채 지우면 그 등록이 끊긴다
         try {
+            val credential = EksCredential.from(credentialCipher.decrypt(cluster.credential))
+            val keepNamespaces = clusterRepository.findAllByTeamIdAndProvider(cluster.teamId, ClusterProvider.EKS)
+                .filter { it.id != cluster.id }
+                .filter { sameEks(EksCredential.from(credentialCipher.decrypt(it.credential)), credential) }
+                .map { it.defaultNamespace }
+                .toSet()
             eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, keepNamespaces)
         } catch (exception: RuntimeException) {
-            // 역할 없음·권한 없음(BusinessException)과 AWS SDK 오류(SdkException) 모두 — 삭제는 계속한다
+            // 역할 없음·권한 없음(BusinessException), AWS SDK 오류, 자격 정보를 못 읽음 — 어느 쪽이든 삭제는 계속한다
             log.warn("EKS access entry 를 정리하지 못했습니다: cluster={} reason={}", cluster.id, exception.javaClass.simpleName)
         }
     }
