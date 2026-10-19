@@ -15,6 +15,7 @@ data class StackNoticeCommand(
     val roleArn: String?,
 ) {
     companion object {
+        const val CREATE = "Create"
         const val DELETE = "Delete"
     }
 }

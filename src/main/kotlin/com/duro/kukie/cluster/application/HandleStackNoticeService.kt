@@ -2,10 +2,14 @@ package com.duro.kukie.cluster.application
 
 import com.duro.kukie.cluster.application.port.`in`.StackNoticeCommand
 import com.duro.kukie.cluster.application.port.out.AwsTarget
+import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
 import com.duro.kukie.cluster.application.port.out.StackNoticeResponder
 import com.duro.kukie.cluster.application.port.out.StackNoticeResult
+import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
+import com.duro.kukie.cluster.domain.ClusterProvider
+import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
@@ -25,6 +29,8 @@ class HandleStackNoticeService(
     private val eksAccessGateway: EksAccessGateway,
     private val stackNoticeResponder: StackNoticeResponder,
     private val clusterAwsProperties: ClusterAwsProperties,
+    private val clusterRepository: ClusterRepository,
+    private val credentialCipher: CredentialCipher,
 ) {
 
     private val log = logger()
@@ -58,10 +64,28 @@ class HandleStackNoticeService(
             return false
         }
 
-        connection.connect(accountId, LocalDateTime.now(clock))
+        connection.connect(accountId, LocalDateTime.now(clock), StackConsoleUrl.stackIdOf(notice.stackId, accountId))
         awsConnectionRepository.save(connection)
         stackNoticeResponder.respond(notice, StackNoticeResult(true, physicalId(notice), ""))
+        if (notice.requestType == StackNoticeCommand.CREATE) reattachEksAccess(connection, accountId)
         return true
+    }
+
+    /**
+     * 연결을 해제했다가 스택을 다시 만든 경우다. 해제할 때 지운 access entry 를 이 팀이 그 계정으로 등록해 둔 EKS 마다
+     * 다시 붙인다(같은 EKS 의 namespace 는 registerSelf 가 합친다). 못 붙여도 알림 처리는 성공으로 둔다 —
+     * 그 클러스터는 연결할 때 오류가 나고, 지우고 다시 등록하면 된다.
+     */
+    private fun reattachEksAccess(connection: AwsConnection, accountId: String) {
+        for (cluster in clusterRepository.findAllByTeamIdAndProvider(connection.teamId, ClusterProvider.EKS)) {
+            try {
+                val credential = EksCredential.from(credentialCipher.decrypt(cluster.credential))
+                if (credential.accountId != accountId || credential.externalId != connection.externalId) continue
+                eksAccessGateway.registerSelf(credential.target, credential.region, credential.clusterName, cluster.defaultNamespace)
+            } catch (exception: RuntimeException) {
+                log.warn("EKS access entry 를 다시 붙이지 못했습니다: cluster={} reason={}", cluster.id, exception.javaClass.simpleName)
+            }
+        }
     }
 
     private fun fail(notice: StackNoticeCommand, reason: String): Boolean {
