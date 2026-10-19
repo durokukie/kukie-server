@@ -27,6 +27,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import java.net.URLEncoder
 import java.util.UUID
@@ -230,6 +231,40 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         // then
         done shouldBe true
         fakeStackNoticeResponder.responses shouldBe listOf(StackNoticeResult(true, "kukie-connection-x", ""))
+    }
+
+    @Test
+    fun `해제한 뒤 스택을 다시 만들면 지난 스택 기록을 비우고 연결 상태로 돌아간다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        handleStackNoticeService(notice(connection.externalId))
+        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isOk() } }
+        fakeEksAccessGateway.roleExists = false
+        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect { jsonPath("$.stackDeleted") { value(true) } }
+
+        // when
+        handleStackNoticeService(notice(connection.externalId))
+
+        // then
+        awsConnectionRepository.findByTeamId(teamId)!!.run {
+            accountId shouldBe ACCOUNT_ID
+            lastAccountId.shouldBeNull()
+            lastStackId.shouldBeNull()
+            lastStackDeletedAt.shouldBeNull()
+        }
+        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accountId") { value(ACCOUNT_ID) }
+            jsonPath("$.stackDeleted") { value(null) }
+        }
     }
 
     @Test

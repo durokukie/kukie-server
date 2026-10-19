@@ -39,8 +39,9 @@ interface AwsClusterControllerDocs {
     @Operation(
         summary = "AWS 연결 상태",
         description = "템플릿 v2 스택이 만들어지면 서버가 그 알림을 확인해 accountId 를 채웁니다. 화면은 스택을 만드는 동안 " +
-            "이 값이 생길 때까지 물어봅니다. 연결되어 있으면 그 스택을 여는 콘솔 주소(stackConsoleUrl)도 줍니다. " +
-            "팀 관리자만 할 수 있습니다.",
+            "이 값이 생길 때까지 물어봅니다. 연결되어 있으면 그 스택을 여는 콘솔 주소(stackConsoleUrl)와 스택 이름(stackName)도 줍니다. " +
+            "연결을 해제한 뒤에는 해제 전 스택의 주소·이름과, 그 역할을 맡아 보아 고객이 스택을 지웠는지(stackDeleted)를 줍니다. " +
+            "지워진 것을 확인한 뒤에는 다시 연결할 때까지 true 이고, 확인하지 못하면 null 입니다. 팀 관리자만 할 수 있습니다.",
     )
     @ApiErrorResponses(NotTeamMemberException::class, NotTeamAdminException::class, AwsConnectionNotStartedException::class)
     fun getAwsConnection(userId: UUID, teamId: UUID): ResponseEntity<AwsConnectionStatusResponse>

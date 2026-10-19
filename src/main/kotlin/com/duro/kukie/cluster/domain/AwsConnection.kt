@@ -50,6 +50,21 @@ class AwsConnection(
     var stackId: String? = null
         protected set
 
+    /** 연결을 해제하기 전 계정. 고객이 스택을 지웠는지(역할이 사라졌는지) 확인할 때 쓴다. 다시 연결하면 비운다. */
+    @Column(name = "last_account_id", length = 12)
+    var lastAccountId: String? = null
+        protected set
+
+    /** 연결을 해제하기 전 스택 ARN. 해제 뒤에도 지울 스택의 콘솔 주소를 만든다. */
+    @Column(name = "last_stack_id", length = 512)
+    var lastStackId: String? = null
+        protected set
+
+    /** 해제한 스택의 역할이 사라진 것을 확인한 때. 확인한 뒤에는 AWS 에 다시 묻지 않는다. */
+    @Column(name = "last_stack_deleted_at")
+    var lastStackDeletedAt: LocalDateTime? = null
+        protected set
+
     val connected: Boolean
         get() = accountId != null
 
@@ -57,10 +72,21 @@ class AwsConnection(
         this.accountId = accountId
         this.connectedAt = at
         this.stackId = stackId
+        this.lastAccountId = null
+        this.lastStackId = null
+        this.lastStackDeletedAt = null
     }
 
-    /** 연결 해제. 다시 연결할 때 같은 스택 이름을 쓰도록 ExternalId 는 그대로 둔다. */
+    /**
+     * 연결 해제. 다시 연결할 때 같은 스택 이름을 쓰도록 ExternalId 는 그대로 둔다. 계정과 스택은 last 칸으로 옮겨
+     * 고객이 스택을 지웠는지 확인할 수 있게 한다. 연결되지 않은 채 다시 해제하면 앞서 옮긴 값을 그대로 둔다.
+     */
     fun disconnect() {
+        if (accountId != null) {
+            this.lastAccountId = accountId
+            this.lastStackId = stackId
+            this.lastStackDeletedAt = null
+        }
         this.accountId = null
         this.connectedAt = null
         this.stackId = null

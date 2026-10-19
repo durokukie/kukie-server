@@ -28,6 +28,7 @@ import com.jayway.jsonpath.JsonPath
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
@@ -672,7 +673,8 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.externalId") { value(externalId) }
             jsonPath("$.accountId") { value(null) }
-            jsonPath("$.stackConsoleUrl") { value(null) }
+            jsonPath("$.stackName") { value("kukie-access-$externalId") }
+            jsonPath("$.stackDeleted") { value(false) }
         }
     }
 
@@ -754,6 +756,116 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             status { isNotFound() }
             jsonPath("$.code") { value(ClusterErrorCode.AWS_CONNECTION_NOT_STARTED.code) }
         }
+    }
+
+    // ── 해제한 스택 삭제 확인 ────────────────────────────────────
+
+    @Test
+    fun `해제한 스택의 역할이 남아 있으면 아직 지우지 않았다고 알리고 지울 스택을 준다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val stackId = "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/uuid-1"
+        connect(teamId, stackId)
+        disconnect(admin, teamId)
+
+        // when & then
+        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accountId") { value(null) }
+            jsonPath("$.stackDeleted") { value(false) }
+            jsonPath("$.stackName") { value("kukie-access-$externalId") }
+            jsonPath("$.stackConsoleUrl") { value(containsString(URLEncoder.encode(stackId, Charsets.UTF_8))) }
+        }
+        fakeEksAccessGateway.roleChecks shouldBe listOf(AwsTarget(accountId = ACCOUNT_ID, externalId = externalId))
+        awsConnectionRepository.findByTeamId(teamId)!!.run {
+            lastAccountId shouldBe ACCOUNT_ID
+            lastStackId shouldBe stackId
+            lastStackDeletedAt.shouldBeNull()
+        }
+    }
+
+    @Test
+    fun `해제한 스택의 역할이 사라지면 지웠다고 적고 다시 묻지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(teamId, stackId = null)
+        disconnect(admin, teamId)
+        fakeEksAccessGateway.roleExists = false
+
+        // when & then
+        repeat(2) {
+            mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+                authorization(admin.accessToken)
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.stackDeleted") { value(true) }
+                jsonPath("$.stackName") { value("kukie-access-$externalId") }
+                jsonPath("$.stackConsoleUrl") { value(containsString("filteringText=kukie-access-$externalId")) }
+            }
+        }
+        fakeEksAccessGateway.roleChecks.size shouldBe 1
+        awsConnectionRepository.findByTeamId(teamId)!!.lastStackDeletedAt.shouldNotBeNull()
+    }
+
+    @Test
+    fun `해제한 스택의 역할을 확인하지 못하면 모른다고 알린다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        startConnection(admin, teamId)
+        connect(teamId, stackId = null)
+        disconnect(admin, teamId)
+        fakeEksAccessGateway.failure = IllegalStateException("throttled")
+
+        // when & then
+        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.stackDeleted") { value(null) }
+            jsonPath("$.stackConsoleUrl") { exists() }
+        }
+        awsConnectionRepository.findByTeamId(teamId)!!.lastStackDeletedAt.shouldBeNull()
+    }
+
+    @Test
+    fun `연결되어 있거나 해제한 적이 없으면 스택 삭제를 확인하지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+
+        // when & then
+        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.stackDeleted") { value(null) }
+            jsonPath("$.stackName") { value(null) }
+            jsonPath("$.stackConsoleUrl") { value(null) }
+        }
+        connect(teamId, stackId = null)
+        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.accountId") { value(ACCOUNT_ID) }
+            jsonPath("$.stackDeleted") { value(null) }
+            jsonPath("$.stackName") { value("kukie-access-$externalId") }
+        }
+        fakeEksAccessGateway.roleChecks.shouldBeEmpty()
+    }
+
+    private fun disconnect(user: LoggedInUser, teamId: UUID) {
+        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+            authorization(user.accessToken)
+        }.andExpect { status { isOk() } }
     }
 
     /** 스택 알림을 확인한 것처럼 계정을 채운다. */

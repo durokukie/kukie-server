@@ -2,8 +2,17 @@ package com.duro.kukie.cluster.application.port.out
 
 interface EksAccessGateway {
 
-    /** 역할을 맡을 수 있는지만 본다. 못 맡으면 AwsRoleNotAssumableException. */
+    /**
+     * 역할을 맡을 수 있는지만 본다. 못 맡으면 AwsRoleNotAssumableException. 스택 알림 때 부르므로(역할을 다시 만들었을 수 있다)
+     * 캐시된 세션을 버리고 새로 맡는다.
+     */
     fun verify(target: AwsTarget)
+
+    /**
+     * 역할이 아직 있는지 캐시를 거치지 않고 실제로 맡아 본다. 그 대상의 캐시된 세션도 버리고, 새로 얻은 세션은 담지 않는다.
+     * 맡으면 true, 거부(403)되면 false — 우리 ExternalId 로 거부되면 역할이 지워진 것이다. 그 밖의 오류(스로틀링·네트워크)는 던진다.
+     */
+    fun roleExists(target: AwsTarget): Boolean
 
     fun listClusters(target: AwsTarget, regions: List<String>): List<EksClusterSummary>
 

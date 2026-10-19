@@ -17,6 +17,7 @@ import com.duro.kukie.cluster.exception.EksClusterNotReadyException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import org.springframework.stereotype.Component
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials
+import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
@@ -47,13 +48,24 @@ class AwsEksAccessGateway(
     private val tokenSigner = EksTokenSigner(clock)
     private val sessions = ConcurrentHashMap<AwsTarget, AwsSessionCredentials>()
 
+    /** 스택 알림 때 부른다. 역할을 다시 만들었을 수 있어 캐시된 세션을 버리고 새로 맡은 세션으로 바꿔 둔다. */
     override fun verify(target: AwsTarget) {
+        sessions.remove(target)
         assume(target)
     }
 
-    override fun listClusters(target: AwsTarget, regions: List<String>): List<EksClusterSummary> {
-        val credentials = assume(target)
-        return regions.flatMap { region ->
+    override fun roleExists(target: AwsTarget): Boolean {
+        sessions.remove(target)
+        return try {
+            requestSession(target)
+            true
+        } catch (_: AwsRoleNotAssumableException) {
+            false
+        }
+    }
+
+    override fun listClusters(target: AwsTarget, regions: List<String>): List<EksClusterSummary> = withSession(target) { credentials ->
+        regions.flatMap { region ->
             eks(credentials, region).use { eks ->
                 translate {
                     eks.listClustersPaginator().clusters().map { name ->
@@ -66,8 +78,8 @@ class AwsEksAccessGateway(
     }
 
     override fun describeCluster(target: AwsTarget, region: String, clusterName: String): EksClusterEndpoint {
-        val cluster = eks(assume(target), region).use { eks ->
-            translate { eks.describeCluster { it.name(clusterName) }.cluster() }
+        val cluster = withSession(target) { credentials ->
+            eks(credentials, region).use { eks -> translate { eks.describeCluster { it.name(clusterName) }.cluster() } }
         }
         if (cluster.accessConfig()?.authenticationMode() == AuthenticationMode.CONFIG_MAP) {
             throw EksAccessEntryDisabledException()
@@ -81,27 +93,29 @@ class AwsEksAccessGateway(
 
     override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String) {
         val principalArn = roleArn(target)
-        eks(assume(target), region).use { eks ->
-            translate<Unit> {
-                try {
-                    eks.createAccessEntry { it.clusterName(clusterName).principalArn(principalArn).type(STANDARD_ENTRY) }
-                } catch (_: ResourceInUseException) {
-                    // 이미 만든 access entry 다
-                }
+        withSession(target) { credentials ->
+            eks(credentials, region).use { eks ->
+                translate<Unit> {
+                    try {
+                        eks.createAccessEntry { it.clusterName(clusterName).principalArn(principalArn).type(STANDARD_ENTRY) }
+                    } catch (_: ResourceInUseException) {
+                        // 이미 만든 access entry 다
+                    }
 
-                val current = eks.listAssociatedAccessPolicies { it.clusterName(clusterName).principalArn(principalArn) }
-                    .associatedAccessPolicies()
-                    .firstOrNull { it.policyArn() == EDIT_POLICY_ARN }
-                    ?.accessScope()
-                if (current?.type() == AccessScopeType.CLUSTER || namespace in current?.namespaces().orEmpty()) return@translate
+                    val current = eks.listAssociatedAccessPolicies { it.clusterName(clusterName).principalArn(principalArn) }
+                        .associatedAccessPolicies()
+                        .firstOrNull { it.policyArn() == EDIT_POLICY_ARN }
+                        ?.accessScope()
+                    if (current?.type() == AccessScopeType.CLUSTER || namespace in current?.namespaces().orEmpty()) return@translate
 
-                // 정책을 다시 붙이면 범위가 바뀌므로 같은 EKS 에 먼저 등록한 namespace 를 함께 넣는다
-                val namespaces = (current?.namespaces().orEmpty() + namespace).distinct().sorted()
-                eks.associateAccessPolicy {
-                    it.clusterName(clusterName)
-                        .principalArn(principalArn)
-                        .policyArn(EDIT_POLICY_ARN)
-                        .accessScope(AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(namespaces).build())
+                    // 정책을 다시 붙이면 범위가 바뀌므로 같은 EKS 에 먼저 등록한 namespace 를 함께 넣는다
+                    val namespaces = (current?.namespaces().orEmpty() + namespace).distinct().sorted()
+                    eks.associateAccessPolicy {
+                        it.clusterName(clusterName)
+                            .principalArn(principalArn)
+                            .policyArn(EDIT_POLICY_ARN)
+                            .accessScope(AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(namespaces).build())
+                    }
                 }
             }
         }
@@ -109,29 +123,30 @@ class AwsEksAccessGateway(
 
     override fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>) {
         val principalArn = roleArn(target)
-        eks(assume(target), region).use { eks ->
-            translate<Unit> {
-                if (keepNamespaces.isEmpty()) {
-                    try {
-                        eks.deleteAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }
-                    } catch (_: ResourceNotFoundException) {
-                        // 이미 지운 entry 다
+        withSession(target) { credentials ->
+            eks(credentials, region).use { eks ->
+                translate<Unit> {
+                    if (keepNamespaces.isEmpty()) {
+                        try {
+                            eks.deleteAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }
+                        } catch (_: ResourceNotFoundException) {
+                            // 이미 지운 entry 다
+                        }
+                        return@translate
                     }
-                    return@translate
-                }
-                eks.associateAccessPolicy {
-                    it.clusterName(clusterName)
-                        .principalArn(principalArn)
-                        .policyArn(EDIT_POLICY_ARN)
-                        .accessScope(AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(keepNamespaces.sorted()).build())
+                    eks.associateAccessPolicy {
+                        it.clusterName(clusterName)
+                            .principalArn(principalArn)
+                            .policyArn(EDIT_POLICY_ARN)
+                            .accessScope(AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(keepNamespaces.sorted()).build())
+                    }
                 }
             }
         }
     }
 
-    override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
-        val credentials = assume(target)
-        return eks(credentials, region).use { eks ->
+    override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup = withSession(target) { credentials ->
+        eks(credentials, region).use { eks ->
             translate {
                 val cluster = eks.describeCluster { it.name(clusterName) }.cluster()
                 val vpc = cluster.resourcesVpcConfig()
@@ -150,11 +165,44 @@ class AwsEksAccessGateway(
     override fun issueToken(target: AwsTarget, region: String, clusterName: String): String =
         tokenSigner.sign(assume(target), region, clusterName)
 
+    /**
+     * 캐시된 세션으로 AWS 를 부른다. 고객이 스택을 지우고 다시 만들면 같은 이름의 새 역할이 생겨 옛 세션이 거부되므로
+     * (만료도 마찬가지), 세션이 무효라는 오류면 캐시를 버리고 새로 맡아 한 번만 다시 부른다. 그래도 무효면
+     * AwsRoleNotAssumableException — 500 대신 역할을 맡을 수 없다고 알린다.
+     */
+    internal fun <T> withSession(target: AwsTarget, block: (AwsSessionCredentials) -> T): T {
+        try {
+            return block(assume(target))
+        } catch (exception: AwsServiceException) {
+            if (!invalidSession(exception)) throw exception
+        }
+        sessions.remove(target)
+        try {
+            return block(assume(target))
+        } catch (exception: AwsServiceException) {
+            if (invalidSession(exception)) throw AwsRoleNotAssumableException()
+            throw exception
+        }
+    }
+
+    /** 맡은 세션 자체가 거부됐는지. 우리 IRSA 자격증명의 STS 오류는 다시 맡아도 같으므로 넣지 않는다. */
+    private fun invalidSession(exception: AwsServiceException): Boolean {
+        if (exception is StsException) return false
+        val code = exception.awsErrorDetails()?.errorCode()
+        return code in INVALID_SESSION_CODES ||
+            exception.message?.contains(INVALID_TOKEN_MESSAGE, ignoreCase = true) == true
+    }
+
     private fun assume(target: AwsTarget): AwsSessionCredentials {
         val now = Instant.now(clock)
         sessions[target]?.takeIf { it.expirationTime().map { expiry -> expiry.isAfter(now + REUSE_MARGIN) }.orElse(false) }
             ?.let { return it }
 
+        return requestSession(target).also { sessions[target] = it }
+    }
+
+    /** STS 에서 새 세션을 받는다. 캐시는 건드리지 않는다. */
+    private fun requestSession(target: AwsTarget): AwsSessionCredentials {
         val credentials = try {
             stsClient.assumeRole {
                 it.roleArn(roleArn(target))
@@ -173,7 +221,6 @@ class AwsEksAccessGateway(
             .sessionToken(credentials.sessionToken())
             .expirationTime(credentials.expiration())
             .build()
-            .also { sessions[target] = it }
     }
 
     private fun inventory(
@@ -272,6 +319,14 @@ class AwsEksAccessGateway(
         private const val STANDARD_ENTRY = "STANDARD"
         private const val EDIT_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
         private const val FORBIDDEN = 403
+        private val INVALID_SESSION_CODES = setOf(
+            "UnrecognizedClientException",
+            "InvalidClientTokenId",
+            "ExpiredToken",
+            "ExpiredTokenException",
+            "AuthFailure",
+        )
+        private const val INVALID_TOKEN_MESSAGE = "security token included in the request is invalid"
         private const val EC2_UNAUTHORIZED = "UnauthorizedOperation"
         private val API_CALL_TIMEOUT: Duration = Duration.ofSeconds(10)
 
