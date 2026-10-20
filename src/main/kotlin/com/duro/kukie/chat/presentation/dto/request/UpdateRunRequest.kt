@@ -2,7 +2,6 @@ package com.duro.kukie.chat.presentation.dto.request
 
 import com.duro.kukie.chat.application.port.`in`.UpdateRunCommand
 import com.duro.kukie.chat.domain.RunStatus
-import jakarta.validation.constraints.Size
 import java.util.UUID
 
 data class UpdateRunRequest(
@@ -14,9 +13,6 @@ data class UpdateRunRequest(
 
     val usageSummary: Map<String, Any?>? = null,
 
-    @field:Size(max = 20)
-    val currentMode: String? = null,
-
     val titleFrom: String? = null,
 ) {
     fun toCommand(runId: UUID) = UpdateRunCommand(
@@ -25,7 +21,6 @@ data class UpdateRunRequest(
         responsePayload = responsePayload,
         appendAgentMessages = appendAgentMessages,
         usageSummary = usageSummary,
-        currentMode = currentMode?.trim()?.ifEmpty { null },
         titleFrom = titleFrom,
     )
 }

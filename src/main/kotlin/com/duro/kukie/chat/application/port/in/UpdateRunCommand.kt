@@ -9,6 +9,5 @@ data class UpdateRunCommand(
     val responsePayload: Map<String, Any?>?,
     val appendAgentMessages: List<Any?>?,
     val usageSummary: Map<String, Any?>?,
-    val currentMode: String?,
     val titleFrom: String?,
 )

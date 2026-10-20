@@ -73,7 +73,7 @@ class InternalChatIntegrationTest : IntegrationTest() {
             jsonPath("$.conversation.userId") { value(me.user.id.toString()) }
             jsonPath("$.conversation.title") { value(ChatSession.DEFAULT_TITLE) }
             jsonPath("$.conversation.shared") { value(true) }
-            jsonPath("$.conversation.currentMode") { value(ChatSession.DEFAULT_MODE) }
+            jsonPath("$.conversation.currentMode") { doesNotExist() }
             jsonPath("$.conversation.context") { value(ChatFixture.DEFAULT_CONTEXT) }
             jsonPath("$.conversation.namespace") { value(ChatFixture.DEFAULT_NAMESPACE) }
             jsonPath("$.conversation.clusterFingerprint") { value(ChatFixture.FINGERPRINT) }

@@ -151,6 +151,21 @@ class InternalRunIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `옛 에이전트가 보내는 currentMode 는 무시한다`() {
+        // given
+        val session = savedSession()
+        val run = savedRun(session)
+
+        // when
+        patchRun(run, mapOf("status" to "completed", "currentMode" to "Shared"))
+            .andExpect { status { isOk() } }
+
+        // then
+        chatRunRepository.findByIdOrNull(run.id)!!.status shouldBe RunStatus.COMPLETED
+        chatSessionRepository.findByIdOrNull(session.id)!!.version shouldBe session.version
+    }
+
+    @Test
     fun `에이전트가 다시 뜨면 실행 중이던 요청만 중단한다`() {
         // given
         val running = savedRun(savedSession())

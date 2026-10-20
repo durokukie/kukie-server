@@ -18,7 +18,7 @@ interface InternalRunControllerDocs {
         summary = "[내부] run 갱신",
         description = "보낸 칸만 바꿉니다 (appendAgentMessages 는 기존 메시지 뒤에 붙입니다). 종료 상태가 되면 끝난 시각을 찍고 " +
             "그 run 의 열린 계획을 같은 트랜잭션에서 닫아 closedPlans 로 줍니다 (승인했는데 결과가 없으면 UNKNOWN, 나머지는 EXPIRED). " +
-            "currentMode 는 대화의 모드를, titleFrom 은 첫 마디일 때 대화 제목을 바꿉니다. 사용자 토큰은 보지 않습니다.",
+            "titleFrom 은 첫 마디일 때 대화 제목을 바꿉니다. 사용자 토큰은 보지 않습니다.",
     )
     @ApiErrorResponses(InvalidInternalTokenException::class, RunNotFoundException::class, ActiveRunExistsException::class)
     fun updateRun(runId: UUID, request: UpdateRunRequest): ResponseEntity<UpdateRunResponse>
