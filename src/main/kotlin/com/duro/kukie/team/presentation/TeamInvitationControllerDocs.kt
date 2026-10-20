@@ -10,6 +10,7 @@ import com.duro.kukie.team.exception.InvitationNotPendingException
 import com.duro.kukie.team.exception.NotMyInvitationException
 import com.duro.kukie.team.exception.NotTeamMemberException
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
+import com.duro.kukie.team.presentation.dto.response.SentTeamInvitationResponse
 import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -35,6 +36,17 @@ interface TeamInvitationControllerDocs {
         userId: UUID,
         request: InviteTeamMemberRequest,
     ): ResponseEntity<TeamInvitationResponse>
+
+    @Operation(
+        summary = "팀이 보낸 초대 목록 조회",
+        description = "팀이 보낸 초대를 상태와 관계없이 최신순으로 조회합니다. 관리자만 할 수 있습니다. " +
+            "기한이 지난 대기 초대는 EXPIRED 로, respondedAt 은 수락·거절·취소된 초대에만 담깁니다.",
+    )
+    @ApiErrorResponses(
+        NotTeamMemberException::class,
+        InsufficientTeamRoleException::class,
+    )
+    fun getTeamInvitations(teamId: UUID): ResponseEntity<List<SentTeamInvitationResponse>>
 
     @Operation(
         summary = "팀 초대 취소",
