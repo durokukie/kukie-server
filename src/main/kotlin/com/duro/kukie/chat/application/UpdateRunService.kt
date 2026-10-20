@@ -28,7 +28,7 @@ class UpdateRunService(
     @Transactional
     operator fun invoke(command: UpdateRunCommand): UpdateRunResponse {
         // 교착을 막으려고 run 시작과 같은 방 → run 순서로 잠근다
-        val session = if (command.currentMode != null || command.titleFrom != null) {
+        val session = if (command.titleFrom != null) {
             chatSessionRepository.lockByIdOrThrow(chatRunRepository.findSessionIdOrThrow(command.runId))
         } else {
             null
@@ -43,10 +43,7 @@ class UpdateRunService(
             if (status.active) emptyList() else actionPlanRepository.closeOpenPlans(run.id)
         }.orEmpty()
 
-        session?.let {
-            command.currentMode?.let(it::changeMode)
-            command.titleFrom?.let { text -> nameFromFirstMessage(it, run, text) }
-        }
+        session?.let { command.titleFrom?.let { text -> nameFromFirstMessage(it, run, text) } }
         chatRunRepository.flush()
 
         return UpdateRunResponse(RunResponse.from(run), closedPlans.map(PlanResponse::from))

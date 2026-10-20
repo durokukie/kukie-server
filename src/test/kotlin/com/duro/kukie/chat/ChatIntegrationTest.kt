@@ -67,7 +67,7 @@ class ChatIntegrationTest : IntegrationTest() {
             jsonPath("$.conversation.running") { value(false) }
             jsonPath("$.session.context") { value(ClusterFixture.DEFAULT_CONTEXT) }
             jsonPath("$.session.namespace") { value(ClusterFixture.DEFAULT_NAMESPACE) }
-            jsonPath("$.session.skill") { value(ChatSession.DEFAULT_MODE) }
+            jsonPath("$.session.skill") { doesNotExist() }
             jsonPath("$.session.pending") { value(empty<String>()) }
         }.andReturn().response.contentAsString
 

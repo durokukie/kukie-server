@@ -38,10 +38,6 @@ class ChatSession(
     var title = title
         protected set
 
-    @Column(name = "current_mode", nullable = false, length = 20)
-    var currentMode = DEFAULT_MODE
-        protected set
-
     @Column(name = "context_name", nullable = false, length = 200)
     var contextName = contextName
         protected set
@@ -70,12 +66,6 @@ class ChatSession(
         version += 1
     }
 
-    fun changeMode(mode: String) {
-        if (currentMode == mode) return
-        currentMode = mode
-        touch()
-    }
-
     fun rename(title: String) {
         this.title = title
         touch()
@@ -83,7 +73,5 @@ class ChatSession(
 
     companion object {
         const val DEFAULT_TITLE = "새 대화"
-
-        const val DEFAULT_MODE = "학습"
     }
 }
