@@ -410,6 +410,109 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         }
     }
 
+    // ── 보낸 초대 목록 ─────────────────────────────────────────
+
+    @Test
+    fun `관리자는 팀이 보낸 초대를 처리된 것까지 최신순으로 본다`() {
+        // given
+        val admin = adminOfNewTeam()
+        savedInvitation(admin.teamId, "pending@example.com", admin.userId)
+        savedInvitation(admin.teamId, "accepted@example.com", admin.userId) { it.accept() }
+        savedInvitation(admin.teamId, "declined@example.com", admin.userId) { it.decline() }
+        savedInvitation(admin.teamId, "canceled@example.com", admin.userId) { it.cancel() }
+
+        // when
+        mockMvc.get("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            // then
+            status { isOk() }
+            jsonPath("$.length()") { value(4) }
+            jsonPath("$[0].email") { value("canceled@example.com") }
+            jsonPath("$[0].status") { value(InvitationStatus.CANCELED.name) }
+            jsonPath("$[0].respondedAt") { exists() }
+            jsonPath("$[1].status") { value(InvitationStatus.DECLINED.name) }
+            jsonPath("$[2].status") { value(InvitationStatus.ACCEPTED.name) }
+            jsonPath("$[3].status") { value(InvitationStatus.PENDING.name) }
+            jsonPath("$[3].respondedAt") { value(null) }
+            jsonPath("$[3].invitedBy.id") { value(admin.userId.toString()) }
+            jsonPath("$[3].invitedBy.name") { value(UserFixture.DEFAULT_NAME) }
+        }
+    }
+
+    @Test
+    fun `기한이 지난 대기 초대는 만료로 보인다`() {
+        // given
+        val admin = adminOfNewTeam()
+        savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId, expiresAt = yesterday())
+
+        // when
+        mockMvc.get("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            // then
+            status { isOk() }
+            jsonPath("$[0].status") { value(InvitationStatus.EXPIRED.name) }
+            jsonPath("$[0].respondedAt") { value(null) }
+        }
+    }
+
+    @Test
+    fun `거절한 주소를 다시 초대하면 두 줄로 보인다`() {
+        // given
+        val admin = adminOfNewTeam()
+        savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId) { it.decline() }
+        invite(admin, INVITEE_EMAIL)
+
+        // when
+        mockMvc.get("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            // then
+            status { isOk() }
+            jsonPath("$.length()") { value(2) }
+            jsonPath("$[0].email") { value(INVITEE_EMAIL) }
+            jsonPath("$[0].status") { value(InvitationStatus.PENDING.name) }
+            jsonPath("$[1].email") { value(INVITEE_EMAIL) }
+            jsonPath("$[1].status") { value(InvitationStatus.DECLINED.name) }
+        }
+    }
+
+    @Test
+    fun `다른 팀이 보낸 초대는 보이지 않는다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val otherAdmin = adminOfNewTeam(email = "other-admin@example.com")
+        savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+        savedInvitation(otherAdmin.teamId, "other@example.com", otherAdmin.userId)
+
+        // when
+        mockMvc.get("/teams/${admin.teamId}/invitations") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            // then
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].email") { value(INVITEE_EMAIL) }
+        }
+    }
+
+    @Test
+    fun `구성원은 보낸 초대 목록을 볼 수 없다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        teamMembershipRepository.save(TeamFixture.membership(admin.teamId, member.user.id, TeamRole.MEMBER))
+
+        // when & then
+        mockMvc.get("/teams/${admin.teamId}/invitations") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
+        }
+    }
+
     // ── 받은 초대함 ────────────────────────────────────────────
 
     @Test
@@ -804,7 +907,9 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         email: String,
         invitedBy: UUID,
         expiresAt: LocalDateTime = LocalDateTime.now().plus(TeamInvitation.VALIDITY),
-    ): TeamInvitation = teamInvitationRepository.save(TeamFixture.invitation(teamId, email, invitedBy, expiresAt))
+        handle: (TeamInvitation) -> Unit = {},
+    ): TeamInvitation =
+        teamInvitationRepository.save(TeamFixture.invitation(teamId, email, invitedBy, expiresAt).also(handle))
 
     private fun yesterday(): LocalDateTime = LocalDateTime.now().minusDays(1)
 

@@ -5,14 +5,17 @@ import com.duro.kukie.global.security.Authenticated
 import com.duro.kukie.team.application.AcceptTeamInvitationService
 import com.duro.kukie.team.application.CancelTeamInvitationService
 import com.duro.kukie.team.application.DeclineTeamInvitationService
+import com.duro.kukie.team.application.GetTeamInvitationsService
 import com.duro.kukie.team.application.InviteTeamMemberService
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
+import com.duro.kukie.team.presentation.dto.response.SentTeamInvitationResponse
 import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -25,6 +28,7 @@ import java.util.UUID
 @RequestMapping("/teams")
 class TeamInvitationController(
     private val inviteTeamMemberService: InviteTeamMemberService,
+    private val getTeamInvitationsService: GetTeamInvitationsService,
     private val cancelTeamInvitationService: CancelTeamInvitationService,
     private val acceptTeamInvitationService: AcceptTeamInvitationService,
     private val declineTeamInvitationService: DeclineTeamInvitationService,
@@ -38,6 +42,14 @@ class TeamInvitationController(
         @RequestBody @Valid request: InviteTeamMemberRequest,
     ): ResponseEntity<TeamInvitationResponse> {
         return ResponseEntity.status(HttpStatus.CREATED).body(inviteTeamMemberService(request.toCommand(teamId, userId)))
+    }
+
+    @TeamRoleRequired(TeamRole.ADMIN)
+    @GetMapping("/{teamId}/invitations")
+    override fun getTeamInvitations(
+        @PathVariable teamId: UUID,
+    ): ResponseEntity<List<SentTeamInvitationResponse>> {
+        return ResponseEntity.ok(getTeamInvitationsService(teamId))
     }
 
     @TeamRoleRequired(TeamRole.ADMIN)

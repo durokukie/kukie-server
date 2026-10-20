@@ -54,6 +54,10 @@ class TeamInvitation(
     val isExpired: Boolean
         get() = expiresAt.isBefore(LocalDateTime.now())
 
+    /** 만료는 저장하지 않고 expiresAt 으로 계산한다 — 기한이 지난 PENDING 은 EXPIRED 로 본다. */
+    val currentStatus: InvitationStatus
+        get() = if (status == InvitationStatus.PENDING && isExpired) InvitationStatus.EXPIRED else status
+
     /** 초대는 주소로 사람을 가리키므로 주소 일치가 본인 확인이다. */
     fun requireOwnedBy(email: Email) {
         if (this.email != email) {

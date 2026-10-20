@@ -17,6 +17,8 @@ interface TeamInvitationRepository : JpaRepository<TeamInvitation, UUID> {
         now: LocalDateTime,
     ): List<TeamInvitation>
 
+    fun findAllByTeamIdOrderByCreatedAtDesc(teamId: UUID): List<TeamInvitation>
+
     fun deleteAllByTeamId(teamId: UUID)
 }
 
