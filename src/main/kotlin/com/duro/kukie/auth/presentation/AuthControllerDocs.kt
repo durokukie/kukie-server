@@ -26,7 +26,7 @@ interface AuthControllerDocs {
 
     @Operation(
         summary = "로그인",
-        description = "이메일과 비밀번호를 통해 로그인하고 토큰을 발급받습니다. 토큰은 응답 본문과 httpOnly 쿠키(`kukie_access`, `kukie_refresh`)로 함께 내려갑니다.",
+        description = "이메일과 비밀번호를 통해 로그인하고 토큰을 발급받습니다. 토큰은 응답 본문과 httpOnly 쿠키(`__Host-kukie_access`, `__Host-kukie_refresh` — 로컬 http 에서는 접두사 없이)로 함께 내려갑니다.",
     )
     @ApiErrorResponses(InvalidCredentialsException::class)
     fun logIn(request: LogInRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
@@ -42,7 +42,7 @@ interface AuthControllerDocs {
     @Operation(
         summary = "토큰 재발급",
         description = "리프레시 토큰을 이용해 액세스 토큰과 리프레시 토큰을 재발급 받습니다. 사용한 리프레시 토큰은 삭제됩니다. " +
-            "리프레시 토큰은 본문에 없으면 `kukie_refresh` 쿠키에서 읽습니다(웹). 새 토큰도 본문과 쿠키로 함께 내려갑니다.",
+            "리프레시 토큰은 본문에 없으면 `__Host-kukie_refresh` 쿠키에서 읽습니다(웹). 새 토큰도 본문과 쿠키로 함께 내려갑니다.",
     )
     @ApiErrorResponses(UnauthorizedException::class, InvalidTokenException::class, ExpiredTokenException::class)
     fun refresh(request: RefreshTokenRequest?, httpRequest: HttpServletRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
