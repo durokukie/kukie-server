@@ -190,8 +190,32 @@ class AuthIntegrationTest : IntegrationTest() {
             jsonPath("$.accessToken") { isNotEmpty() }
             jsonPath("$.refreshToken") { isNotEmpty() }
             cookie {
-                exists(cookies.accessName)
-                exists(cookies.refreshName)
+                exists(cookies.accessCookieName)
+                exists(cookies.refreshCookieName)
+            }
+        }
+    }
+
+    @Test
+    fun `https 에서는 쿠키 이름에 __Host- 를 붙이고 접두사 없는 옛 쿠키는 지운다`() {
+        // given
+        val user = userRepository.save(UserFixture.user())
+        val request = LogInRequest(user.email.value, UserFixture.DEFAULT_PASSWORD)
+
+        // when & then
+        mockMvc.post("/auth/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect {
+            status { isOk() }
+            cookie {
+                exists("__Host-kukie_access")
+                exists("__Host-kukie_refresh")
+                maxAge("__Host-kukie_access", 30 * 60)
+                maxAge("kukie_access", 0)
+                maxAge("kukie_refresh", 0)
+                secure("kukie_access", true)
+                path("kukie_access", "/")
             }
         }
     }
@@ -208,16 +232,16 @@ class AuthIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isOk() }
             cookie {
-                httpOnly(cookies.accessName, true)
-                secure(cookies.accessName, true)
-                sameSite(cookies.accessName, "Lax")
-                path(cookies.accessName, "/")
-                maxAge(cookies.accessName, 30 * 60)
-                httpOnly(cookies.refreshName, true)
-                secure(cookies.refreshName, true)
-                sameSite(cookies.refreshName, "Lax")
-                path(cookies.refreshName, "/")
-                maxAge(cookies.refreshName, 30 * 24 * 60 * 60)
+                httpOnly(cookies.accessCookieName, true)
+                secure(cookies.accessCookieName, true)
+                sameSite(cookies.accessCookieName, "Lax")
+                path(cookies.accessCookieName, "/")
+                maxAge(cookies.accessCookieName, 30 * 60)
+                httpOnly(cookies.refreshCookieName, true)
+                secure(cookies.refreshCookieName, true)
+                sameSite(cookies.refreshCookieName, "Lax")
+                path(cookies.refreshCookieName, "/")
+                maxAge(cookies.refreshCookieName, 30 * 24 * 60 * 60)
             }
         }
     }
@@ -229,7 +253,7 @@ class AuthIntegrationTest : IntegrationTest() {
 
         // when & then
         mockMvc.get("/users/me") {
-            cookie(Cookie(cookies.accessName, user.accessToken))
+            cookie(Cookie(cookies.accessCookieName, user.accessToken))
             fromSameSite()
         }.andExpect {
             status { isOk() }
@@ -246,7 +270,7 @@ class AuthIntegrationTest : IntegrationTest() {
         // when & then
         mockMvc.get("/users/me") {
             authorization(headerUser.accessToken)
-            cookie(Cookie(cookies.accessName, cookieUser.accessToken))
+            cookie(Cookie(cookies.accessCookieName, cookieUser.accessToken))
             fromSameSite()
         }.andExpect {
             status { isOk() }
@@ -262,7 +286,7 @@ class AuthIntegrationTest : IntegrationTest() {
         // when & then
         mockMvc.get("/users/me") {
             header(HttpHeaders.AUTHORIZATION, "")
-            cookie(Cookie(cookies.accessName, user.accessToken))
+            cookie(Cookie(cookies.accessCookieName, user.accessToken))
             fromSameSite()
         }.andExpect {
             status { isOk() }
@@ -278,7 +302,7 @@ class AuthIntegrationTest : IntegrationTest() {
         // when & then
         mockMvc.get("/users/me") {
             header(HttpHeaders.AUTHORIZATION, "Basic abc")
-            cookie(Cookie(cookies.accessName, user.accessToken))
+            cookie(Cookie(cookies.accessCookieName, user.accessToken))
         }.andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
@@ -292,27 +316,27 @@ class AuthIntegrationTest : IntegrationTest() {
 
         // when & then
         mockMvc.get("/users/me") {
-            cookie(Cookie(cookies.accessName, user.accessToken))
+            cookie(Cookie(cookies.accessCookieName, user.accessToken))
             header("Sec-Fetch-Site", "cross-site")
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value(AuthErrorCode.CROSS_SITE_COOKIE.code) }
         }
         mockMvc.get("/users/me") {
-            cookie(Cookie(cookies.accessName, user.accessToken))
+            cookie(Cookie(cookies.accessCookieName, user.accessToken))
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value(AuthErrorCode.CROSS_SITE_COOKIE.code) }
         }
         // same-site 도 거부
         mockMvc.get("/users/me") {
-            cookie(Cookie(cookies.accessName, user.accessToken))
+            cookie(Cookie(cookies.accessCookieName, user.accessToken))
             header("Sec-Fetch-Site", "same-site")
         }.andExpect { status { isForbidden() } }
         // same-origin·none 은 통과, 헤더 토큰은 cross-site 여도 통과
         for (site in listOf("same-origin", "none")) {
             mockMvc.get("/users/me") {
-                cookie(Cookie(cookies.accessName, user.accessToken))
+                cookie(Cookie(cookies.accessCookieName, user.accessToken))
                 header("Sec-Fetch-Site", site)
             }.andExpect { status { isOk() } }
         }
@@ -323,21 +347,52 @@ class AuthIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `접두사 없는 이름의 액세스 쿠키만으로는 인증되지 않는다`() {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.get("/users/me") {
+            cookie(Cookie(cookies.accessName, user.accessToken))
+            fromSameSite()
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
+        }
+    }
+
+    @Test
+    fun `형제 서브도메인이 심은 접두사 없는 쿠키가 함께 와도 __Host- 쿠키만 본다`() {
+        // given
+        val victim = loggedInUser(UserFixture.user(email = "victim@example.com"))
+        val attacker = loggedInUser(UserFixture.user(email = "attacker@example.com"))
+
+        // when & then
+        mockMvc.get("/users/me") {
+            cookie(Cookie(cookies.accessName, attacker.accessToken), Cookie(cookies.accessCookieName, victim.accessToken))
+            fromSameSite()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.email") { value(victim.user.email.value) }
+        }
+    }
+
+    @Test
     fun `리프레시 토큰을 쿠키로만 보내도 재발급되고 새 토큰이 쿠키로 내려간다`() {
         // given
         val user = loggedInUser()
 
         // when & then
         mockMvc.post("/auth/refresh") {
-            cookie(Cookie(cookies.refreshName, user.refreshToken))
+            cookie(Cookie(cookies.refreshCookieName, user.refreshToken))
             fromSameSite()
         }.andExpect {
             status { isOk() }
             jsonPath("$.accessToken") { isNotEmpty() }
             cookie {
-                exists(cookies.accessName)
-                exists(cookies.refreshName)
-                httpOnly(cookies.refreshName, true)
+                exists(cookies.accessCookieName)
+                exists(cookies.refreshCookieName)
+                httpOnly(cookies.refreshCookieName, true)
             }
         }
 
@@ -356,7 +411,7 @@ class AuthIntegrationTest : IntegrationTest() {
         // when & then
         for (site in listOf("same-site", "cross-site", null)) {
             mockMvc.post("/auth/refresh") {
-                cookie(Cookie(cookies.refreshName, user.refreshToken))
+                cookie(Cookie(cookies.refreshCookieName, user.refreshToken))
                 if (site != null) header("Sec-Fetch-Site", site)
             }.andExpect {
                 status { isForbidden() }
@@ -364,6 +419,21 @@ class AuthIntegrationTest : IntegrationTest() {
             }
         }
         refresh(user.refreshToken).andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `접두사 없는 이름의 리프레시 쿠키만으로는 재발급되지 않는다`() {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.post("/auth/refresh") {
+            cookie(Cookie(cookies.refreshName, user.refreshToken))
+            fromSameSite()
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
+        }
     }
 
     @Test
@@ -381,14 +451,16 @@ class AuthIntegrationTest : IntegrationTest() {
 
         // when & then
         mockMvc.delete("/auth/logout") {
-            cookie(Cookie(cookies.accessName, user.accessToken))
+            cookie(Cookie(cookies.accessCookieName, user.accessToken))
             fromSameSite()
         }.andExpect {
             status { isNoContent() }
             cookie {
+                maxAge(cookies.accessCookieName, 0)
+                maxAge(cookies.refreshCookieName, 0)
+                path(cookies.accessCookieName, "/")
                 maxAge(cookies.accessName, 0)
                 maxAge(cookies.refreshName, 0)
-                path(cookies.accessName, "/")
             }
         }
     }
@@ -409,12 +481,12 @@ class AuthIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.accessToken") { isNotEmpty() }
             jsonPath("$.refreshToken") { isNotEmpty() }
-            cookie { exists(cookies.accessName); httpOnly(cookies.accessName, true) }
-            cookie { exists(cookies.refreshName); httpOnly(cookies.refreshName, true) }
+            cookie { exists(cookies.accessCookieName); httpOnly(cookies.accessCookieName, true) }
+            cookie { exists(cookies.refreshCookieName); httpOnly(cookies.refreshCookieName, true) }
         }.andReturn()
 
         // 받은 토큰이 실제로 그 사용자의 것이다
-        val newAccessToken = result.response.cookies.first { it.name == cookies.accessName }.value
+        val newAccessToken = result.response.cookies.first { it.name == cookies.accessCookieName }.value
         mockMvc.get("/users/me") {
             authorization(newAccessToken)
         }.andExpect {
@@ -428,7 +500,7 @@ class AuthIntegrationTest : IntegrationTest() {
         val loggedIn = loggedInUser()
 
         mockMvc.post("/auth/handoff") {
-            cookie(Cookie(cookies.accessName, loggedIn.accessToken))
+            cookie(Cookie(cookies.accessCookieName, loggedIn.accessToken))
             fromSameSite()
             contentType = MediaType.APPLICATION_JSON
             content = HandoffCodeRequest("challenge").toJson()
