@@ -4,7 +4,6 @@ import com.duro.kukie.auth.exception.InvalidInternalTokenException
 import com.duro.kukie.global.config.properties.InternalProperties
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
-import org.springframework.core.annotation.AnnotatedElementUtils
 import org.springframework.stereotype.Component
 import org.springframework.web.method.HandlerMethod
 import org.springframework.web.servlet.HandlerInterceptor
@@ -34,10 +33,6 @@ class InternalApiInterceptor(
 
         return true
     }
-
-    private fun HandlerMethod.isInternalApi(): Boolean =
-        hasMethodAnnotation(InternalApi::class.java) ||
-            AnnotatedElementUtils.hasAnnotation(beanType, InternalApi::class.java)
 
     companion object {
         const val INTERNAL_TOKEN_HEADER = "X-Kukie-Internal-Token"
