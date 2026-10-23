@@ -4,9 +4,9 @@ import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.global.exception.ErrorCode
 import com.duro.kukie.global.exception.ErrorResponse
 import com.duro.kukie.global.security.AuthUser
-import com.duro.kukie.global.security.Authenticated
-import com.duro.kukie.global.security.InternalApi
 import com.duro.kukie.global.security.InternalApiInterceptor
+import com.duro.kukie.global.security.isInternalApi
+import com.duro.kukie.global.security.requiresAuthentication
 import io.swagger.v3.core.converter.AnnotatedType
 import io.swagger.v3.core.converter.ModelConverters
 import io.swagger.v3.oas.models.Components
@@ -83,14 +83,6 @@ class SwaggerConfig {
                 }
             operation
         }
-
-    private fun HandlerMethod.requiresAuthentication(): Boolean =
-        hasMethodAnnotation(Authenticated::class.java) ||
-            AnnotatedElementUtils.hasAnnotation(beanType, Authenticated::class.java)
-
-    private fun HandlerMethod.isInternalApi(): Boolean =
-        hasMethodAnnotation(InternalApi::class.java) ||
-            AnnotatedElementUtils.hasAnnotation(beanType, InternalApi::class.java)
 
     private fun HandlerMethod.errorCodes(): List<ErrorCode> =
         AnnotatedElementUtils.findMergedAnnotation(method, ApiErrorResponses::class.java)

@@ -4,7 +4,6 @@ import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.exception.UnauthorizedException
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
-import org.springframework.core.annotation.AnnotatedElementUtils
 import org.springframework.http.HttpHeaders
 import org.springframework.stereotype.Component
 import org.springframework.web.method.HandlerMethod
@@ -31,10 +30,6 @@ class AuthenticationInterceptor(
 
         return true
     }
-
-    private fun HandlerMethod.requiresAuthentication(): Boolean =
-        hasMethodAnnotation(Authenticated::class.java) ||
-            AnnotatedElementUtils.hasAnnotation(beanType, Authenticated::class.java)
 
     /** 헤더가 있으면 헤더만 본다(모양이 틀려도 쿠키로 넘어가지 않음). 헤더가 없거나 비었을 때만 쿠키. */
     private fun resolveToken(request: HttpServletRequest): String? {
