@@ -9,9 +9,9 @@ class FakeTeamInvitationSender : TeamInvitationSender, Resettable {
     /** 메일 발송이 실패한 상황을 흉내낸다. */
     var shouldFail = false
 
-    override fun send(email: String, teamName: String, inviterName: String) {
+    override fun send(email: String, teamName: String, inviterName: String, registered: Boolean) {
         if (shouldFail) throw IllegalStateException("메일 서버에 연결할 수 없다")
-        sent += SentInvitation(email = email, teamName = teamName, inviterName = inviterName)
+        sent += SentInvitation(email = email, teamName = teamName, inviterName = inviterName, registered = registered)
     }
 
     fun sentTo(email: String): List<SentInvitation> = sent.filter { it.email == email }
@@ -27,5 +27,6 @@ class FakeTeamInvitationSender : TeamInvitationSender, Resettable {
         val email: String,
         val teamName: String,
         val inviterName: String,
+        val registered: Boolean,
     )
 }
