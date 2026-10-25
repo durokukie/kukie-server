@@ -30,7 +30,7 @@ class CreateChatService(
                 clusterId = cluster.id,
                 title = command.title,
                 contextName = cluster.contextName,
-                namespace = command.namespace ?: cluster.defaultNamespace,
+                namespace = cluster.defaultNamespace,
                 clusterFingerprint = cluster.fingerprint,
                 visibility = command.visibility,
             ),

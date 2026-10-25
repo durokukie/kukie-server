@@ -4,6 +4,8 @@ import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails
@@ -14,6 +16,8 @@ import software.amazon.awssdk.services.sts.model.AssumeRoleRequest
 import software.amazon.awssdk.services.sts.model.AssumeRoleResponse
 import software.amazon.awssdk.services.sts.model.Credentials
 import software.amazon.awssdk.services.sts.model.StsException
+import java.io.IOException
+import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -144,6 +148,44 @@ class AwsEksAccessGatewayTest {
         }
         attempts shouldBe 1
         sts.calls shouldBe 1
+    }
+
+    @Test
+    fun `권한이 퍼지기 전의 403 은 다시 묻고 200 이면 namespace 가 있다고 본다`() {
+        // given
+        val responses = ArrayDeque(listOf(403, 401, 200))
+
+        // when & then
+        gateway.probeNamespace(attempts = 5, delay = Duration.ZERO) { responses.removeFirst() } shouldBe true
+        responses.shouldBeEmpty()
+    }
+
+    @Test
+    fun `404 면 namespace 가 없다고 본다`() {
+        // when & then
+        gateway.probeNamespace(attempts = 5, delay = Duration.ZERO) { 404 } shouldBe false
+    }
+
+    @Test
+    fun `끝내 403 이거나 그 밖의 응답·네트워크 오류면 모른다고 본다`() {
+        // given
+        var attempts = 0
+
+        // when & then
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { attempts++; 403 }.shouldBeNull()
+        attempts shouldBe 3
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { 500 }.shouldBeNull()
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { throw IOException("timeout") }.shouldBeNull()
+    }
+
+    @Test
+    fun `확인 중 인터럽트되면 모른다고 보고 인터럽트 표시를 남긴다`() {
+        // when
+        val result = gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { throw InterruptedException() }
+
+        // then
+        result.shouldBeNull()
+        Thread.interrupted() shouldBe true
     }
 
     /** EKS 를 부르는 메서드처럼 캐시된 세션을 쓴다. */

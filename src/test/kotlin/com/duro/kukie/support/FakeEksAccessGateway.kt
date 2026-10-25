@@ -35,7 +35,12 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     val unregistrations = mutableListOf<Unregistration>()
 
-    /** registerSelf·unregisterSelf 를 부른 순서대로. */
+    /** namespaceExists 가 돌려줄 값. false 면 없음, null 이면 확인하지 못함. */
+    var namespaceExists: Boolean? = true
+
+    val namespaceChecks = mutableListOf<NamespaceCheck>()
+
+    /** registerSelf·namespaceExists·unregisterSelf 를 부른 순서대로. */
     val accessChanges = mutableListOf<Any>()
 
     override fun verify(target: AwsTarget) {
@@ -70,6 +75,20 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         accessChanges += Unregistration(target, region, clusterName, keepNamespaces)
     }
 
+    override fun namespaceExists(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        waitForGrant: Boolean,
+    ): Boolean? {
+        record(target)
+        namespaceChecks += NamespaceCheck(namespace, waitForGrant)
+        accessChanges += NamespaceCheck(namespace, waitForGrant)
+        return namespaceExists
+    }
+
     override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
         record(target)
         setupRequests += SetupRequest(target, region, clusterName)
@@ -97,8 +116,15 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         roleChecks.clear()
         registrations.clear()
         unregistrations.clear()
+        namespaceExists = true
+        namespaceChecks.clear()
         accessChanges.clear()
     }
+
+    data class NamespaceCheck(
+        val namespace: String,
+        val waitForGrant: Boolean,
+    )
 
     data class SetupRequest(
         val target: AwsTarget,

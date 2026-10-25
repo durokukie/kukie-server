@@ -60,18 +60,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
     fun `EKS 클러스터는 고객 역할로 새로 만든 토큰을 같은 모양으로 준다`() {
         // given
         val me = loggedInUser()
-        val externalId = "kukie-0123456789abcdef"
-        val cluster = savedCluster(
-            me.user.id,
-            mapOf(
-                "type" to "eks",
-                "accountId" to "123456789012",
-                "externalId" to externalId,
-                "region" to "ap-northeast-2",
-                "clusterName" to "demo",
-            ),
-            provider = ClusterProvider.EKS,
-        )
+        val cluster = savedCluster(me.user.id, EKS_CREDENTIAL, provider = ClusterProvider.EKS)
 
         // when
         val response = mockMvc.get("/internal/clusters/${cluster.id}/connection?expectedFingerprint=${cluster.fingerprint}") {
@@ -87,7 +76,45 @@ class InternalClusterIntegrationTest : IntegrationTest() {
 
         // then
         JsonPath.read<Map<String, Any?>>(response, "$.credential") shouldBe mapOf("token" to FakeEksAccessGateway.tokenFor("demo"))
-        fakeEksAccessGateway.targets shouldBe listOf(AwsTarget(accountId = "123456789012", externalId = externalId))
+        fakeEksAccessGateway.targets.toSet() shouldBe setOf(AwsTarget(accountId = "123456789012", externalId = EXTERNAL_ID))
+        fakeEksAccessGateway.namespaceChecks shouldBe listOf(
+            FakeEksAccessGateway.NamespaceCheck(ClusterFixture.DEFAULT_NAMESPACE, waitForGrant = false),
+        )
+    }
+
+    @Test
+    fun `EKS 클러스터의 namespace 가 사라졌으면 연결 정보를 주지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, EKS_CREDENTIAL, provider = ClusterProvider.EKS)
+        fakeEksAccessGateway.namespaceExists = false
+
+        // when & then
+        mockMvc.get("/internal/clusters/${cluster.id}/connection?expectedFingerprint=${cluster.fingerprint}") {
+            internalToken()
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_NOT_FOUND.code) }
+            jsonPath("$.credential") { doesNotExist() }
+        }
+    }
+
+    @Test
+    fun `EKS 클러스터의 namespace 를 확인하지 못해도 연결 정보를 준다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, EKS_CREDENTIAL, provider = ClusterProvider.EKS)
+        fakeEksAccessGateway.namespaceExists = null
+
+        // when & then
+        mockMvc.get("/internal/clusters/${cluster.id}/connection?expectedFingerprint=${cluster.fingerprint}") {
+            internalToken()
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.credential.token") { value(FakeEksAccessGateway.tokenFor("demo")) }
+        }
     }
 
     @Test
@@ -145,4 +172,15 @@ class InternalClusterIntegrationTest : IntegrationTest() {
             provider = provider,
         ),
     )
+
+    companion object {
+        private const val EXTERNAL_ID = "kukie-0123456789abcdef"
+        private val EKS_CREDENTIAL = mapOf(
+            "type" to "eks",
+            "accountId" to "123456789012",
+            "externalId" to EXTERNAL_ID,
+            "region" to "ap-northeast-2",
+            "clusterName" to "demo",
+        )
+    }
 }

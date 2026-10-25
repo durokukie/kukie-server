@@ -566,6 +566,53 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `클러스터에 없는 namespace 면 등록하지 않고 붙인 권한을 거둔다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
+        fakeEksAccessGateway.accessChanges.clear()
+        fakeEksAccessGateway.namespaceExists = false
+
+        // when
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId), namespace = "kukie-typo").toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_NOT_FOUND.code) }
+            jsonPath("$.message") { value(containsString("kubectl create namespace kukie-typo")) }
+        }
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.accessChanges shouldBe listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-typo"),
+            FakeEksAccessGateway.NamespaceCheck("kukie-typo", waitForGrant = true),
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, setOf("kukie-app")),
+        )
+        clusterRepository.count() shouldBe 1
+    }
+
+    @Test
+    fun `namespace 를 확인하지 못해도 EKS 클러스터를 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceExists = null
+
+        // when
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+        clusterRepository.count() shouldBe 1
+    }
+
+    @Test
     fun `구성원은 EKS 클러스터를 등록할 수 없다`() {
         // given
         val admin = loggedInUser()

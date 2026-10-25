@@ -7,7 +7,6 @@ data class CreateChatCommand(
     val userId: UUID,
     val clusterId: UUID?,
     val teamId: UUID?,
-    val namespace: String?,
     val title: String,
     val visibility: ChatVisibility,
 )
