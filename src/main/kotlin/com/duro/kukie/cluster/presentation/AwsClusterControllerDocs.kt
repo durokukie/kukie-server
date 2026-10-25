@@ -11,6 +11,7 @@ import com.duro.kukie.cluster.exception.EksClusterNotFoundException
 import com.duro.kukie.cluster.exception.EksClusterNotReadyException
 import com.duro.kukie.cluster.exception.EksEndpointRejectedException
 import com.duro.kukie.cluster.exception.InvalidNamespaceException
+import com.duro.kukie.cluster.exception.NamespaceGrantPendingException
 import com.duro.kukie.cluster.exception.NamespaceNotFoundException
 import com.duro.kukie.cluster.presentation.dto.request.GetEksCandidatesRequest
 import com.duro.kukie.cluster.presentation.dto.request.RegisterEksClusterRequest
@@ -77,6 +78,7 @@ interface AwsClusterControllerDocs {
         summary = "EKS 클러스터 등록",
         description = "KukieAccess 역할을 클러스터의 access entry 로 넣고 고른 namespace 에 AmazonEKSEditPolicy 를 붙인 뒤 " +
             "클러스터를 등록합니다. namespace 가 클러스터에 없으면 붙인 권한을 거두고 400 입니다(확인하지 못하면 등록합니다). " +
+            "붙인 권한이 아직 퍼지지 않아 확인하지 못했으면 권한을 남긴 채 409 이니, 잠시 뒤 같은 요청을 다시 보내세요. " +
             "자격증명은 저장하지 않고 연결할 때마다 토큰을 새로 만듭니다. 팀 관리자만 할 수 있습니다.",
     )
     @ApiResponse(responseCode = "201", description = "Created")
@@ -94,6 +96,7 @@ interface AwsClusterControllerDocs {
         EksEndpointRejectedException::class,
         EksAccessDeniedException::class,
         NamespaceNotFoundException::class,
+        NamespaceGrantPendingException::class,
         ClusterNameTakenException::class,
     )
     fun registerEksCluster(userId: UUID, request: RegisterEksClusterRequest): ResponseEntity<ClusterResponse>

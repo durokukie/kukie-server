@@ -1,11 +1,11 @@
 package com.duro.kukie.cluster.infrastructure
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
+import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails
@@ -156,26 +156,48 @@ class AwsEksAccessGatewayTest {
         val responses = ArrayDeque(listOf(403, 401, 200))
 
         // when & then
-        gateway.probeNamespace(attempts = 5, delay = Duration.ZERO) { responses.removeFirst() } shouldBe true
+        gateway.probeNamespace(attempts = 5, delay = Duration.ZERO) { responses.removeFirst() } shouldBe NamespaceStatus.EXISTS
         responses.shouldBeEmpty()
     }
 
     @Test
     fun `404 면 namespace 가 없다고 본다`() {
         // when & then
-        gateway.probeNamespace(attempts = 5, delay = Duration.ZERO) { 404 } shouldBe false
+        gateway.probeNamespace(attempts = 5, delay = Duration.ZERO) { 404 } shouldBe NamespaceStatus.MISSING
     }
 
     @Test
-    fun `끝내 403 이거나 그 밖의 응답·네트워크 오류면 모른다고 본다`() {
+    fun `끝내 401·403 만 받으면 권한이 아직 퍼지지 않았다고 본다`() {
+        // given
+        val responses = ArrayDeque(listOf(401, 403, 403))
+
+        // when & then
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { responses.removeFirst() } shouldBe NamespaceStatus.GRANT_PENDING
+        responses.shouldBeEmpty()
+    }
+
+    @Test
+    fun `401·403 뒤에 오류가 나도 권한이 아직 퍼지지 않았다고 본다`() {
+        // given
+        val responses = ArrayDeque(listOf(403, 503))
+        var calls = 0
+
+        // when & then
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { responses.removeFirst() } shouldBe NamespaceStatus.GRANT_PENDING
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) {
+            if (calls++ == 0) 403 else throw IOException("timeout")
+        } shouldBe NamespaceStatus.GRANT_PENDING
+    }
+
+    @Test
+    fun `그 밖의 응답·네트워크 오류면 다시 묻지 않고 모른다고 본다`() {
         // given
         var attempts = 0
 
         // when & then
-        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { attempts++; 403 }.shouldBeNull()
-        attempts shouldBe 3
-        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { 500 }.shouldBeNull()
-        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { throw IOException("timeout") }.shouldBeNull()
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { attempts++; 500 } shouldBe NamespaceStatus.UNKNOWN
+        attempts shouldBe 1
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { throw IOException("timeout") } shouldBe NamespaceStatus.UNKNOWN
     }
 
     @Test
@@ -184,7 +206,7 @@ class AwsEksAccessGatewayTest {
         val result = gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { throw InterruptedException() }
 
         // then
-        result.shouldBeNull()
+        result shouldBe NamespaceStatus.UNKNOWN
         Thread.interrupted() shouldBe true
     }
 

@@ -40,6 +40,10 @@ enum class ClusterErrorCode(
         HttpStatus.BAD_REQUEST,
         "클러스터에서 그 네임스페이스를 찾지 못했습니다(없거나 아직 준비 중입니다). 없다면 kubectl create namespace 로 만들어 주세요.",
     ),
+    NAMESPACE_GRANT_PENDING(
+        HttpStatus.CONFLICT,
+        "Kukie 권한이 아직 클러스터에 반영되지 않아 네임스페이스를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+    ),
     ;
 
     override val code: String

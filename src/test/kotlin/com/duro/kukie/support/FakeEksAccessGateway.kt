@@ -9,6 +9,7 @@ import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
 import com.duro.kukie.cluster.application.port.out.EksSubnet
+import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 
 class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
@@ -35,12 +36,12 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     val unregistrations = mutableListOf<Unregistration>()
 
-    /** namespaceExists 가 돌려줄 값. false 면 없음, null 이면 확인하지 못함. */
-    var namespaceExists: Boolean? = true
+    /** namespaceStatus 가 돌려줄 값. */
+    var namespaceStatus: NamespaceStatus = NamespaceStatus.EXISTS
 
     val namespaceChecks = mutableListOf<NamespaceCheck>()
 
-    /** registerSelf·namespaceExists·unregisterSelf 를 부른 순서대로. */
+    /** registerSelf·namespaceStatus·unregisterSelf 를 부른 순서대로. */
     val accessChanges = mutableListOf<Any>()
 
     override fun verify(target: AwsTarget) {
@@ -75,18 +76,18 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         accessChanges += Unregistration(target, region, clusterName, keepNamespaces)
     }
 
-    override fun namespaceExists(
+    override fun namespaceStatus(
         target: AwsTarget,
         region: String,
         clusterName: String,
         endpoint: EksClusterEndpoint,
         namespace: String,
         waitForGrant: Boolean,
-    ): Boolean? {
+    ): NamespaceStatus {
         record(target)
         namespaceChecks += NamespaceCheck(namespace, waitForGrant)
         accessChanges += NamespaceCheck(namespace, waitForGrant)
-        return namespaceExists
+        return namespaceStatus
     }
 
     override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
@@ -116,7 +117,7 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         roleChecks.clear()
         registrations.clear()
         unregistrations.clear()
-        namespaceExists = true
+        namespaceStatus = NamespaceStatus.EXISTS
         namespaceChecks.clear()
         accessChanges.clear()
     }
