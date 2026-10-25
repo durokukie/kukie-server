@@ -26,6 +26,34 @@ class MailTeamInvitationSenderTest : IntegrationTest() {
     private fun sender() = MailTeamInvitationSender(mailClient, templateEngine, webAppProperties)
 
     @Test
+    fun `가입한 사람에게는 로그인해서 수락하라고 안내한다`() {
+        // given
+        val htmlBody = slot<String>()
+        every { mailClient.send(any(), any(), capture(htmlBody)) } returns Unit
+
+        // when
+        sender().send(email = "invitee@example.com", teamName = "팀", inviterName = "초대한사람", registered = true)
+
+        // then
+        htmlBody.captured shouldContain "kukie에 로그인하면"
+        htmlBody.captured shouldContain "kukie 열기"
+    }
+
+    @Test
+    fun `가입하지 않은 사람에게는 가입해서 수락하라고 안내한다`() {
+        // given
+        val htmlBody = slot<String>()
+        every { mailClient.send(any(), any(), capture(htmlBody)) } returns Unit
+
+        // when
+        sender().send(email = "invitee@example.com", teamName = "팀", inviterName = "초대한사람", registered = false)
+
+        // then
+        htmlBody.captured shouldContain "kukie에 가입하면"
+        htmlBody.captured shouldContain "kukie 시작하기"
+    }
+
+    @Test
     fun `팀 이름의 마크업은 본문에서 링크가 되지 않는다`() {
         // given
         val teamName = """<a href="https://evil.example">계정 확인하기</a>"""
@@ -37,6 +65,7 @@ class MailTeamInvitationSenderTest : IntegrationTest() {
             email = "invitee@example.com",
             teamName = teamName,
             inviterName = "초대한사람",
+            registered = false,
         )
 
         // then

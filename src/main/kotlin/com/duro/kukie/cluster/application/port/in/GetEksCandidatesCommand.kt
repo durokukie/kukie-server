@@ -4,6 +4,6 @@ import java.util.UUID
 
 data class GetEksCandidatesCommand(
     val userId: UUID,
-    val teamId: UUID,
+    val connectionId: UUID,
     val accountId: String,
 )

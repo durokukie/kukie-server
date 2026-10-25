@@ -19,6 +19,7 @@ enum class ClusterErrorCode(
         "namespace 는 소문자·숫자·하이픈으로 된 63자 이하 이름이어야 하며 kube- 로 시작할 수 없습니다.",
     ),
     AWS_CONNECTION_NOT_STARTED(HttpStatus.NOT_FOUND, "AWS 연결을 먼저 시작해 주세요."),
+    AWS_ACCOUNT_MISMATCH(HttpStatus.CONFLICT, "이 AWS 연결은 다른 계정에 연결되어 있습니다."),
     AWS_REGION_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "지원하지 않는 AWS 리전입니다."),
     AWS_ROLE_NOT_ASSUMABLE(
         HttpStatus.BAD_REQUEST,

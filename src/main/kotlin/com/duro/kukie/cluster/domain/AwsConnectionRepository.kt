@@ -4,6 +4,7 @@ import com.duro.kukie.cluster.exception.AwsConnectionNotStartedException
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -11,9 +12,14 @@ import java.util.UUID
 
 interface AwsConnectionRepository : JpaRepository<AwsConnection, UUID> {
 
-    fun findByTeamId(teamId: UUID): AwsConnection?
+    fun findAllByTeamIdOrderByCreatedAt(teamId: UUID): List<AwsConnection>
+
+    /** 스택 알림을 아직 받은 적 없는 연결. [계정 추가] 를 다시 눌러도 같은 ExternalId 를 준다. */
+    fun findFirstByTeamIdAndAccountIdIsNullAndLastAccountIdIsNullOrderByCreatedAt(teamId: UUID): AwsConnection?
 
     fun findByExternalId(externalId: String): AwsConnection?
+
+    fun existsByTeamIdAndAccountIdAndIdNot(teamId: UUID, accountId: String, id: UUID): Boolean
 
     fun deleteAllByTeamId(teamId: UUID)
 
@@ -36,5 +42,5 @@ interface AwsConnectionRepository : JpaRepository<AwsConnection, UUID> {
     ): Int
 }
 
-fun AwsConnectionRepository.findByTeamIdOrThrow(teamId: UUID): AwsConnection =
-    findByTeamId(teamId) ?: throw AwsConnectionNotStartedException()
+fun AwsConnectionRepository.findByIdOrThrow(id: UUID): AwsConnection =
+    findByIdOrNull(id) ?: throw AwsConnectionNotStartedException()

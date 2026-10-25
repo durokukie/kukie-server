@@ -114,10 +114,11 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         sent.size shouldBe 1
         sent.first().teamName shouldBe TeamFixture.DEFAULT_NAME
         sent.first().inviterName shouldBe UserFixture.DEFAULT_NAME
+        sent.first().registered shouldBe false
     }
 
     @Test
-    fun `이미 가입한 사람에게는 메일을 보내지 않는다`() {
+    fun `이미 가입한 사람에게도 초대 메일을 보낸다`() {
         // given
         val admin = adminOfNewTeam()
         loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
@@ -126,8 +127,9 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         invite(admin, INVITEE_EMAIL)
 
         // then
-        invitationSender.sentCount() shouldBe 0
-        teamInvitationRepository.findAll().size shouldBe 1
+        val sent = invitationSender.sentTo(INVITEE_EMAIL)
+        sent.size shouldBe 1
+        sent.first().registered shouldBe true
     }
 
     @Test

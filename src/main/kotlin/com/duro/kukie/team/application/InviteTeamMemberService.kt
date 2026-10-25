@@ -41,11 +41,9 @@ class InviteTeamMemberService(
         val invitation = teamInvitationRepository.save(
             TeamInvitation(teamId = command.teamId, email = command.email, invitedBy = command.userId),
         )
-        if (invitee == null) {
-            // 메일은 커밋 뒤에 나간다 (TeamInvitationMailListener)
-            val inviterName = userRepository.findByIdOrThrow(command.userId).name
-            events.publishEvent(TeamMemberInvited(command.email.value, team.name, inviterName))
-        }
+        // 메일은 커밋 뒤에 나간다 (TeamInvitationMailListener)
+        val inviterName = userRepository.findByIdOrThrow(command.userId).name
+        events.publishEvent(TeamMemberInvited(command.email.value, team.name, inviterName, registered = invitee != null))
 
         return TeamInvitationResponse.of(invitation)
     }

@@ -1,5 +1,6 @@
 package com.duro.kukie.cluster.domain
 
+import com.duro.kukie.cluster.exception.AwsAccountMismatchException
 import com.duro.kukie.global.entity.BaseTimeEntity
 import com.github.f4b6a3.uuid.UuidCreator
 import jakarta.persistence.Column
@@ -11,7 +12,7 @@ import java.time.LocalDateTime
 import java.util.HexFormat
 import java.util.UUID
 
-/** 팀이 고객 AWS 계정의 KukieAccess-<externalId> 역할을 맡을 때 쓰는 ExternalId. 팀마다 하나다. */
+/** 팀이 고객 AWS 계정의 KukieAccess-<externalId> 역할을 맡을 때 쓰는 ExternalId. 연결한 AWS 계정마다 하나다. */
 @Entity
 @Table(name = "tbl_aws_connection")
 class AwsConnection(
@@ -67,6 +68,11 @@ class AwsConnection(
 
     val connected: Boolean
         get() = accountId != null
+
+    /** 연결된 계정과 다른 계정으로 EKS 를 찾거나 등록하지 못하게 한다. 아직 모르는 계정(v1 직접 입력)은 받는다. */
+    fun requireAccount(accountId: String) {
+        if (this.accountId != null && this.accountId != accountId) throw AwsAccountMismatchException()
+    }
 
     fun connect(accountId: String, at: LocalDateTime, stackId: String?) {
         this.accountId = accountId

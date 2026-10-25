@@ -5,4 +5,5 @@ data class TeamMemberInvited(
     val email: String,
     val teamName: String,
     val inviterName: String,
+    val registered: Boolean,
 )

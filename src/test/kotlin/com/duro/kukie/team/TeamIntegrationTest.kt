@@ -459,6 +459,7 @@ class TeamIntegrationTest : IntegrationTest() {
         teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
         val teamCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = team.id))
         val teamAwsConnection = awsConnectionRepository.save(AwsConnection(teamId = team.id, createdBy = admin.user.id))
+        val secondAwsConnection = awsConnectionRepository.save(AwsConnection(teamId = team.id, createdBy = admin.user.id))
         val otherTeam = teamRepository.save(TeamFixture.team("다른 팀"))
         val otherAwsConnection = awsConnectionRepository.save(AwsConnection(teamId = otherTeam.id, createdBy = admin.user.id))
         val otherCluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = otherTeam.id))
@@ -480,6 +481,7 @@ class TeamIntegrationTest : IntegrationTest() {
         chatSessionRepository.existsById(teamSession.id) shouldBe false
         clusterRepository.existsById(teamCluster.id) shouldBe false
         awsConnectionRepository.existsById(teamAwsConnection.id) shouldBe false
+        awsConnectionRepository.existsById(secondAwsConnection.id) shouldBe false
         teamRepository.existsById(team.id) shouldBe false
         awsConnectionRepository.existsById(otherAwsConnection.id) shouldBe true
         actionPlanRepository.existsById(otherPlan.id) shouldBe true

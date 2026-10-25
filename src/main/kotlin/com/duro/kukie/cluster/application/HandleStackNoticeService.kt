@@ -13,6 +13,7 @@ import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.LocalDateTime
@@ -56,6 +57,13 @@ class HandleStackNoticeService(
         val connection = notice.externalId?.let(awsConnectionRepository::findByExternalId)
             ?: return fail(notice, UNKNOWN_CONNECTION)
         val accountId = accountOf(notice.roleArn, connection.externalId) ?: return fail(notice, ROLE_MISMATCH)
+        // 같은 링크를 다른 계정에서 다시 실행했거나(해제한 줄도 그 계정의 스택을 추적 중이다), 팀이 이미 다른 연결로 쓰는 계정이다.
+        // 실패하면 CloudFormation 이 역할을 되돌린다
+        val linkedAccount = connection.accountId ?: connection.lastAccountId
+        if (linkedAccount != null && linkedAccount != accountId) return fail(notice, OTHER_ACCOUNT)
+        if (awsConnectionRepository.existsByTeamIdAndAccountIdAndIdNot(connection.teamId, accountId, connection.id)) {
+            return fail(notice, ACCOUNT_ALREADY_CONNECTED)
+        }
         try {
             eksAccessGateway.verify(AwsTarget(accountId = accountId, externalId = connection.externalId))
         } catch (_: AwsRoleNotAssumableException) {
@@ -65,7 +73,12 @@ class HandleStackNoticeService(
         }
 
         connection.connect(accountId, LocalDateTime.now(clock), StackConsoleUrl.stackIdOf(notice.stackId, accountId))
-        awsConnectionRepository.save(connection)
+        try {
+            awsConnectionRepository.save(connection)
+        } catch (_: DataIntegrityViolationException) {
+            // 같은 계정의 다른 연결 알림과 함께 들어와 (team_id, account_id) unique 에 걸렸다
+            return fail(notice, ACCOUNT_ALREADY_CONNECTED)
+        }
         stackNoticeResponder.respond(notice, StackNoticeResult(true, physicalId(notice), ""))
         if (notice.requestType == StackNoticeCommand.CREATE) reattachEksAccess(connection, accountId)
         return true
@@ -136,5 +149,9 @@ class HandleStackNoticeService(
             "This ExternalId was not issued by Kukie. Start again from the AWS connect button in Kukie."
         private const val ROLE_MISMATCH =
             "The role name does not match the ExternalId. Use the Kukie template as is."
+        private const val OTHER_ACCOUNT =
+            "This Kukie link is already connected to another AWS account. Use Add AWS account in Kukie for this account."
+        private const val ACCOUNT_ALREADY_CONNECTED =
+            "This AWS account is already connected to the Kukie team. Delete this stack and use the existing connection."
     }
 }
