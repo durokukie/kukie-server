@@ -33,10 +33,20 @@ import software.amazon.awssdk.services.eks.model.ResourceInUseException
 import software.amazon.awssdk.services.eks.model.ResourceNotFoundException
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.StsException
+import java.io.IOException
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManagerFactory
 
 @Component
 class AwsEksAccessGateway(
@@ -143,6 +153,32 @@ class AwsEksAccessGateway(
                 }
             }
         }
+    }
+
+    override fun namespaceExists(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        waitForGrant: Boolean,
+    ): Boolean? {
+        val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { return null }
+        return HttpClient.newBuilder()
+            .sslContext(sslContext)
+            .connectTimeout(API_CALL_TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build()
+            .use { http ->
+                probeNamespace(attempts = if (waitForGrant) GRANT_ATTEMPTS else 1) {
+                    val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}/api/v1/namespaces/$namespace/serviceaccounts/default"))
+                        .timeout(API_CALL_TIMEOUT)
+                        .header("Authorization", "Bearer ${issueToken(target, region, clusterName)}")
+                        .GET()
+                        .build()
+                    http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode()
+                }
+            }
     }
 
     override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup = withSession(target) { credentials ->
@@ -289,6 +325,41 @@ class AwsEksAccessGateway(
             if (exception.awsErrorDetails()?.errorCode() == EC2_UNAUTHORIZED) null else throw exception
         }
 
+    /** 200 이면 true, 404 면 false. 401·403 은 attempts 까지 다시 묻고, 끝내 모르거나 그 밖의 응답·오류면 null. */
+    internal fun probeNamespace(
+        attempts: Int,
+        delay: Duration = GRANT_DELAY,
+        status: () -> Int,
+    ): Boolean? {
+        repeat(attempts) { attempt ->
+            val code = try {
+                status()
+            } catch (_: IOException) {
+                return null
+            } catch (_: AwsServiceException) {
+                return null
+            }
+            when (code) {
+                OK -> return true
+                NOT_FOUND -> return false
+                UNAUTHORIZED, FORBIDDEN -> if (attempt < attempts - 1) Thread.sleep(delay)
+                else -> return null
+            }
+        }
+        return null
+    }
+
+    private fun trusting(caData: String): SSLContext {
+        val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
+        CertificateFactory.getInstance("X.509")
+            .generateCertificates(Base64.getDecoder().decode(caData).inputStream())
+            .forEachIndexed { index, certificate -> trustStore.setCertificateEntry("ca-$index", certificate) }
+        val trustManagers = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+            .apply { init(trustStore) }
+            .trustManagers
+        return SSLContext.getInstance("TLS").apply { init(null, trustManagers, null) }
+    }
+
     private fun <T> ignoringNotFound(block: () -> T): T? =
         try {
             block()
@@ -318,7 +389,10 @@ class AwsEksAccessGateway(
     companion object {
         private const val STANDARD_ENTRY = "STANDARD"
         private const val EDIT_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+        private const val OK = 200
+        private const val UNAUTHORIZED = 401
         private const val FORBIDDEN = 403
+        private const val NOT_FOUND = 404
         private val INVALID_SESSION_CODES = setOf(
             "UnrecognizedClientException",
             "InvalidClientTokenId",
@@ -329,6 +403,10 @@ class AwsEksAccessGateway(
         private const val INVALID_TOKEN_MESSAGE = "security token included in the request is invalid"
         private const val EC2_UNAUTHORIZED = "UnauthorizedOperation"
         private val API_CALL_TIMEOUT: Duration = Duration.ofSeconds(10)
+
+        // ponytail: 막 붙인 access policy 가 퍼지기를 최대 약 8초 기다린다. 더 걸리면 확인 없이 등록한다
+        private const val GRANT_ATTEMPTS = 5
+        private val GRANT_DELAY: Duration = Duration.ofSeconds(2)
 
         /** 재사용한 세션으로 만든 토큰도 kubectl 이 끝날 때까지는 살아 있어야 한다. */
         private val REUSE_MARGIN: Duration = Duration.ofMinutes(5)

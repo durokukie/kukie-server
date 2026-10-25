@@ -35,6 +35,7 @@ enum class ClusterErrorCode(
         "KukieAccess 역할에 이 작업 권한이 없습니다. 스택에서 허용한 namespace(AllowedNamespaces)인지 확인해 주세요.",
     ),
     EKS_ENDPOINT_REJECTED(HttpStatus.BAD_REQUEST, "받아들일 수 없는 클러스터 주소입니다."),
+    NAMESPACE_NOT_FOUND(HttpStatus.BAD_REQUEST, "클러스터에 그 네임스페이스가 없습니다. kubectl create namespace 로 만들어 주세요."),
     ;
 
     override val code: String

@@ -27,6 +27,19 @@ interface EksAccessGateway {
      */
     fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>)
 
+    /**
+     * namespace 의 default ServiceAccount 를 쿠버네티스 API 로 읽어 namespace 가 있는지 본다. 없으면(404) false,
+     * 확인하지 못하면(권한·네트워크 오류) null. waitForGrant 면 막 붙인 권한이 퍼질 때까지 401·403 을 몇 번 다시 묻는다.
+     */
+    fun namespaceExists(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        waitForGrant: Boolean,
+    ): Boolean?
+
     /** 버전·엔드포인트와 애드온·노드 그룹·서브넷을 읽는다. v3 권한이 없으면 inventory 를 비워 돌려준다. */
     fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup
 

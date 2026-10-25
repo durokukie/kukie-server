@@ -14,9 +14,12 @@ import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.EksEndpointRejectedException
 import com.duro.kukie.cluster.exception.InvalidNamespaceException
+import com.duro.kukie.cluster.exception.NamespaceNotFoundException
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
+import com.duro.kukie.global.util.logger
 import org.springframework.stereotype.Service
+import java.util.UUID
 
 @Service
 class RegisterEksClusterService(
@@ -24,10 +27,13 @@ class RegisterEksClusterService(
     private val awsConnectionRepository: AwsConnectionRepository,
     private val clusterPermission: ClusterPermission,
     private val eksAccessGateway: EksAccessGateway,
+    private val eksNamespaces: EksNamespaces,
     private val apiServerAddressChecker: ApiServerAddressChecker,
     private val credentialCipher: CredentialCipher,
     private val clusterAwsProperties: ClusterAwsProperties,
 ) {
+
+    private val log = logger()
 
     /** AWS 와 DNS 를 기다리는 동안 DB 연결을 쥐지 않게 트랜잭션을 걸지 않는다. */
     operator fun invoke(command: RegisterEksClusterCommand): ClusterResponse {
@@ -48,6 +54,18 @@ class RegisterEksClusterService(
         val endpoint = eksAccessGateway.describeCluster(credential.target, command.region, command.clusterName)
         apiServerAddressChecker.rejectionOf(endpoint.endpoint)?.let { throw EksEndpointRejectedException(it) }
         eksAccessGateway.registerSelf(credential.target, command.region, command.clusterName, command.namespace)
+        val namespaceExists = eksAccessGateway.namespaceExists(
+            credential.target,
+            command.region,
+            command.clusterName,
+            endpoint,
+            command.namespace,
+            waitForGrant = true,
+        )
+        if (namespaceExists == false) {
+            releaseNamespace(command.teamId, credential)
+            throw NamespaceNotFoundException(command.namespace)
+        }
 
         val cluster = clusterRepository.saveAndFlushOrThrowNameTaken(
             Cluster(
@@ -66,6 +84,16 @@ class RegisterEksClusterService(
         )
 
         return ClusterResponse.from(cluster)
+    }
+
+    /** 없는 namespace 에 붙인 권한을 거둔다. 실패해도 등록 거부는 그대로 알린다. */
+    private fun releaseNamespace(teamId: UUID, credential: EksCredential) {
+        try {
+            val keepNamespaces = eksNamespaces.registeredOn(teamId, credential)
+            eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, keepNamespaces)
+        } catch (exception: RuntimeException) {
+            log.warn("없는 namespace 의 권한을 거두지 못했습니다: team={} reason={}", teamId, exception.javaClass.simpleName)
+        }
     }
 
     /** 고객 템플릿이 정확한 이름만 허용하므로 패턴(*·?)과 시스템 namespace 는 받지 않는다. */

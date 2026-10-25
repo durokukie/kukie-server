@@ -20,8 +20,8 @@ interface ChatControllerDocs {
 
     @Operation(
         summary = "대화 생성",
-        description = "볼 수 있는 클러스터를 골라 대화를 만듭니다. 접속 대상(context·지문)은 클러스터에서 복사하고, " +
-            "namespace 를 주지 않으면 클러스터의 기본 namespace 를 씁니다. 제목을 비우면 \"새 대화\" 이고 첫 마디로 지어집니다.",
+        description = "볼 수 있는 클러스터를 골라 대화를 만듭니다. 접속 대상(context·namespace·지문)은 클러스터에서 복사합니다. " +
+            "다른 namespace 를 쓰려면 그 namespace 로 클러스터를 따로 등록합니다. 제목을 비우면 \"새 대화\" 이고 첫 마디로 지어집니다.",
     )
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiErrorResponses(ClusterRequiredException::class, ClusterTeamMismatchException::class, ClusterNotFoundException::class)

@@ -11,9 +11,6 @@ data class CreateChatRequest(
 
     val teamId: UUID? = null,
 
-    @field:Size(max = 63)
-    val namespace: String? = null,
-
     @field:Size(max = 200)
     val title: String? = null,
 
@@ -23,7 +20,6 @@ data class CreateChatRequest(
         userId = userId,
         clusterId = clusterId,
         teamId = teamId,
-        namespace = namespace?.trim()?.ifEmpty { null },
         title = title?.trim()?.ifEmpty { null } ?: ChatSession.DEFAULT_TITLE,
         visibility = if (shared == true) ChatVisibility.SHARED else ChatVisibility.PRIVATE,
     )
