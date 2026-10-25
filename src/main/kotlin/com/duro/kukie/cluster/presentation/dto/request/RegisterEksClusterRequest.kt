@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size
 import java.util.UUID
 
 data class RegisterEksClusterRequest(
-    val teamId: UUID,
+    val connectionId: UUID,
 
     @field:Pattern(regexp = "\\d{12}")
     val accountId: String,
@@ -28,7 +28,7 @@ data class RegisterEksClusterRequest(
 ) {
     fun toCommand(userId: UUID) = RegisterEksClusterCommand(
         userId = userId,
-        teamId = teamId,
+        connectionId = connectionId,
         accountId = accountId,
         region = region.trim(),
         clusterName = clusterName,

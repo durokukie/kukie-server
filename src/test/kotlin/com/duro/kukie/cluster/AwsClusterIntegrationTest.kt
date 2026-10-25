@@ -71,7 +71,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
 
         // when
-        val response = mockMvc.post("/clusters/aws/connection") {
+        val response = mockMvc.post("/clusters/aws/connections") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = StartAwsConnectionRequest(teamId).toJson()
@@ -88,13 +88,14 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             "https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-2#/stacks/quickcreate" +
             "?templateURL=https%3A%2F%2Fkukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com" +
             "%2Fkukie-access%2Fv3.yaml&stackName=kukie-access-$externalId&param_ExternalId=$externalId"
-        val stored = awsConnectionRepository.findByTeamId(teamId)!!
-        stored.externalId shouldBe externalId
+        val stored = awsConnectionRepository.findByExternalId(externalId)!!
+        stored.id.toString() shouldBe JsonPath.read(response, "$.id")
+        stored.teamId shouldBe teamId
         stored.createdBy shouldBe admin.user.id
     }
 
     @Test
-    fun `AWS 연결을 다시 시작하면 같은 ExternalId 를 준다`() {
+    fun `스택 알림을 받기 전에 다시 시작하면 같은 연결을 준다`() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
@@ -106,6 +107,35 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // then
         second shouldBe first
         awsConnectionRepository.count() shouldBe 1
+    }
+
+    @Test
+    fun `연결된 계정이 있으면 다른 AWS 계정을 연결할 새 ExternalId 를 준다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val first = startConnection(admin, teamId)
+        connect(first, stackId = null)
+
+        // when
+        val second = startConnection(admin, teamId)
+
+        // then
+        (second == first) shouldBe false
+        awsConnectionRepository.findAllByTeamIdOrderByCreatedAt(teamId).map { it.externalId } shouldBe listOf(first, second)
+    }
+
+    @Test
+    fun `해제한 연결이 있어도 다른 AWS 계정을 연결할 새 ExternalId 를 준다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val first = startConnection(admin, teamId)
+        connect(first, stackId = null)
+        disconnect(admin, first)
+
+        // when & then
+        (startConnection(admin, teamId) == first) shouldBe false
     }
 
     @Test
@@ -126,7 +156,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val teamId = savedTeam(member.user.id to TeamRole.MEMBER)
 
         // when & then
-        mockMvc.post("/clusters/aws/connection") {
+        mockMvc.post("/clusters/aws/connections") {
             authorization(member.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = StartAwsConnectionRequest(teamId).toJson()
@@ -135,6 +165,68 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
         }
         awsConnectionRepository.count() shouldBe 0
+    }
+
+    // ── AWS 연결 목록 ────────────────────────────────────────────
+
+    @Test
+    fun `팀의 AWS 연결을 만든 순서로 계정마다 준다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val first = startConnection(admin, teamId)
+        connect(first, stackId = null)
+        val second = startConnection(admin, teamId)
+        connect(second, stackId = null, accountId = OTHER_ACCOUNT_ID)
+        val pending = startConnection(admin, teamId)
+
+        // when & then
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(3) }
+            jsonPath("$[0].id") { value(idOf(first).toString()) }
+            jsonPath("$[0].externalId") { value(first) }
+            jsonPath("$[0].accountId") { value(ACCOUNT_ID) }
+            jsonPath("$[1].externalId") { value(second) }
+            jsonPath("$[1].accountId") { value(OTHER_ACCOUNT_ID) }
+            jsonPath("$[2].externalId") { value(pending) }
+            jsonPath("$[2].accountId") { value(null) }
+            jsonPath("$[2].quickCreateUrl") { value(containsString("param_ExternalId=$pending")) }
+        }
+    }
+
+    @Test
+    fun `연결을 시작하지 않은 팀의 AWS 연결 목록은 비어 있다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+
+        // when & then
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `구성원은 AWS 연결 목록을 볼 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        startConnection(admin, teamId)
+
+        // when & then
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
     }
 
     // ── EKS 후보 조회 ────────────────────────────────────────────
@@ -150,7 +242,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         mockMvc.post("/clusters/aws/candidates") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = GetEksCandidatesRequest(teamId = teamId, accountId = ACCOUNT_ID).toJson()
+            content = GetEksCandidatesRequest(connectionId = idOf(externalId), accountId = ACCOUNT_ID).toJson()
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
@@ -163,19 +255,60 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `AWS 연결을 시작하지 않은 팀은 EKS 후보를 볼 수 없다`() {
+    fun `없는 AWS 연결로는 EKS 후보를 볼 수 없다`() {
         // given
         val admin = loggedInUser()
-        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        savedTeam(admin.user.id to TeamRole.ADMIN)
 
         // when & then
         mockMvc.post("/clusters/aws/candidates") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = GetEksCandidatesRequest(teamId = teamId, accountId = ACCOUNT_ID).toJson()
+            content = GetEksCandidatesRequest(connectionId = UUID.randomUUID(), accountId = ACCOUNT_ID).toJson()
         }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value(ClusterErrorCode.AWS_CONNECTION_NOT_STARTED.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `연결된 계정과 다른 계정으로는 EKS 후보를 볼 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null)
+
+        // when & then
+        mockMvc.post("/clusters/aws/candidates") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = GetEksCandidatesRequest(connectionId = idOf(externalId), accountId = OTHER_ACCOUNT_ID).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.AWS_ACCOUNT_MISMATCH.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `다른 팀의 AWS 연결로는 EKS 후보를 볼 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val stranger = loggedInUser(UserFixture.user(email = "stranger@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        savedTeam(stranger.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+
+        // when & then
+        mockMvc.post("/clusters/aws/candidates") {
+            authorization(stranger.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = GetEksCandidatesRequest(connectionId = idOf(externalId), accountId = ACCOUNT_ID).toJson()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_MEMBER.code) }
         }
         fakeEksAccessGateway.targets.shouldBeEmpty()
     }
@@ -185,13 +318,13 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
 
         // when & then
         mockMvc.post("/clusters/aws/candidates") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = GetEksCandidatesRequest(teamId = teamId, accountId = "12345").toJson()
+            content = GetEksCandidatesRequest(connectionId = idOf(externalId), accountId = "12345").toJson()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value(GlobalErrorCode.BAD_REQUEST.code) }
@@ -204,13 +337,13 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val member = loggedInUser(UserFixture.user(email = "member@example.com"))
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
 
         // when & then
         mockMvc.post("/clusters/aws/candidates") {
             authorization(member.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = GetEksCandidatesRequest(teamId = teamId, accountId = ACCOUNT_ID).toJson()
+            content = GetEksCandidatesRequest(connectionId = idOf(externalId), accountId = ACCOUNT_ID).toJson()
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
@@ -222,14 +355,14 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
         fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
 
         // when & then
         mockMvc.post("/clusters/aws/candidates") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = GetEksCandidatesRequest(teamId = teamId, accountId = ACCOUNT_ID).toJson()
+            content = GetEksCandidatesRequest(connectionId = idOf(externalId), accountId = ACCOUNT_ID).toJson()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value(ClusterErrorCode.AWS_ROLE_NOT_ASSUMABLE.code) }
@@ -249,7 +382,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val response = mockMvc.post("/clusters/aws") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId).toJson()
+            content = registerRequest(idOf(externalId)).toJson()
         }.andExpect {
             status { isCreated() }
             jsonPath("$.teamId") { value(teamId.toString()) }
@@ -287,18 +420,64 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `한 팀이 두 AWS 계정의 EKS 클러스터를 각 계정의 ExternalId 로 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val first = startConnection(admin, teamId)
+        connect(first, stackId = null)
+        val second = startConnection(admin, teamId)
+        connect(second, stackId = null, accountId = OTHER_ACCOUNT_ID)
+
+        // when
+        val firstId = registerEks(admin, first, namespace = "kukie-demo", name = "운영 EKS")
+        val secondId = registerEks(admin, second, namespace = "kukie-demo", name = "스테이징 EKS", accountId = OTHER_ACCOUNT_ID)
+
+        // then
+        fakeEksAccessGateway.registrations.map { it.target } shouldBe listOf(
+            AwsTarget(accountId = ACCOUNT_ID, externalId = first),
+            AwsTarget(accountId = OTHER_ACCOUNT_ID, externalId = second),
+        )
+        listOf(firstId, secondId).map { id ->
+            val credential = credentialCipher.decrypt(clusterRepository.findByIdOrNull(id)!!.credential)
+            credential["accountId"] to credential["externalId"]
+        } shouldBe listOf(ACCOUNT_ID to first, OTHER_ACCOUNT_ID to second)
+    }
+
+    @Test
+    fun `연결된 계정과 다른 계정의 EKS 클러스터는 등록할 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null)
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId), accountId = OTHER_ACCOUNT_ID).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.AWS_ACCOUNT_MISMATCH.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
     fun `패턴이나 시스템 namespace 로는 EKS 클러스터를 등록할 수 없다`() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
 
         // when & then
         for (namespace in listOf("kukie-*", "kukie-?", "kube-system", "Kukie", "-kukie", "a".repeat(64))) {
             mockMvc.post("/clusters/aws") {
                 authorization(admin.accessToken)
                 contentType = MediaType.APPLICATION_JSON
-                content = registerRequest(teamId, namespace = namespace).toJson()
+                content = registerRequest(idOf(externalId), namespace = namespace).toJson()
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.code") { value(ClusterErrorCode.INVALID_NAMESPACE.code) }
@@ -313,13 +492,13 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
 
         // when & then
         mockMvc.post("/clusters/aws") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId, region = "us-east-1").toJson()
+            content = registerRequest(idOf(externalId), region = "us-east-1").toJson()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value(ClusterErrorCode.AWS_REGION_NOT_SUPPORTED.code) }
@@ -328,16 +507,16 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `AWS 연결을 시작하지 않은 팀은 EKS 클러스터를 등록할 수 없다`() {
+    fun `없는 AWS 연결로는 EKS 클러스터를 등록할 수 없다`() {
         // given
         val admin = loggedInUser()
-        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        savedTeam(admin.user.id to TeamRole.ADMIN)
 
         // when & then
         mockMvc.post("/clusters/aws") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId).toJson()
+            content = registerRequest(UUID.randomUUID()).toJson()
         }.andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value(ClusterErrorCode.AWS_CONNECTION_NOT_STARTED.code) }
@@ -349,14 +528,14 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
         fakeHostResolver.addresses = listOf(InetAddress.getByName("10.0.0.5"))
 
         // when & then
         mockMvc.post("/clusters/aws") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId).toJson()
+            content = registerRequest(idOf(externalId)).toJson()
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value(ClusterErrorCode.EKS_ENDPOINT_REJECTED.code) }
@@ -371,14 +550,14 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
         fakeEksAccessGateway.failure = EksAccessDeniedException()
 
         // when & then
         mockMvc.post("/clusters/aws") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId, namespace = "payments").toJson()
+            content = registerRequest(idOf(externalId), namespace = "payments").toJson()
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value(ClusterErrorCode.EKS_ACCESS_DENIED.code) }
@@ -392,13 +571,13 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val member = loggedInUser(UserFixture.user(email = "member@example.com"))
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
-        awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
 
         // when & then
         mockMvc.post("/clusters/aws") {
             authorization(member.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId).toJson()
+            content = registerRequest(connection.id).toJson()
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
@@ -411,14 +590,14 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
+        val externalId = startConnection(admin, teamId)
         clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId, name = "운영 EKS"))
 
         // when & then
         mockMvc.post("/clusters/aws") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId).toJson()
+            content = registerRequest(idOf(externalId)).toJson()
         }.andExpect {
             status { isConflict() }
             jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_NAME_TAKEN.code) }
@@ -436,7 +615,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val member = loggedInUser(UserFixture.user(email = "member@example.com"))
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
         val externalId = startConnection(admin, teamId)
-        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
 
         // when
         val response = mockMvc.get("/clusters/$clusterId/setup") {
@@ -483,8 +662,8 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
-        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
         fakeEksAccessGateway.setup = FakeEksAccessGateway.DEFAULT_SETUP.copy(inventory = null)
 
         // when & then
@@ -529,8 +708,8 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val stranger = loggedInUser(UserFixture.user(email = "stranger@example.com"))
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
-        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
         fakeEksAccessGateway.targets.clear()
 
         // when & then
@@ -548,8 +727,8 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
-        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
         fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
 
         // when & then
@@ -569,7 +748,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         val externalId = startConnection(admin, teamId)
-        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
 
         // when
         mockMvc.delete("/clusters/$clusterId") {
@@ -593,9 +772,9 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
-        val demo = registerEks(admin, teamId, namespace = "kukie-demo", name = "데모")
-        registerEks(admin, teamId, namespace = "kukie-app", name = "앱")
+        val externalId = startConnection(admin, teamId)
+        val demo = registerEks(admin, externalId, namespace = "kukie-demo", name = "데모")
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
 
         // when
         mockMvc.delete("/clusters/$demo") {
@@ -611,8 +790,8 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
-        val clusterId = registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
         fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
 
         // when & then
@@ -631,17 +810,17 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         val externalId = startConnection(admin, teamId)
         val stackId = "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/uuid-1"
-        connect(teamId, stackId)
-        registerEks(admin, teamId, namespace = "kukie-demo", name = "데모")
-        registerEks(admin, teamId, namespace = "kukie-app", name = "앱")
+        connect(externalId, stackId)
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "데모")
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
         mockMvc.post("/clusters/aws") {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId, name = "다른 EKS").copy(clusterName = "other").toJson()
+            content = registerRequest(idOf(externalId), name = "다른 EKS").copy(clusterName = "other").toJson()
         }.andExpect { status { isCreated() } }
 
         // when
-        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.delete("/clusters/aws/connections/${idOf(externalId)}") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
@@ -661,21 +840,50 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, "other", emptySet()),
         )
         clusterRepository.count() shouldBe 3
-        awsConnectionRepository.findByTeamId(teamId)!!.run {
+        awsConnectionRepository.findByExternalId(externalId)!!.run {
             this.externalId shouldBe externalId
             accountId.shouldBeNull()
             connectedAt.shouldBeNull()
             this.stackId.shouldBeNull()
         }
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.externalId") { value(externalId) }
-            jsonPath("$.accountId") { value(null) }
-            jsonPath("$.stackName") { value("kukie-access-$externalId") }
-            jsonPath("$.stackDeleted") { value(false) }
+            jsonPath("$[0].externalId") { value(externalId) }
+            jsonPath("$[0].accountId") { value(null) }
+            jsonPath("$[0].stackName") { value("kukie-access-$externalId") }
+            jsonPath("$[0].stackDeleted") { value(false) }
         }
+    }
+
+    @Test
+    fun `한 계정의 연결을 해제하면 그 계정의 EKS 만 정리하고 다른 계정의 연결은 그대로 둔다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val first = startConnection(admin, teamId)
+        connect(first, stackId = null)
+        val second = startConnection(admin, teamId)
+        connect(second, stackId = null, accountId = OTHER_ACCOUNT_ID)
+        registerEks(admin, first, namespace = "kukie-demo", name = "운영 EKS")
+        registerEks(admin, second, namespace = "kukie-demo", name = "스테이징 EKS", accountId = OTHER_ACCOUNT_ID)
+
+        // when
+        disconnect(admin, first)
+
+        // then
+        fakeEksAccessGateway.unregistrations shouldBe listOf(
+            FakeEksAccessGateway.Unregistration(
+                AwsTarget(accountId = ACCOUNT_ID, externalId = first),
+                DEFAULT_REGION,
+                DEFAULT_CLUSTER_NAME,
+                emptySet(),
+            ),
+        )
+        awsConnectionRepository.findByExternalId(first)!!.accountId.shouldBeNull()
+        awsConnectionRepository.findByExternalId(second)!!.accountId shouldBe OTHER_ACCOUNT_ID
+        clusterRepository.count() shouldBe 2
     }
 
     @Test
@@ -684,10 +892,10 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         val externalId = startConnection(admin, teamId)
-        connect(teamId, stackId = null)
+        connect(externalId, stackId = null)
 
         // when & then
-        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.delete("/clusters/aws/connections/${idOf(externalId)}") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
@@ -700,7 +908,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             }
         }
         fakeEksAccessGateway.unregistrations.shouldBeEmpty()
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+        awsConnectionRepository.findByExternalId(externalId)!!.accountId.shouldBeNull()
     }
 
     @Test
@@ -708,19 +916,19 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
-        connect(teamId, stackId = null)
-        registerEks(admin, teamId, namespace = "kukie-demo", name = "운영 EKS")
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null)
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
         fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
 
         // when & then
-        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.delete("/clusters/aws/connections/${idOf(externalId)}") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
             jsonPath("$.stackConsoleUrl") { exists() }
         }
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+        awsConnectionRepository.findByExternalId(externalId)!!.accountId.shouldBeNull()
         clusterRepository.count() shouldBe 1
     }
 
@@ -730,27 +938,27 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val member = loggedInUser(UserFixture.user(email = "member@example.com"))
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
-        startConnection(admin, teamId)
-        connect(teamId, stackId = null)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null)
 
         // when & then
-        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.delete("/clusters/aws/connections/${idOf(externalId)}") {
             authorization(member.accessToken)
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
         }
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId shouldBe ACCOUNT_ID
+        awsConnectionRepository.findByExternalId(externalId)!!.accountId shouldBe ACCOUNT_ID
     }
 
     @Test
-    fun `연결을 시작하지 않은 팀은 해제할 수 없다`() {
+    fun `없는 AWS 연결은 해제할 수 없다`() {
         // given
         val admin = loggedInUser()
-        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        savedTeam(admin.user.id to TeamRole.ADMIN)
 
         // when & then
-        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.delete("/clusters/aws/connections/${UUID.randomUUID()}") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isNotFound() }
@@ -767,21 +975,21 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         val externalId = startConnection(admin, teamId)
         val stackId = "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/uuid-1"
-        connect(teamId, stackId)
-        disconnect(admin, teamId)
+        connect(externalId, stackId)
+        disconnect(admin, externalId)
 
         // when & then
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.accountId") { value(null) }
-            jsonPath("$.stackDeleted") { value(false) }
-            jsonPath("$.stackName") { value("kukie-access-$externalId") }
-            jsonPath("$.stackConsoleUrl") { value(containsString(URLEncoder.encode(stackId, Charsets.UTF_8))) }
+            jsonPath("$[0].accountId") { value(null) }
+            jsonPath("$[0].stackDeleted") { value(false) }
+            jsonPath("$[0].stackName") { value("kukie-access-$externalId") }
+            jsonPath("$[0].stackConsoleUrl") { value(containsString(URLEncoder.encode(stackId, Charsets.UTF_8))) }
         }
         fakeEksAccessGateway.roleChecks shouldBe listOf(AwsTarget(accountId = ACCOUNT_ID, externalId = externalId))
-        awsConnectionRepository.findByTeamId(teamId)!!.run {
+        awsConnectionRepository.findByExternalId(externalId)!!.run {
             lastAccountId shouldBe ACCOUNT_ID
             lastStackId shouldBe stackId
             lastStackDeletedAt.shouldBeNull()
@@ -794,23 +1002,23 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         val externalId = startConnection(admin, teamId)
-        connect(teamId, stackId = null)
-        disconnect(admin, teamId)
+        connect(externalId, stackId = null)
+        disconnect(admin, externalId)
         fakeEksAccessGateway.roleExists = false
 
         // when & then
         repeat(2) {
-            mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+            mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
                 authorization(admin.accessToken)
             }.andExpect {
                 status { isOk() }
-                jsonPath("$.stackDeleted") { value(true) }
-                jsonPath("$.stackName") { value("kukie-access-$externalId") }
-                jsonPath("$.stackConsoleUrl") { value(containsString("filteringText=kukie-access-$externalId")) }
+                jsonPath("$[0].stackDeleted") { value(true) }
+                jsonPath("$[0].stackName") { value("kukie-access-$externalId") }
+                jsonPath("$[0].stackConsoleUrl") { value(containsString("filteringText=kukie-access-$externalId")) }
             }
         }
         fakeEksAccessGateway.roleChecks.size shouldBe 1
-        awsConnectionRepository.findByTeamId(teamId)!!.lastStackDeletedAt.shouldNotBeNull()
+        awsConnectionRepository.findByExternalId(externalId)!!.lastStackDeletedAt.shouldNotBeNull()
     }
 
     @Test
@@ -818,20 +1026,20 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-        startConnection(admin, teamId)
-        connect(teamId, stackId = null)
-        disconnect(admin, teamId)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null)
+        disconnect(admin, externalId)
         fakeEksAccessGateway.failure = IllegalStateException("throttled")
 
         // when & then
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.stackDeleted") { value(null) }
-            jsonPath("$.stackConsoleUrl") { exists() }
+            jsonPath("$[0].stackDeleted") { value(null) }
+            jsonPath("$[0].stackConsoleUrl") { exists() }
         }
-        awsConnectionRepository.findByTeamId(teamId)!!.lastStackDeletedAt.shouldBeNull()
+        awsConnectionRepository.findByExternalId(externalId)!!.lastStackDeletedAt.shouldBeNull()
     }
 
     @Test
@@ -842,41 +1050,41 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val externalId = startConnection(admin, teamId)
 
         // when & then
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.stackDeleted") { value(null) }
-            jsonPath("$.stackName") { value(null) }
-            jsonPath("$.stackConsoleUrl") { value(null) }
+            jsonPath("$[0].stackDeleted") { value(null) }
+            jsonPath("$[0].stackName") { value("kukie-access-$externalId") }
+            jsonPath("$[0].stackConsoleUrl") { value(null) }
         }
-        connect(teamId, stackId = null)
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        connect(externalId, stackId = null)
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.accountId") { value(ACCOUNT_ID) }
-            jsonPath("$.stackDeleted") { value(null) }
-            jsonPath("$.stackName") { value("kukie-access-$externalId") }
+            jsonPath("$[0].accountId") { value(ACCOUNT_ID) }
+            jsonPath("$[0].stackDeleted") { value(null) }
+            jsonPath("$[0].stackName") { value("kukie-access-$externalId") }
         }
         fakeEksAccessGateway.roleChecks.shouldBeEmpty()
     }
 
-    private fun disconnect(user: LoggedInUser, teamId: UUID) {
-        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+    private fun disconnect(user: LoggedInUser, externalId: String) {
+        mockMvc.delete("/clusters/aws/connections/${idOf(externalId)}") {
             authorization(user.accessToken)
         }.andExpect { status { isOk() } }
     }
 
     /** 스택 알림을 확인한 것처럼 계정을 채운다. */
-    private fun connect(teamId: UUID, stackId: String?) {
-        val connection = awsConnectionRepository.findByTeamId(teamId)!!
-        connection.connect(ACCOUNT_ID, LocalDateTime.now(), stackId)
+    private fun connect(externalId: String, stackId: String?, accountId: String = ACCOUNT_ID) {
+        val connection = awsConnectionRepository.findByExternalId(externalId)!!
+        connection.connect(accountId, LocalDateTime.now(), stackId)
         awsConnectionRepository.save(connection)
     }
 
     private fun startConnection(user: LoggedInUser, teamId: UUID): String {
-        val response = mockMvc.post("/clusters/aws/connection") {
+        val response = mockMvc.post("/clusters/aws/connections") {
             authorization(user.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = StartAwsConnectionRequest(teamId).toJson()
@@ -887,31 +1095,41 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         return JsonPath.read(response, "$.externalId")
     }
 
+    private fun idOf(externalId: String): UUID = awsConnectionRepository.findByExternalId(externalId)!!.id
+
     private fun registerRequest(
-        teamId: UUID,
+        connectionId: UUID,
         region: String = DEFAULT_REGION,
         namespace: String = "kukie-demo",
         name: String = "운영 EKS",
+        accountId: String = ACCOUNT_ID,
     ) = RegisterEksClusterRequest(
-        teamId = teamId,
-        accountId = ACCOUNT_ID,
+        connectionId = connectionId,
+        accountId = accountId,
         region = region,
         clusterName = DEFAULT_CLUSTER_NAME,
         namespace = namespace,
         name = name,
     )
 
-    private fun registerEks(user: LoggedInUser, teamId: UUID, namespace: String, name: String): UUID {
+    private fun registerEks(
+        user: LoggedInUser,
+        externalId: String,
+        namespace: String,
+        name: String,
+        accountId: String = ACCOUNT_ID,
+    ): UUID {
         val response = mockMvc.post("/clusters/aws") {
             authorization(user.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = registerRequest(teamId, namespace = namespace, name = name).toJson()
+            content = registerRequest(idOf(externalId), namespace = namespace, name = name, accountId = accountId).toJson()
         }.andExpect { status { isCreated() } }.andReturn().response.contentAsString
         return UUID.fromString(JsonPath.read(response, "$.id"))
     }
 
     companion object {
         private const val ACCOUNT_ID = "123456789012"
+        private const val OTHER_ACCOUNT_ID = "210987654321"
         private const val TEMPLATE_URL =
             "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v3.yaml"
     }

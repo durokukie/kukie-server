@@ -4,7 +4,7 @@ import java.util.UUID
 
 data class RegisterEksClusterCommand(
     val userId: UUID,
-    val teamId: UUID,
+    val connectionId: UUID,
     val accountId: String,
     val region: String,
     val clusterName: String,
