@@ -389,10 +389,8 @@ class AwsEksAccessGateway(
             .build()
 
     /**
-     * 자기 access entry 를 만든다. GPU 읽기 그룹([GPU_READ_GROUP])을 먼저 달아 보고, 거부되면(템플릿 v1~v3 이거나 v4 의
-     * GpuRead=false) 그룹 없이 만든다. 그룹은 만들 때만 달 수 있다 — v4 는 UpdateAccessEntry 를 주지 않는다(kukie-infra#124).
-     * 그룹만으로는 권한이 없고, 고객 클러스터 관리자가 적용한 RBAC(gpu-read-rbac-v1.yaml)가 권한을 준다.
-     * 이미 있으면 그대로 둔다 — 그룹이 없는 옛 entry 에 그룹을 달려면 지우고 다시 등록해야 한다.
+     * 그룹은 만들 때만 달 수 있어(템플릿 v4 는 UpdateAccessEntry 를 주지 않는다) 먼저 달아 보고, 거부되면 그룹 없이 만든다.
+     * 이미 있으면 그대로 둔다.
      */
     internal fun createSelfEntry(eks: EksClient, clusterName: String, principalArn: String) {
         try {
@@ -426,7 +424,7 @@ class AwsEksAccessGateway(
 
     companion object {
         private const val STANDARD_ENTRY = "STANDARD"
-        /** 템플릿 v4 GpuRead=true 가 자기 entry 에 달게 해 주는 단 하나의 Kubernetes 그룹 (kukie-infra customer-templates) */
+        /** 템플릿 v4 GpuRead=true 역할이 자기 entry 에 달 수 있는 단 하나의 그룹. 권한은 고객이 적용한 RBAC 가 준다 */
         internal const val GPU_READ_GROUP = "kukie-gpu-reader"
         private const val EDIT_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
         private const val OK = 200
