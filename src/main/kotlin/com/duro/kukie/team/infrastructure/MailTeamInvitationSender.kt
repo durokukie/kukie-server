@@ -16,7 +16,7 @@ class MailTeamInvitationSender(
     private val webAppProperties: WebAppProperties,
 ) : TeamInvitationSender {
 
-    override fun send(email: String, teamName: String, inviterName: String) {
+    override fun send(email: String, teamName: String, inviterName: String, registered: Boolean) {
         mailClient.send(
             to = email,
             subject = "[kukie] ${inviterName}님이 $teamName 팀에 초대했습니다.",
@@ -27,6 +27,7 @@ class MailTeamInvitationSender(
                     /* variables = */ mapOf(
                         "teamName" to teamName,
                         "inviterName" to inviterName,
+                        "registered" to registered,
                         "expirationDays" to TeamInvitation.VALIDITY.toDays(),
                         "webAppUrl" to webAppProperties.url,
                     ),
