@@ -402,7 +402,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         response shouldNotContain externalId
         JsonPath.read<Map<String, Any?>>(response, "$").keys shouldBe setOf(
             "id", "teamId", "registeredBy", "name", "provider", "apiServer", "context", "namespace", "fingerprint",
-            "status", "insecure", "lastCheckedAt", "createdAt", "updatedAt",
+            "status", "insecure", "lastCheckedAt", "hasGpu", "createdAt", "updatedAt",
         )
         val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
         fakeEksAccessGateway.registrations shouldBe listOf(
