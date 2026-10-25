@@ -57,8 +57,10 @@ class HandleStackNoticeService(
         val connection = notice.externalId?.let(awsConnectionRepository::findByExternalId)
             ?: return fail(notice, UNKNOWN_CONNECTION)
         val accountId = accountOf(notice.roleArn, connection.externalId) ?: return fail(notice, ROLE_MISMATCH)
-        // 같은 링크를 다른 계정에서 다시 실행했거나, 팀이 이미 다른 연결로 쓰는 계정이다. 실패하면 CloudFormation 이 역할을 되돌린다
-        if (connection.accountId != null && connection.accountId != accountId) return fail(notice, OTHER_ACCOUNT)
+        // 같은 링크를 다른 계정에서 다시 실행했거나(해제한 줄도 그 계정의 스택을 추적 중이다), 팀이 이미 다른 연결로 쓰는 계정이다.
+        // 실패하면 CloudFormation 이 역할을 되돌린다
+        val linkedAccount = connection.accountId ?: connection.lastAccountId
+        if (linkedAccount != null && linkedAccount != accountId) return fail(notice, OTHER_ACCOUNT)
         if (awsConnectionRepository.existsByTeamIdAndAccountIdAndIdNot(connection.teamId, accountId, connection.id)) {
             return fail(notice, ACCOUNT_ALREADY_CONNECTED)
         }

@@ -244,6 +244,32 @@ class StackNoticeIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `해제한 연결의 링크를 다른 계정에서 실행하면 지난 스택 기록을 두고 실패를 회신한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        handleStackNoticeService(notice(connection.externalId))
+        mockMvc.delete("/clusters/aws/connections/${connection.id}") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isOk() } }
+        fakeEksAccessGateway.targets.clear()
+        fakeStackNoticeResponder.responses.clear()
+
+        // when
+        handleStackNoticeService(notice(connection.externalId, accountId = OTHER_ACCOUNT_ID))
+
+        // then
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+        fakeStackNoticeResponder.responses.single().success shouldBe false
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.run {
+            accountId.shouldBeNull()
+            lastAccountId shouldBe ACCOUNT_ID
+            lastStackId shouldBe stackIdOf(connection.externalId)
+        }
+    }
+
+    @Test
     fun `팀의 다른 연결이 이미 쓰는 계정이면 맡아 보지 않고 실패를 회신한다`() {
         // given
         val admin = loggedInUser()
