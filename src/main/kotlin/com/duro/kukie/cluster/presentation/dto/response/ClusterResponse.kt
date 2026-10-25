@@ -19,6 +19,7 @@ data class ClusterResponse(
     val status: ClusterStatus,
     val insecure: Boolean,
     val lastCheckedAt: LocalDateTime?,
+    val hasGpu: Boolean?,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime,
 ) {
@@ -36,6 +37,7 @@ data class ClusterResponse(
             status = cluster.status,
             insecure = cluster.insecure,
             lastCheckedAt = cluster.lastCheckedAt,
+            hasGpu = cluster.hasGpu,
             createdAt = cluster.createdAt,
             updatedAt = cluster.updatedAt,
         )

@@ -53,6 +53,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.contextName") { value(ClusterFixture.DEFAULT_CONTEXT) }
             jsonPath("$.namespace") { value(ClusterFixture.DEFAULT_NAMESPACE) }
             jsonPath("$.fingerprint") { value(cluster.fingerprint) }
+            jsonPath("$.hasGpu") { value(null) }
             jsonPath("$.credential.token") { value("secret-token") }
         }
     }
@@ -172,6 +173,89 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         val saved = clusterRepository.findByIdOrNull(cluster.id)!!
         saved.status shouldBe ClusterStatus.CONNECTED
         saved.lastCheckedAt shouldBe checkedAt
+    }
+
+    @Test
+    fun `GPU 여부를 남기고 연결 정보와 클러스터 응답에 싣는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, mapOf("token" to "t"))
+
+        // when
+        mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("hasGpu" to true, "fingerprint" to cluster.fingerprint).toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(cluster.id.toString()) }
+            jsonPath("$.hasGpu") { value(true) }
+        }
+
+        // then
+        clusterRepository.findByIdOrNull(cluster.id)!!.hasGpu shouldBe true
+        mockMvc.get("/internal/clusters/${cluster.id}/connection") {
+            internalToken()
+            authorization(me.accessToken)
+        }.andExpect {
+            jsonPath("$.hasGpu") { value(true) }
+        }
+        mockMvc.get("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+        }.andExpect {
+            jsonPath("$.hasGpu") { value(true) }
+        }
+    }
+
+    @Test
+    fun `GPU 여부를 읽는 사이 kubeconfig 가 바뀌었으면 남기지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, mapOf("token" to "t"))
+
+        // when & then
+        mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("hasGpu" to true, "fingerprint" to "옛-지문").toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_CHANGED.code) }
+        }
+        clusterRepository.findByIdOrNull(cluster.id)!!.hasGpu shouldBe null
+    }
+
+    @Test
+    fun `GPU 여부가 비어 있으면 400 이다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, mapOf("token" to "t"))
+
+        // when & then
+        mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("hasGpu" to null, "fingerprint" to cluster.fingerprint).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+        }
+        clusterRepository.findByIdOrNull(cluster.id)!!.hasGpu shouldBe null
+    }
+
+    @Test
+    fun `내부 토큰 없이는 GPU 여부를 남길 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, mapOf("token" to "t"))
+
+        // when & then
+        mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("hasGpu" to true, "fingerprint" to cluster.fingerprint).toJson()
+        }.andExpect {
+            status { isUnauthorized() }
+        }
     }
 
     private fun savedCluster(

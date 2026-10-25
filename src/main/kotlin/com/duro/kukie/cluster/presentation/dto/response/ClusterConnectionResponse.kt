@@ -12,6 +12,7 @@ data class ClusterConnectionResponse(
     val contextName: String,
     val namespace: String,
     val fingerprint: String,
+    val hasGpu: Boolean?,
     val credential: Map<String, String>,
 ) {
     companion object {
@@ -24,6 +25,7 @@ data class ClusterConnectionResponse(
             contextName = cluster.contextName,
             namespace = cluster.defaultNamespace,
             fingerprint = cluster.fingerprint,
+            hasGpu = cluster.hasGpu,
             credential = credential,
         )
     }

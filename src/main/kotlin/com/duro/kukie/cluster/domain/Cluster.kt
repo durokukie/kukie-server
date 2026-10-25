@@ -87,6 +87,11 @@ class Cluster(
     var lastCheckedAt: LocalDateTime? = null
         protected set
 
+    /** null 은 아직 모른다 — 노드 읽기 권한이 없는 클러스터는 계속 null 이다. */
+    @Column(name = "has_gpu")
+    var hasGpu: Boolean? = null
+        protected set
+
     fun rename(name: String) {
         this.name = name
     }
@@ -108,11 +113,16 @@ class Cluster(
         this.credential = credential
         this.fingerprint = fingerprint
         this.status = ClusterStatus.DISCONNECTED
+        this.hasGpu = null
     }
 
     fun recordCheck(status: ClusterStatus, checkedAt: LocalDateTime) {
         this.status = status
         this.lastCheckedAt = checkedAt
+    }
+
+    fun recordGpu(hasGpu: Boolean) {
+        this.hasGpu = hasGpu
     }
 
     companion object {

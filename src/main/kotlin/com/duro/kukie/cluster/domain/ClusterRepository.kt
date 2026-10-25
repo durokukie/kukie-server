@@ -2,8 +2,10 @@ package com.duro.kukie.cluster.domain
 
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
+import jakarta.persistence.LockModeType
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
@@ -31,10 +33,17 @@ interface ClusterRepository : JpaRepository<Cluster, UUID> {
     fun lockIdsByTeamId(@Param("teamId") teamId: UUID): List<UUID>
 
     fun deleteAllByTeamId(teamId: UUID)
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Cluster c where c.id = :id")
+    fun lockById(@Param("id") id: UUID): Cluster?
 }
 
 fun ClusterRepository.findByIdOrThrow(id: UUID): Cluster =
     findByIdOrNull(id) ?: throw ClusterNotFoundException()
+
+fun ClusterRepository.lockByIdOrThrow(id: UUID): Cluster =
+    lockById(id) ?: throw ClusterNotFoundException()
 
 fun ClusterRepository.saveAndFlushOrThrowNameTaken(cluster: Cluster): Cluster =
     try {

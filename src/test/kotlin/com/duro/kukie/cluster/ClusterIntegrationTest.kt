@@ -84,13 +84,14 @@ class ClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.status") { value("disconnected") }
             jsonPath("$.insecure") { value(false) }
             jsonPath("$.lastCheckedAt") { value(null) }
+            jsonPath("$.hasGpu") { value(null) }
         }.andReturn().response.contentAsString
 
         // then
         response shouldNotContain ClusterFixture.DEFAULT_TOKEN
         JsonPath.read<Map<String, Any?>>(response, "$").keys shouldBe setOf(
             "id", "teamId", "registeredBy", "name", "provider", "apiServer", "context", "namespace", "fingerprint",
-            "status", "insecure", "lastCheckedAt", "createdAt", "updatedAt",
+            "status", "insecure", "lastCheckedAt", "hasGpu", "createdAt", "updatedAt",
         )
         val stored = clusterRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.id")))!!
         stored.credential shouldNotContain ClusterFixture.DEFAULT_TOKEN
@@ -250,6 +251,7 @@ class ClusterIntegrationTest : IntegrationTest() {
         val id = register(me)
         val before = clusterRepository.findByIdOrNull(id)!!
         before.recordCheck(ClusterStatus.CONNECTED, LocalDateTime.now())
+        before.recordGpu(true)
         clusterRepository.save(before)
         val replaced = kubeconfig(serverUrl = "https://other.example.com", context = "renamed", user = mapOf("token" to "새-토큰"))
 
@@ -262,6 +264,7 @@ class ClusterIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.apiServer") { value("https://other.example.com") }
             jsonPath("$.status") { value("disconnected") }
+            jsonPath("$.hasGpu") { value(null) }
             jsonPath("$.context") { value(ClusterFixture.DEFAULT_CONTEXT) }
             jsonPath("$.namespace") { value(ClusterFixture.DEFAULT_NAMESPACE) }
         }

@@ -5,6 +5,7 @@ import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.ClusterChangedException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import com.duro.kukie.cluster.exception.NamespaceNotFoundException
+import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterGpuRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterStatusRequest
 import com.duro.kukie.cluster.presentation.dto.response.ClusterConnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
@@ -33,4 +34,13 @@ interface InternalClusterControllerDocs {
     @Operation(summary = "[내부] 클러스터 상태 갱신", description = "agent 의 연결 확인 결과를 남깁니다. 사용자 토큰은 보지 않습니다.")
     @ApiErrorResponses(InvalidInternalTokenException::class, ClusterNotFoundException::class)
     fun updateClusterStatus(clusterId: UUID, request: UpdateClusterStatusRequest): ResponseEntity<ClusterResponse>
+
+    @Operation(
+        summary = "[내부] 클러스터 GPU 여부 갱신",
+        description = "agent 가 노드 목록을 읽어 알아낸 GPU 노드 유무를 남깁니다. 노드를 못 읽으면 agent 가 부르지 않아 값은 그대로(처음엔 null)입니다. " +
+            "연결 정보(kubeconfig)를 바꾸면 null 로 돌아갑니다. fingerprint 는 agent 가 노드를 읽을 때 쓴 연결 정보의 지문이고, " +
+            "그 사이 kubeconfig 가 바뀌어 지금 지문과 다르면 409 입니다. 사용자 토큰은 보지 않습니다.",
+    )
+    @ApiErrorResponses(InvalidInternalTokenException::class, ClusterNotFoundException::class, ClusterChangedException::class)
+    fun updateClusterGpu(clusterId: UUID, request: UpdateClusterGpuRequest): ResponseEntity<ClusterResponse>
 }

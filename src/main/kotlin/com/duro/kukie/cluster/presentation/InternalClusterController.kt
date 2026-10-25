@@ -1,7 +1,9 @@
 package com.duro.kukie.cluster.presentation
 
 import com.duro.kukie.cluster.application.GetClusterConnectionService
+import com.duro.kukie.cluster.application.UpdateClusterGpuService
 import com.duro.kukie.cluster.application.UpdateClusterStatusService
+import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterGpuRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterStatusRequest
 import com.duro.kukie.cluster.presentation.dto.response.ClusterConnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
@@ -25,6 +27,7 @@ import java.util.UUID
 class InternalClusterController(
     private val getClusterConnectionService: GetClusterConnectionService,
     private val updateClusterStatusService: UpdateClusterStatusService,
+    private val updateClusterGpuService: UpdateClusterGpuService,
 ) : InternalClusterControllerDocs {
 
     @Authenticated
@@ -43,5 +46,13 @@ class InternalClusterController(
         @RequestBody @Valid request: UpdateClusterStatusRequest,
     ): ResponseEntity<ClusterResponse> {
         return ResponseEntity.ok(updateClusterStatusService(request.toCommand(clusterId)))
+    }
+
+    @PatchMapping("/{clusterId}/gpu")
+    override fun updateClusterGpu(
+        @PathVariable clusterId: UUID,
+        @RequestBody @Valid request: UpdateClusterGpuRequest,
+    ): ResponseEntity<ClusterResponse> {
+        return ResponseEntity.ok(updateClusterGpuService(request.toCommand(clusterId)))
     }
 }
