@@ -419,7 +419,7 @@ class AwsEksAccessGateway(
         private const val EC2_UNAUTHORIZED = "UnauthorizedOperation"
         private val API_CALL_TIMEOUT: Duration = Duration.ofSeconds(10)
 
-        // ponytail: 막 붙인 access policy 가 퍼지기를 최대 약 8초 기다린다. 더 걸리면 확인 없이 등록한다
+        // 막 붙인 access policy 가 퍼지기를 기다린다
         private const val GRANT_ATTEMPTS = 5
         private val GRANT_DELAY: Duration = Duration.ofSeconds(2)
 
