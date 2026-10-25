@@ -15,6 +15,7 @@ import com.duro.kukie.cluster.exception.EksAccessEntryDisabledException
 import com.duro.kukie.cluster.exception.EksClusterNotFoundException
 import com.duro.kukie.cluster.exception.EksClusterNotReadyException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
+import com.duro.kukie.global.util.logger
 import org.springframework.stereotype.Component
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials
 import software.amazon.awssdk.awscore.exception.AwsServiceException
@@ -57,6 +58,7 @@ class AwsEksAccessGateway(
     private val clock: Clock = Clock.systemUTC()
     private val tokenSigner = EksTokenSigner(clock)
     private val sessions = ConcurrentHashMap<AwsTarget, AwsSessionCredentials>()
+    private val log = logger()
 
     /** 스택 알림 때 부른다. 역할을 다시 만들었을 수 있어 캐시된 세션을 버리고 새로 맡은 세션으로 바꿔 둔다. */
     override fun verify(target: AwsTarget) {
@@ -166,13 +168,13 @@ class AwsEksAccessGateway(
         val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { return null }
         return HttpClient.newBuilder()
             .sslContext(sslContext)
-            .connectTimeout(API_CALL_TIMEOUT)
+            .connectTimeout(PROBE_TIMEOUT)
             .followRedirects(HttpClient.Redirect.NEVER)
             .build()
             .use { http ->
                 probeNamespace(attempts = if (waitForGrant) GRANT_ATTEMPTS else 1) {
                     val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}/api/v1/namespaces/$namespace/serviceaccounts/default"))
-                        .timeout(API_CALL_TIMEOUT)
+                        .timeout(PROBE_TIMEOUT)
                         .header("Authorization", "Bearer ${issueToken(target, region, clusterName)}")
                         .GET()
                         .build()
@@ -331,21 +333,34 @@ class AwsEksAccessGateway(
         delay: Duration = GRANT_DELAY,
         status: () -> Int,
     ): Boolean? {
-        repeat(attempts) { attempt ->
-            val code = try {
-                status()
-            } catch (_: IOException) {
-                return null
-            } catch (_: AwsServiceException) {
-                return null
+        var last = ""
+        try {
+            repeat(attempts) { attempt ->
+                val code = try {
+                    status()
+                } catch (exception: IOException) {
+                    return unknown(exception.javaClass.simpleName)
+                } catch (exception: AwsServiceException) {
+                    return unknown(exception.javaClass.simpleName)
+                }
+                when (code) {
+                    OK -> return true
+                    NOT_FOUND -> return false
+                    UNAUTHORIZED, FORBIDDEN -> if (attempt < attempts - 1) Thread.sleep(delay)
+                    else -> return unknown("status $code")
+                }
+                last = "status $code"
             }
-            when (code) {
-                OK -> return true
-                NOT_FOUND -> return false
-                UNAUTHORIZED, FORBIDDEN -> if (attempt < attempts - 1) Thread.sleep(delay)
-                else -> return null
-            }
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return unknown("interrupted")
         }
+        return unknown(last)
+    }
+
+    /** 읽기 권한이 없으면 확인이 늘 null 로 조용히 꺼지므로 이유를 남긴다. */
+    private fun unknown(reason: String): Boolean? {
+        log.debug("namespace 를 확인하지 못했습니다: reason={}", reason)
         return null
     }
 
@@ -407,6 +422,9 @@ class AwsEksAccessGateway(
         // ponytail: 막 붙인 access policy 가 퍼지기를 최대 약 8초 기다린다. 더 걸리면 확인 없이 등록한다
         private const val GRANT_ATTEMPTS = 5
         private val GRANT_DELAY: Duration = Duration.ofSeconds(2)
+
+        /** 연결마다 부르는 확인이라 응답하지 않는 API 서버가 kubectl 실행을 오래 붙잡지 않게 짧게 둔다. */
+        private val PROBE_TIMEOUT: Duration = Duration.ofSeconds(3)
 
         /** 재사용한 세션으로 만든 토큰도 kubectl 이 끝날 때까지는 살아 있어야 한다. */
         private val REUSE_MARGIN: Duration = Duration.ofMinutes(5)

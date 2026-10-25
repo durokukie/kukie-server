@@ -178,6 +178,16 @@ class AwsEksAccessGatewayTest {
         gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { throw IOException("timeout") }.shouldBeNull()
     }
 
+    @Test
+    fun `확인 중 인터럽트되면 모른다고 보고 인터럽트 표시를 남긴다`() {
+        // when
+        val result = gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { throw InterruptedException() }
+
+        // then
+        result.shouldBeNull()
+        Thread.interrupted() shouldBe true
+    }
+
     /** EKS 를 부르는 메서드처럼 캐시된 세션을 쓴다. */
     private fun useSession() = gateway.withSession(target) { }
 
