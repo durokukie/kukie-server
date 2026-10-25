@@ -185,7 +185,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
             internalToken()
             contentType = MediaType.APPLICATION_JSON
-            content = mapOf("hasGpu" to true).toJson()
+            content = mapOf("hasGpu" to true, "fingerprint" to cluster.fingerprint).toJson()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(cluster.id.toString()) }
@@ -208,6 +208,24 @@ class InternalClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `GPU 여부를 읽는 사이 kubeconfig 가 바뀌었으면 남기지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, mapOf("token" to "t"))
+
+        // when & then
+        mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("hasGpu" to true, "fingerprint" to "옛-지문").toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_CHANGED.code) }
+        }
+        clusterRepository.findByIdOrNull(cluster.id)!!.hasGpu shouldBe null
+    }
+
+    @Test
     fun `GPU 여부가 비어 있으면 400 이다`() {
         // given
         val me = loggedInUser()
@@ -217,7 +235,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
             internalToken()
             contentType = MediaType.APPLICATION_JSON
-            content = mapOf("hasGpu" to null).toJson()
+            content = mapOf("hasGpu" to null, "fingerprint" to cluster.fingerprint).toJson()
         }.andExpect {
             status { isBadRequest() }
         }
@@ -234,7 +252,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         mockMvc.patch("/internal/clusters/${cluster.id}/gpu") {
             authorization(me.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = mapOf("hasGpu" to true).toJson()
+            content = mapOf("hasGpu" to true, "fingerprint" to cluster.fingerprint).toJson()
         }.andExpect {
             status { isUnauthorized() }
         }

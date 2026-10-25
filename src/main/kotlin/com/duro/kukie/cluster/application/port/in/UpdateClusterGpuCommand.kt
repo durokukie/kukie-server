@@ -5,4 +5,5 @@ import java.util.UUID
 data class UpdateClusterGpuCommand(
     val clusterId: UUID,
     val hasGpu: Boolean,
+    val fingerprint: String,
 )
