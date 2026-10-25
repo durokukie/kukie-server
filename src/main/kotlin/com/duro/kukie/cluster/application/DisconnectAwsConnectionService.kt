@@ -2,10 +2,10 @@ package com.duro.kukie.cluster.application
 
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
+import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
-import com.duro.kukie.cluster.domain.findByTeamIdOrThrow
 import com.duro.kukie.cluster.presentation.dto.response.AwsDisconnectionResponse
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
@@ -32,13 +32,12 @@ class DisconnectAwsConnectionService(
     private val log = logger()
 
     /** AWS 를 부르는 동안 DB 연결을 쥐지 않게 트랜잭션을 걸지 않는다(저장은 save 한 번). */
-    operator fun invoke(teamId: UUID, userId: UUID): AwsDisconnectionResponse {
-        clusterPermission.requireTeamAdmin(teamId, userId)
-        val connection = awsConnectionRepository.findByTeamIdOrThrow(teamId)
+    operator fun invoke(connectionId: UUID, userId: UUID): AwsDisconnectionResponse {
+        val connection = clusterPermission.requireWritableAwsConnection(connectionId, userId)
         val stackName = clusterAwsProperties.stackNameFor(connection.externalId)
         val stackConsoleUrl = StackConsoleUrl.of(connection.stackId, stackName, clusterAwsProperties.consoleRegion)
 
-        releaseEksAccess(teamId)
+        releaseEksAccess(connection)
         // 정리와 저장 사이에 다시 만든 스택의 알림이 끼어들면 붙인 entry 와 달리 연결이 비워진다. 창이 짧아 받아들인다
         connection.disconnect()
         awsConnectionRepository.save(connection)
@@ -47,13 +46,15 @@ class DisconnectAwsConnectionService(
     }
 
     /**
-     * 팀의 EKS 마다 access entry 를 지운다. 같은 EKS 를 여러 namespace 로 등록했어도 entry 는 하나라 한 번만 부른다.
+     * 이 연결(ExternalId)로 등록한 팀의 EKS 마다 access entry 를 지운다. 다른 AWS 계정의 연결은 건드리지 않는다.
+     * 같은 EKS 를 여러 namespace 로 등록했어도 entry 는 하나라 한 번만 부른다.
      *
      * 정리하지 못해도 해제는 막지 않는다. 고객이 스택을 지우면 역할이 사라져 그 entry 로는 아무도 들어오지 못하고,
      * 권한·네트워크 오류는 고객이 EKS 콘솔에서 지울 수 있다.
      */
-    private fun releaseEksAccess(teamId: UUID) {
-        val credentials = clusterRepository.findAllByTeamIdAndProvider(teamId, ClusterProvider.EKS).mapNotNull { cluster ->
+    private fun releaseEksAccess(connection: AwsConnection) {
+        val clusters = clusterRepository.findAllByTeamIdAndProvider(connection.teamId, ClusterProvider.EKS)
+        val credentials = clusters.mapNotNull { cluster ->
             try {
                 EksCredential.from(credentialCipher.decrypt(cluster.credential))
             } catch (exception: RuntimeException) {
@@ -62,7 +63,7 @@ class DisconnectAwsConnectionService(
             }
         }
         // 계정·ExternalId·리전·클러스터 이름이 같으면 같은 EKS 다(DeleteClusterService.sameEks 와 같은 기준)
-        for (credential in credentials.distinct()) {
+        for (credential in credentials.filter { it.externalId == connection.externalId }.distinct()) {
             try {
                 eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, emptySet())
             } catch (exception: RuntimeException) {

@@ -4,11 +4,9 @@ import com.duro.kukie.cluster.application.port.`in`.RegisterEksClusterCommand
 import com.duro.kukie.cluster.application.port.out.ApiServerAddressChecker
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
-import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
-import com.duro.kukie.cluster.domain.findByTeamIdOrThrow
 import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
 import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
@@ -21,7 +19,6 @@ import org.springframework.stereotype.Service
 @Service
 class RegisterEksClusterService(
     private val clusterRepository: ClusterRepository,
-    private val awsConnectionRepository: AwsConnectionRepository,
     private val clusterPermission: ClusterPermission,
     private val eksAccessGateway: EksAccessGateway,
     private val apiServerAddressChecker: ApiServerAddressChecker,
@@ -31,13 +28,13 @@ class RegisterEksClusterService(
 
     /** AWS 와 DNS 를 기다리는 동안 DB 연결을 쥐지 않게 트랜잭션을 걸지 않는다. */
     operator fun invoke(command: RegisterEksClusterCommand): ClusterResponse {
-        clusterPermission.requireTeamAdmin(command.teamId, command.userId)
+        val connection = clusterPermission.requireWritableAwsConnection(command.connectionId, command.userId)
+        connection.requireAccount(command.accountId)
         if (command.region !in clusterAwsProperties.regions) throw AwsRegionNotSupportedException()
         if (!isAllowedNamespace(command.namespace)) throw InvalidNamespaceException()
         // 고객 계정에 권한을 붙인 뒤 이름 중복으로 저장이 실패하면 권한만 남으므로 먼저 확인한다.
         // 동시 등록이 이 검사를 함께 통과하는 경우는 아래 저장의 unique 제약이 막는다.
-        if (clusterRepository.existsByTeamIdAndName(command.teamId, command.name)) throw ClusterNameTakenException()
-        val connection = awsConnectionRepository.findByTeamIdOrThrow(command.teamId)
+        if (clusterRepository.existsByTeamIdAndName(connection.teamId, command.name)) throw ClusterNameTakenException()
         val credential = EksCredential(
             accountId = command.accountId,
             externalId = connection.externalId,
@@ -51,7 +48,7 @@ class RegisterEksClusterService(
 
         val cluster = clusterRepository.saveAndFlushOrThrowNameTaken(
             Cluster(
-                teamId = command.teamId,
+                teamId = connection.teamId,
                 registeredBy = command.userId,
                 name = command.name,
                 apiServer = endpoint.endpoint,

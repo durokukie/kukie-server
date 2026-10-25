@@ -65,20 +65,20 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         // then
         done shouldBe true
         fakeEksAccessGateway.targets shouldBe listOf(AwsTarget(accountId = ACCOUNT_ID, externalId = connection.externalId))
-        awsConnectionRepository.findByTeamId(teamId)!!.run {
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.run {
             accountId shouldBe ACCOUNT_ID
             connectedAt.shouldNotBeNull()
             stackId shouldBe stackIdOf(connection.externalId)
         }
         fakeStackNoticeResponder.responses shouldBe
             listOf(StackNoticeResult(true, "kukie-connection-${connection.externalId}", ""))
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.externalId") { value(connection.externalId) }
-            jsonPath("$.accountId") { value(ACCOUNT_ID) }
-            jsonPath("$.stackConsoleUrl") {
+            jsonPath("$[0].externalId") { value(connection.externalId) }
+            jsonPath("$[0].accountId") { value(ACCOUNT_ID) }
+            jsonPath("$[0].stackConsoleUrl") {
                 value(
                     "https://ap-northeast-2.console.aws.amazon.com/cloudformation/home?region=ap-northeast-2" +
                         "#/stacks/stackinfo?stackId=" + URLEncoder.encode(stackIdOf(connection.externalId), Charsets.UTF_8),
@@ -140,7 +140,24 @@ class StackNoticeIntegrationTest : IntegrationTest() {
 
         // then
         fakeEksAccessGateway.accessChanges.shouldBeEmpty()
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId shouldBe ACCOUNT_ID
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.accountId shouldBe ACCOUNT_ID
+    }
+
+    @Test
+    fun `다른 팀이 연결한 계정이어도 연결한다`() {
+        // given
+        val admin = loggedInUser()
+        val otherTeam = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val other = awsConnectionRepository.save(AwsConnection(teamId = otherTeam, createdBy = admin.user.id))
+        handleStackNoticeService(notice(other.externalId))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+
+        // when
+        handleStackNoticeService(notice(connection.externalId))
+
+        // then
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.accountId shouldBe ACCOUNT_ID
     }
 
     @Test
@@ -157,7 +174,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         // then
         done shouldBe false
         fakeStackNoticeResponder.responses.shouldBeEmpty()
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.accountId.shouldBeNull()
     }
 
     @Test
@@ -174,7 +191,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         // then
         done shouldBe true
         fakeStackNoticeResponder.responses.single().success shouldBe false
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.accountId.shouldBeNull()
     }
 
     @Test
@@ -201,7 +218,49 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         // then
         fakeEksAccessGateway.targets.shouldBeEmpty()
         fakeStackNoticeResponder.responses.single().success shouldBe false
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.accountId.shouldBeNull()
+    }
+
+    @Test
+    fun `다른 계정에 연결된 링크의 스택 알림이면 맡아 보지 않고 실패를 회신한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        handleStackNoticeService(notice(connection.externalId))
+        fakeEksAccessGateway.targets.clear()
+        fakeStackNoticeResponder.responses.clear()
+
+        // when
+        handleStackNoticeService(notice(connection.externalId, accountId = OTHER_ACCOUNT_ID))
+
+        // then
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+        fakeStackNoticeResponder.responses.single().success shouldBe false
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.run {
+            accountId shouldBe ACCOUNT_ID
+            stackId shouldBe stackIdOf(connection.externalId)
+        }
+    }
+
+    @Test
+    fun `팀의 다른 연결이 이미 쓰는 계정이면 맡아 보지 않고 실패를 회신한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connected = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        handleStackNoticeService(notice(connected.externalId))
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        fakeEksAccessGateway.targets.clear()
+        fakeStackNoticeResponder.responses.clear()
+
+        // when
+        handleStackNoticeService(notice(connection.externalId))
+
+        // then
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+        fakeStackNoticeResponder.responses.single().success shouldBe false
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.accountId.shouldBeNull()
     }
 
     @Test
@@ -218,7 +277,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         done shouldBe true
         fakeEksAccessGateway.targets.shouldBeEmpty()
         fakeStackNoticeResponder.responses.shouldBeEmpty()
-        awsConnectionRepository.findByTeamId(teamId)!!.accountId.shouldBeNull()
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.accountId.shouldBeNull()
     }
 
     @Test
@@ -240,73 +299,44 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
         handleStackNoticeService(notice(connection.externalId))
-        mockMvc.delete("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.delete("/clusters/aws/connections/${connection.id}") {
             authorization(admin.accessToken)
         }.andExpect { status { isOk() } }
         fakeEksAccessGateway.roleExists = false
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
-        }.andExpect { jsonPath("$.stackDeleted") { value(true) } }
+        }.andExpect { jsonPath("$[0].stackDeleted") { value(true) } }
 
         // when
         handleStackNoticeService(notice(connection.externalId))
 
         // then
-        awsConnectionRepository.findByTeamId(teamId)!!.run {
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.run {
             accountId shouldBe ACCOUNT_ID
             lastAccountId.shouldBeNull()
             lastStackId.shouldBeNull()
             lastStackDeletedAt.shouldBeNull()
         }
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
             authorization(admin.accessToken)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.accountId") { value(ACCOUNT_ID) }
-            jsonPath("$.stackDeleted") { value(null) }
-        }
-    }
-
-    @Test
-    fun `연결을 시작하지 않은 팀의 상태는 없다`() {
-        // given
-        val admin = loggedInUser()
-        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
-
-        // when & then
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
-            authorization(admin.accessToken)
-        }.andExpect {
-            status { isNotFound() }
-            jsonPath("$.code") { value(ClusterErrorCode.AWS_CONNECTION_NOT_STARTED.code) }
-        }
-    }
-
-    @Test
-    fun `구성원은 연결 상태를 볼 수 없다`() {
-        // given
-        val member = loggedInUser()
-        val teamId = savedTeam(member.user.id to TeamRole.MEMBER)
-
-        // when & then
-        mockMvc.get("/clusters/aws/connection?teamId=$teamId") {
-            authorization(member.accessToken)
-        }.andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            jsonPath("$[0].accountId") { value(ACCOUNT_ID) }
+            jsonPath("$[0].stackDeleted") { value(null) }
         }
     }
 
     private fun notice(
         externalId: String,
         requestType: String = "Create",
-        roleArn: String = "arn:aws:iam::$ACCOUNT_ID:role/KukieAccess-$externalId",
+        accountId: String = ACCOUNT_ID,
+        roleArn: String = "arn:aws:iam::$accountId:role/KukieAccess-$externalId",
         responseUrl: String = RESPONSE_URL,
         physicalResourceId: String? = null,
     ) = StackNoticeCommand(
         requestType = requestType,
         responseUrl = responseUrl,
-        stackId = stackIdOf(externalId),
+        stackId = stackIdOf(externalId, accountId),
         requestId = "request-1",
         logicalResourceId = "KukieNotice",
         physicalResourceId = physicalResourceId,
@@ -314,8 +344,8 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         roleArn = roleArn,
     )
 
-    private fun stackIdOf(externalId: String) =
-        "arn:aws:cloudformation:ap-northeast-2:$ACCOUNT_ID:stack/kukie-access-$externalId/1a2b3c4d-0000-1111-2222-333344445555"
+    private fun stackIdOf(externalId: String, accountId: String = ACCOUNT_ID) =
+        "arn:aws:cloudformation:ap-northeast-2:$accountId:stack/kukie-access-$externalId/1a2b3c4d-0000-1111-2222-333344445555"
 
     private fun eksCredential(
         externalId: String,
@@ -343,6 +373,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
 
     companion object {
         private const val ACCOUNT_ID = "123456789012"
+        private const val OTHER_ACCOUNT_ID = "210987654321"
         private const val RESPONSE_URL =
             "https://cloudformation-custom-resource-response-apnortheast2.s3.ap-northeast-2.amazonaws.com/arn%3Aaws/x?X-Amz-Signature=s"
     }

@@ -5,10 +5,10 @@ import jakarta.validation.constraints.Pattern
 import java.util.UUID
 
 data class GetEksCandidatesRequest(
-    val teamId: UUID,
+    val connectionId: UUID,
 
     @field:Pattern(regexp = "\\d{12}")
     val accountId: String,
 ) {
-    fun toCommand(userId: UUID) = GetEksCandidatesCommand(userId = userId, teamId = teamId, accountId = accountId)
+    fun toCommand(userId: UUID) = GetEksCandidatesCommand(userId = userId, connectionId = connectionId, accountId = accountId)
 }

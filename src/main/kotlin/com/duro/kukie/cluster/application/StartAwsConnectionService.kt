@@ -5,10 +5,9 @@ import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionResponse
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
-import java.net.URLEncoder
 
+/** AWS 계정 하나를 더 연결할 링크를 준다. 아직 스택 알림을 받지 못한 연결이 있으면 그 연결을 다시 준다. */
 @Service
 class StartAwsConnectionService(
     private val awsConnectionRepository: AwsConnectionRepository,
@@ -18,30 +17,11 @@ class StartAwsConnectionService(
 
     operator fun invoke(command: StartAwsConnectionCommand): AwsConnectionResponse {
         clusterPermission.requireTeamAdmin(command.teamId, command.userId)
-        val connection = awsConnectionRepository.findByTeamId(command.teamId) ?: create(command)
+        // ponytail: 동시에 누르면 기다리는 연결이 둘 생길 수 있다. 둘 다 다음 [계정 추가] 에서 다시 쓰여 막지 않는다
+        val connection = awsConnectionRepository
+            .findFirstByTeamIdAndAccountIdIsNullAndLastAccountIdIsNullOrderByCreatedAt(command.teamId)
+            ?: awsConnectionRepository.save(AwsConnection(teamId = command.teamId, createdBy = command.userId))
 
-        return AwsConnectionResponse(
-            externalId = connection.externalId,
-            quickCreateUrl = quickCreateUrl(connection.externalId),
-            templateUrl = clusterAwsProperties.templateUrl,
-            stackName = clusterAwsProperties.stackNameFor(connection.externalId),
-            accountId = connection.accountId,
-        )
+        return AwsConnectionResponse.of(connection, clusterAwsProperties, stackDeleted = null)
     }
-
-    /** 동시에 시작해 팀 unique 에 걸리면 먼저 만든 것을 쓴다. */
-    private fun create(command: StartAwsConnectionCommand): AwsConnection =
-        try {
-            awsConnectionRepository.saveAndFlush(AwsConnection(teamId = command.teamId, createdBy = command.userId))
-        } catch (exception: DataIntegrityViolationException) {
-            awsConnectionRepository.findByTeamId(command.teamId) ?: throw exception
-        }
-
-    private fun quickCreateUrl(externalId: String): String =
-        "https://console.aws.amazon.com/cloudformation/home?region=${encode(clusterAwsProperties.consoleRegion)}" +
-            "#/stacks/quickcreate?templateURL=${encode(clusterAwsProperties.templateUrl)}" +
-            "&stackName=${encode(clusterAwsProperties.stackNameFor(externalId))}" +
-            "&param_ExternalId=${encode(externalId)}"
-
-    private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)
 }

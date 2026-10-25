@@ -1,5 +1,7 @@
 package com.duro.kukie.cluster.application
 
+import com.duro.kukie.cluster.domain.AwsConnection
+import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.findByIdOrThrow
@@ -15,6 +17,7 @@ import java.util.UUID
 class ClusterPermission(
     private val clusterRepository: ClusterRepository,
     private val teamMembershipRepository: TeamMembershipRepository,
+    private val awsConnectionRepository: AwsConnectionRepository,
 ) {
 
     fun requireReadable(clusterId: UUID, userId: UUID): Cluster {
@@ -29,6 +32,13 @@ class ClusterPermission(
         requireTeamAdmin(cluster.teamId, userId)
 
         return cluster
+    }
+
+    fun requireWritableAwsConnection(connectionId: UUID, userId: UUID): AwsConnection {
+        val connection = awsConnectionRepository.findByIdOrThrow(connectionId)
+        requireTeamAdmin(connection.teamId, userId)
+
+        return connection
     }
 
     fun requireTeamAdmin(teamId: UUID, userId: UUID) {
