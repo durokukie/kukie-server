@@ -7,6 +7,8 @@ class NamespaceNotFoundException(
     namespace: String? = null,
 ) : BusinessException(
     ClusterErrorCode.NAMESPACE_NOT_FOUND,
-    namespace?.let { "클러스터에 $it 네임스페이스가 없습니다. kubectl create namespace $it 로 만들어 주세요." }
+    namespace?.let {
+        "클러스터에서 $it 네임스페이스를 찾지 못했습니다(없거나 아직 준비 중입니다). 없다면 kubectl create namespace $it 로 만들어 주세요."
+    }
         ?: ClusterErrorCode.NAMESPACE_NOT_FOUND.message,
 )
