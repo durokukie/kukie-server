@@ -4,6 +4,7 @@ import com.duro.kukie.cluster.application.port.`in`.RegisterEksClusterCommand
 import com.duro.kukie.cluster.application.port.out.ApiServerAddressChecker
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
+import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
@@ -12,6 +13,7 @@ import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.EksEndpointRejectedException
 import com.duro.kukie.cluster.exception.InvalidNamespaceException
+import com.duro.kukie.cluster.exception.NamespaceGrantPendingException
 import com.duro.kukie.cluster.exception.NamespaceNotFoundException
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
@@ -51,7 +53,7 @@ class RegisterEksClusterService(
         val endpoint = eksAccessGateway.describeCluster(credential.target, command.region, command.clusterName)
         apiServerAddressChecker.rejectionOf(endpoint.endpoint)?.let { throw EksEndpointRejectedException(it) }
         eksAccessGateway.registerSelf(credential.target, command.region, command.clusterName, command.namespace)
-        val namespaceExists = eksAccessGateway.namespaceExists(
+        val namespaceStatus = eksAccessGateway.namespaceStatus(
             credential.target,
             command.region,
             command.clusterName,
@@ -59,9 +61,15 @@ class RegisterEksClusterService(
             command.namespace,
             waitForGrant = true,
         )
-        if (namespaceExists == false) {
-            releaseNamespace(connection.teamId, credential)
-            throw NamespaceNotFoundException(command.namespace)
+        log.info("EKS namespace 확인: status={}", namespaceStatus)
+        when (namespaceStatus) {
+            NamespaceStatus.MISSING -> {
+                releaseNamespace(connection.teamId, credential)
+                throw NamespaceNotFoundException(command.namespace)
+            }
+            // 권한을 거두면 다시 부를 때 또 처음부터 퍼지기를 기다려야 하므로 남겨 둔다
+            NamespaceStatus.GRANT_PENDING -> throw NamespaceGrantPendingException()
+            NamespaceStatus.EXISTS, NamespaceStatus.UNKNOWN -> Unit
         }
 
         val cluster = clusterRepository.saveAndFlushOrThrowNameTaken(

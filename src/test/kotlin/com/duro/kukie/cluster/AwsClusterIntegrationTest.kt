@@ -2,6 +2,7 @@ package com.duro.kukie.cluster
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
+import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.Cluster
@@ -573,7 +574,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         val externalId = startConnection(admin, teamId)
         registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
         fakeEksAccessGateway.accessChanges.clear()
-        fakeEksAccessGateway.namespaceExists = false
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.MISSING
 
         // when
         mockMvc.post("/clusters/aws") {
@@ -597,12 +598,40 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `붙인 권한이 아직 퍼지지 않았으면 권한을 남긴 채 등록하지 않고 다시 부르면 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.GRANT_PENDING
+
+        // when
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+        }
+        val pendingCount = clusterRepository.count()
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.EXISTS
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        pendingCount shouldBe 0
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+        fakeEksAccessGateway.registrations.map { it.namespace } shouldBe listOf("kukie-demo", "kukie-demo")
+        clusterRepository.count() shouldBe 1
+    }
+
+    @Test
     fun `namespace 를 확인하지 못해도 EKS 클러스터를 등록한다`() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         val externalId = startConnection(admin, teamId)
-        fakeEksAccessGateway.namespaceExists = null
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNKNOWN
 
         // when
         registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")

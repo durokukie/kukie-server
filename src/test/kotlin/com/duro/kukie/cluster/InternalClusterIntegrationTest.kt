@@ -2,6 +2,7 @@ package com.duro.kukie.cluster
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
+import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
@@ -87,7 +88,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         // given
         val me = loggedInUser()
         val cluster = savedCluster(me.user.id, EKS_CREDENTIAL, provider = ClusterProvider.EKS)
-        fakeEksAccessGateway.namespaceExists = false
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.MISSING
 
         // when & then
         mockMvc.get("/internal/clusters/${cluster.id}/connection?expectedFingerprint=${cluster.fingerprint}") {
@@ -105,7 +106,24 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         // given
         val me = loggedInUser()
         val cluster = savedCluster(me.user.id, EKS_CREDENTIAL, provider = ClusterProvider.EKS)
-        fakeEksAccessGateway.namespaceExists = null
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNKNOWN
+
+        // when & then
+        mockMvc.get("/internal/clusters/${cluster.id}/connection?expectedFingerprint=${cluster.fingerprint}") {
+            internalToken()
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.credential.token") { value(FakeEksAccessGateway.tokenFor("demo")) }
+        }
+    }
+
+    @Test
+    fun `EKS 클러스터의 namespace 를 권한이 아직 퍼지지 않아 확인하지 못해도 연결 정보를 준다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, EKS_CREDENTIAL, provider = ClusterProvider.EKS)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.GRANT_PENDING
 
         // when & then
         mockMvc.get("/internal/clusters/${cluster.id}/connection?expectedFingerprint=${cluster.fingerprint}") {

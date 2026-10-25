@@ -9,6 +9,7 @@ import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
 import com.duro.kukie.cluster.application.port.out.EksSubnet
+import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
 import com.duro.kukie.cluster.exception.EksAccessEntryDisabledException
@@ -157,15 +158,15 @@ class AwsEksAccessGateway(
         }
     }
 
-    override fun namespaceExists(
+    override fun namespaceStatus(
         target: AwsTarget,
         region: String,
         clusterName: String,
         endpoint: EksClusterEndpoint,
         namespace: String,
         waitForGrant: Boolean,
-    ): Boolean? {
-        val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { return null }
+    ): NamespaceStatus {
+        val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { return unknown("ca", pending = false) }
         return HttpClient.newBuilder()
             .sslContext(sslContext)
             .connectTimeout(PROBE_TIMEOUT)
@@ -327,41 +328,43 @@ class AwsEksAccessGateway(
             if (exception.awsErrorDetails()?.errorCode() == EC2_UNAUTHORIZED) null else throw exception
         }
 
-    /** 200 이면 true, 404 면 false. 401·403 은 attempts 까지 다시 묻고, 끝내 모르거나 그 밖의 응답·오류면 null. */
+    /** 401·403 은 attempts 까지 다시 묻는다. 한 번이라도 401·403 을 받았으면 뒤의 오류도 반영 중으로 본다. */
     internal fun probeNamespace(
         attempts: Int,
         delay: Duration = GRANT_DELAY,
         status: () -> Int,
-    ): Boolean? {
-        var last = ""
+    ): NamespaceStatus {
+        var pending = false
         try {
             repeat(attempts) { attempt ->
                 val code = try {
                     status()
                 } catch (exception: IOException) {
-                    return unknown(exception.javaClass.simpleName)
+                    return unknown(exception.javaClass.simpleName, pending)
                 } catch (exception: AwsServiceException) {
-                    return unknown(exception.javaClass.simpleName)
+                    return unknown(exception.javaClass.simpleName, pending)
                 }
                 when (code) {
-                    OK -> return true
-                    NOT_FOUND -> return false
-                    UNAUTHORIZED, FORBIDDEN -> if (attempt < attempts - 1) Thread.sleep(delay)
-                    else -> return unknown("status $code")
+                    OK -> return NamespaceStatus.EXISTS
+                    NOT_FOUND -> return NamespaceStatus.MISSING
+                    UNAUTHORIZED, FORBIDDEN -> {
+                        pending = true
+                        if (attempt < attempts - 1) Thread.sleep(delay)
+                    }
+                    else -> return unknown("status $code", pending)
                 }
-                last = "status $code"
             }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
-            return unknown("interrupted")
+            return unknown("interrupted", pending)
         }
-        return unknown(last)
+        return NamespaceStatus.GRANT_PENDING
     }
 
-    /** 읽기 권한이 없으면 확인이 늘 null 로 조용히 꺼지므로 이유를 남긴다. */
-    private fun unknown(reason: String): Boolean? {
-        log.debug("namespace 를 확인하지 못했습니다: reason={}", reason)
-        return null
+    /** 확인이 조용히 꺼지면(UNKNOWN 은 등록을 막지 않는다) 왜인지 알 수 없으므로 이유를 남긴다. */
+    private fun unknown(reason: String, pending: Boolean): NamespaceStatus {
+        log.debug("namespace 를 확인하지 못했습니다: reason={} pending={}", reason, pending)
+        return if (pending) NamespaceStatus.GRANT_PENDING else NamespaceStatus.UNKNOWN
     }
 
     private fun trusting(caData: String): SSLContext {
@@ -419,8 +422,8 @@ class AwsEksAccessGateway(
         private const val EC2_UNAUTHORIZED = "UnauthorizedOperation"
         private val API_CALL_TIMEOUT: Duration = Duration.ofSeconds(10)
 
-        // 막 붙인 access policy 가 퍼지기를 기다린다
-        private const val GRANT_ATTEMPTS = 5
+        // 막 붙인 access policy 가 퍼지기를 잠깐만 기다린다. 더 걸리면 앱이 등록을 다시 부른다
+        private const val GRANT_ATTEMPTS = 3
         private val GRANT_DELAY: Duration = Duration.ofSeconds(2)
 
         /** 연결마다 부르는 확인이라 응답하지 않는 API 서버가 kubectl 실행을 오래 붙잡지 않게 짧게 둔다. */
