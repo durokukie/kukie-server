@@ -10,7 +10,12 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
+import software.amazon.awssdk.services.eks.EksClient
+import software.amazon.awssdk.services.eks.model.AccessDeniedException
+import software.amazon.awssdk.services.eks.model.CreateAccessEntryRequest
+import software.amazon.awssdk.services.eks.model.CreateAccessEntryResponse
 import software.amazon.awssdk.services.eks.model.EksException
+import software.amazon.awssdk.services.eks.model.ResourceInUseException
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest
 import software.amazon.awssdk.services.sts.model.AssumeRoleResponse
@@ -213,6 +218,56 @@ class AwsEksAccessGatewayTest {
     /** EKS 를 부르는 메서드처럼 캐시된 세션을 쓴다. */
     private fun useSession() = gateway.withSession(target) { }
 
+    @Test
+    fun `자기 access entry 는 GPU 읽기 그룹을 달아 먼저 만든다`() {
+        // given
+        val eks = FakeEksClient(mutableListOf({}))
+
+        // when
+        gateway.createSelfEntry(eks, "kukie-gpu", ROLE_ARN)
+
+        // then
+        eks.requests.map { it.kubernetesGroups() } shouldBe listOf(listOf("kukie-gpu-reader"))
+        eks.requests.single().type() shouldBe "STANDARD"
+    }
+
+    @Test
+    fun `GPU 읽기를 고르지 않은 역할이면 그룹 없이 다시 만든다`() {
+        // given — 템플릿 v1~v3 이거나 v4 GpuRead=false 라 그룹을 단 생성이 거부된다
+        val eks = FakeEksClient(mutableListOf({ throw accessDenied() }, {}))
+
+        // when
+        gateway.createSelfEntry(eks, "kukie-gpu", ROLE_ARN)
+
+        // then
+        eks.requests.map { it.hasKubernetesGroups() } shouldBe listOf(true, false)
+    }
+
+    @Test
+    fun `이미 있는 access entry 는 그대로 두고 다시 만들지 않는다`() {
+        // given
+        val eks = FakeEksClient(mutableListOf({ throw ResourceInUseException.builder().message("exists").build() }))
+
+        // when
+        gateway.createSelfEntry(eks, "kukie-gpu", ROLE_ARN)
+
+        // then
+        eks.requests.size shouldBe 1
+    }
+
+    @Test
+    fun `그룹 없이도 거부되면 그대로 던진다`() {
+        // given
+        val eks = FakeEksClient(mutableListOf({ throw accessDenied() }, { throw accessDenied() }))
+
+        // when & then
+        shouldThrow<AccessDeniedException> { gateway.createSelfEntry(eks, "kukie-gpu", ROLE_ARN) }
+        eks.requests.size shouldBe 2
+    }
+
+    private fun accessDenied(): AccessDeniedException =
+        AccessDeniedException.builder().statusCode(403).message("not authorized").build() as AccessDeniedException
+
     private fun eksException(status: Int, code: String, message: String): EksException =
         EksException.builder()
             .statusCode(status)
@@ -234,6 +289,22 @@ class AwsEksAccessGatewayTest {
 
     companion object {
         private const val INVALID_TOKEN = "The security token included in the request is invalid."
+        private const val ROLE_ARN = "arn:aws:iam::123456789012:role/KukieAccess-kukie-0123456789abcdef"
+    }
+
+    /** createAccessEntry 만 받는 가짜. answers 를 부른 순서대로 하나씩 꺼내 돌린다(던지면 그 예외). */
+    private class FakeEksClient(private val answers: MutableList<() -> Unit>) : EksClient {
+        val requests = mutableListOf<CreateAccessEntryRequest>()
+
+        override fun createAccessEntry(request: CreateAccessEntryRequest): CreateAccessEntryResponse {
+            requests += request
+            answers.removeFirst().invoke()
+            return CreateAccessEntryResponse.builder().build()
+        }
+
+        override fun serviceName(): String = "eks"
+
+        override fun close() = Unit
     }
 
     private class FakeStsClient : StsClient {

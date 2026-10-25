@@ -88,7 +88,7 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         JsonPath.read<String>(response, "$.quickCreateUrl") shouldBe
             "https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-2#/stacks/quickcreate" +
             "?templateURL=https%3A%2F%2Fkukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com" +
-            "%2Fkukie-access%2Fv3.yaml&stackName=kukie-access-$externalId&param_ExternalId=$externalId"
+            "%2Fkukie-access%2Fv4.yaml&stackName=kukie-access-$externalId&param_ExternalId=$externalId"
         val stored = awsConnectionRepository.findByExternalId(externalId)!!
         stored.id.toString() shouldBe JsonPath.read(response, "$.id")
         stored.teamId shouldBe teamId
@@ -1207,6 +1207,6 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         private const val ACCOUNT_ID = "123456789012"
         private const val OTHER_ACCOUNT_ID = "210987654321"
         private const val TEMPLATE_URL =
-            "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v3.yaml"
+            "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v4.yaml"
     }
 }
