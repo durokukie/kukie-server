@@ -11,9 +11,11 @@ import com.duro.kukie.chat.domain.ChatVisibility
 import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.chat.exception.ChatErrorCode
 import com.duro.kukie.chat.presentation.dto.request.CreateChatRequest
+import com.duro.kukie.chat.presentation.dto.request.RenameChatRequest
 import com.duro.kukie.cluster.ClusterFixture
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.team.domain.TeamRole
@@ -23,12 +25,16 @@ import io.kotest.matchers.shouldBe
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.empty
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
+import java.time.LocalDateTime
 import java.util.UUID
 
 class ChatIntegrationTest : IntegrationTest() {
@@ -230,6 +236,231 @@ class ChatIntegrationTest : IntegrationTest() {
             status { isNotFound() }
             jsonPath("$.code") { value(ChatErrorCode.NOT_FOUND.code) }
         }
+    }
+
+    @Test
+    fun `대화 이름을 바꿔도 목록 순서는 그대로다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id)
+        val older = savedSession(me.user.id, cluster.id)
+        val newer = savedSession(me.user.id, cluster.id)
+        val updatedAt = chatSessionRepository.findByIdOrNull(older.id)!!.updatedAt
+
+        // when
+        val response = mockMvc.patch("/conversations/${older.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("  배포 점검  ").toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(older.id.toString()) }
+            jsonPath("$.teamId") { value(cluster.teamId.toString()) }
+            jsonPath("$.title") { value("배포 점검") }
+            jsonPath("$.shared") { value(false) }
+            jsonPath("$.version") { value(2) }
+            jsonPath("$.running") { value(false) }
+        }.andReturn().response.contentAsString
+
+        // then
+        val renamed = chatSessionRepository.findByIdOrNull(older.id)!!
+        renamed.title shouldBe "배포 점검"
+        renamed.version shouldBe 2
+        renamed.updatedAt shouldBe updatedAt
+        LocalDateTime.parse(JsonPath.read<String>(response, "$.updatedAt")) shouldBe updatedAt
+        mockMvc.get("/conversations") {
+            authorization(me.accessToken)
+        }.andExpect {
+            jsonPath("$[*].id") { value(contains(newer.id.toString(), older.id.toString())) }
+            jsonPath("$[1].title") { value("배포 점검") }
+        }
+    }
+
+    @Test
+    fun `shared 대화는 만든 팀원이 실행 중에도 이름을 바꾼다`() {
+        // given
+        val me = loggedInUser()
+        val admin = userRepository.save(UserFixture.user(email = "admin@example.com"))
+        val teamId = savedTeam(admin.id to TeamRole.ADMIN, me.user.id to TeamRole.MEMBER)
+        val cluster = savedCluster(admin.id, teamId = teamId)
+        val shared = savedSession(me.user.id, cluster.id, visibility = ChatVisibility.SHARED)
+        chatRunRepository.save(ChatFixture.run(shared.id))
+
+        // when & then
+        mockMvc.patch("/conversations/${shared.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("배포 점검").toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("배포 점검") }
+            jsonPath("$.shared") { value(true) }
+            jsonPath("$.running") { value(true) }
+        }
+        chatSessionRepository.findByIdOrNull(shared.id)!!.title shouldBe "배포 점검"
+    }
+
+    @Test
+    fun `첫 요청이 끝나기 전에 바꾼 이름은 첫 메시지 제목으로 덮이지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+        val firstMessage = "web 디플로이먼트의 파드가 계속 재시작되는데 원인을 찾아 줘"
+        val run = chatRunRepository.save(ChatFixture.run(session.id, inputText = firstMessage))
+        mockMvc.patch("/conversations/${session.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("배포 점검").toJson()
+        }.andExpect { status { isOk() } }
+        val renamedVersion = chatSessionRepository.findByIdOrNull(session.id)!!.version
+
+        // when
+        mockMvc.patch("/internal/runs/${run.id}") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("status" to "completed", "titleFrom" to firstMessage).toJson()
+        }.andExpect { status { isOk() } }
+
+        // then
+        val after = chatSessionRepository.findByIdOrNull(session.id)!!
+        after.title shouldBe "배포 점검"
+        after.version shouldBe renamedVersion
+    }
+
+    @Test
+    fun `shared 대화는 팀 관리자도 이름을 바꾼다`() {
+        // given
+        val admin = loggedInUser()
+        val member = userRepository.save(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.id to TeamRole.MEMBER)
+        val cluster = savedCluster(member.id, teamId = teamId)
+        val shared = savedSession(member.id, cluster.id, visibility = ChatVisibility.SHARED)
+
+        // when & then
+        mockMvc.patch("/conversations/${shared.id}") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("배포 점검").toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.title") { value("배포 점검") }
+            jsonPath("$.userId") { value(member.id.toString()) }
+        }
+        chatSessionRepository.findByIdOrNull(shared.id)!!.title shouldBe "배포 점검"
+    }
+
+    @Test
+    fun `만든 사람도 팀 관리자도 아니면 shared 대화 이름을 바꿀 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val admin = userRepository.save(UserFixture.user(email = "admin@example.com"))
+        val other = userRepository.save(UserFixture.user(email = "other@example.com"))
+        val teamId = savedTeam(admin.id to TeamRole.ADMIN, me.user.id to TeamRole.MEMBER, other.id to TeamRole.MEMBER)
+        val cluster = savedCluster(admin.id, teamId = teamId)
+        val shared = savedSession(other.id, cluster.id, visibility = ChatVisibility.SHARED)
+
+        // when & then
+        mockMvc.patch("/conversations/${shared.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("배포 점검").toJson()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        chatSessionRepository.findByIdOrNull(shared.id)!!.title shouldBe ChatSession.DEFAULT_TITLE
+    }
+
+    @Test
+    fun `남의 private 대화는 팀 관리자도 이름을 바꿀 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val other = userRepository.save(UserFixture.user(email = "other@example.com"))
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN, other.id to TeamRole.MEMBER)
+        val cluster = savedCluster(me.user.id, teamId = teamId)
+        val othersPrivate = savedSession(other.id, cluster.id)
+
+        // when & then
+        mockMvc.patch("/conversations/${othersPrivate.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("배포 점검").toJson()
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ChatErrorCode.NOT_FOUND.code) }
+        }
+        chatSessionRepository.findByIdOrNull(othersPrivate.id)!!.title shouldBe ChatSession.DEFAULT_TITLE
+    }
+
+    @Test
+    fun `없는 대화는 이름을 바꿀 수 없다`() {
+        // given
+        val me = loggedInUser()
+
+        // when & then
+        mockMvc.patch("/conversations/${UUID.randomUUID()}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("배포 점검").toJson()
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ChatErrorCode.NOT_FOUND.code) }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["   ", "\u00A0\u2007\u202F"])
+    fun `대화 이름이 비어 있으면 바꿀 수 없다`(title: String) {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when & then
+        mockMvc.patch("/conversations/${session.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest(title).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(GlobalErrorCode.BAD_REQUEST.code) }
+        }
+        chatSessionRepository.findByIdOrNull(session.id)!!.title shouldBe ChatSession.DEFAULT_TITLE
+    }
+
+    @Test
+    fun `대화 이름이 200자를 넘으면 바꿀 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when & then
+        mockMvc.patch("/conversations/${session.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RenameChatRequest("가".repeat(201)).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(GlobalErrorCode.BAD_REQUEST.code) }
+        }
+        chatSessionRepository.findByIdOrNull(session.id)!!.title shouldBe ChatSession.DEFAULT_TITLE
+    }
+
+    @Test
+    fun `대화 이름을 보내지 않으면 바꿀 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when & then
+        mockMvc.patch("/conversations/${session.id}") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = "{}"
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(GlobalErrorCode.BAD_REQUEST.code) }
+        }
+        chatSessionRepository.findByIdOrNull(session.id)!!.title shouldBe ChatSession.DEFAULT_TITLE
     }
 
     @Test

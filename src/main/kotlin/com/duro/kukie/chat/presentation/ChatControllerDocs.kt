@@ -5,6 +5,7 @@ import com.duro.kukie.chat.exception.ChatNotFoundException
 import com.duro.kukie.chat.exception.ClusterRequiredException
 import com.duro.kukie.chat.exception.ClusterTeamMismatchException
 import com.duro.kukie.chat.presentation.dto.request.CreateChatRequest
+import com.duro.kukie.chat.presentation.dto.request.RenameChatRequest
 import com.duro.kukie.chat.presentation.dto.response.ChatDetailResponse
 import com.duro.kukie.chat.presentation.dto.response.ChatResponse
 import com.duro.kukie.chat.presentation.dto.response.CreateChatResponse
@@ -39,6 +40,14 @@ interface ChatControllerDocs {
     )
     @ApiErrorResponses(ChatNotFoundException::class)
     fun getChat(conversationId: UUID, userId: UUID): ResponseEntity<ChatDetailResponse>
+
+    @Operation(
+        summary = "대화 이름 변경",
+        description = "대화 이름을 바꿉니다. 앞뒤 공백은 지웁니다. private 대화는 만든 사람이, shared 대화는 만든 사람이나 " +
+            "팀 관리자가 바꿀 수 있습니다. version 은 오르지만 updatedAt 은 그대로라 목록 순서가 바뀌지 않습니다.",
+    )
+    @ApiErrorResponses(ChatNotFoundException::class, NotTeamAdminException::class)
+    fun renameChat(conversationId: UUID, userId: UUID, request: RenameChatRequest): ResponseEntity<ChatResponse>
 
     @Operation(
         summary = "대화 삭제",
