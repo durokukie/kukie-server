@@ -109,11 +109,7 @@ class AwsEksAccessGateway(
         withSession(target) { credentials ->
             eks(credentials, region).use { eks ->
                 translate<Unit> {
-                    try {
-                        eks.createAccessEntry { it.clusterName(clusterName).principalArn(principalArn).type(STANDARD_ENTRY) }
-                    } catch (_: ResourceInUseException) {
-                        // 이미 만든 access entry 다
-                    }
+                    createSelfEntry(eks, clusterName, principalArn)
 
                     val current = eks.listAssociatedAccessPolicies { it.clusterName(clusterName).principalArn(principalArn) }
                         .associatedAccessPolicies()
@@ -131,6 +127,26 @@ class AwsEksAccessGateway(
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * 자기 access entry 를 만든다. 템플릿 v4 에서 고객이 GPU 읽기(GpuRead)를 켰으면 그룹 kukie-gpu-reader 를 달고, 켜지 않았거나
+     * v1~v3 역할이면 IAM 이 거부하므로 그룹 없이 다시 만든다. 그룹의 실제 권한(노드·파드 읽기, 고른 namespace 의 파드 프록시)은
+     * 고객 클러스터 관리자가 적용한 RBAC 가 정한다(kukie-infra gpu-read-rbac). 그룹은 만들 때만 달 수 있어(템플릿이
+     * UpdateAccessEntry 를 주지 않는다) 이미 있는 entry 는 그대로 둔다.
+     */
+    internal fun createSelfEntry(eks: EksClient, clusterName: String, principalArn: String) {
+        try {
+            try {
+                eks.createAccessEntry {
+                    it.clusterName(clusterName).principalArn(principalArn).type(STANDARD_ENTRY).kubernetesGroups(GPU_READ_GROUP)
+                }
+            } catch (_: AccessDeniedException) {
+                eks.createAccessEntry { it.clusterName(clusterName).principalArn(principalArn).type(STANDARD_ENTRY) }
+            }
+        } catch (_: ResourceInUseException) {
+            // 이미 만든 access entry 다
         }
     }
 
@@ -407,6 +423,7 @@ class AwsEksAccessGateway(
     companion object {
         private const val STANDARD_ENTRY = "STANDARD"
         private const val EDIT_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+        internal const val GPU_READ_GROUP = "kukie-gpu-reader"
         private const val OK = 200
         private const val UNAUTHORIZED = 401
         private const val FORBIDDEN = 403
