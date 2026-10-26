@@ -43,6 +43,11 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
     )
     fun lockIdsByTeamId(@Param("teamId") teamId: UUID): List<UUID>
 
+    /** 엔티티 갱신과 달리 updatedAt 을 건드리지 않아 목록 순서가 그대로다. */
+    @Modifying(clearAutomatically = true)
+    @Query("update ChatSession s set s.title = :title, s.version = s.version + 1 where s.id = :id")
+    fun updateTitle(@Param("id") id: UUID, @Param("title") title: String)
+
     @Modifying
     @Query("delete from ChatSession s where s.clusterId in (select c.id from Cluster c where c.teamId = :teamId)")
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)

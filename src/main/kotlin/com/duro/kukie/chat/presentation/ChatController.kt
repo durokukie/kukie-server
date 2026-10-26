@@ -4,7 +4,9 @@ import com.duro.kukie.chat.application.CreateChatService
 import com.duro.kukie.chat.application.DeleteChatService
 import com.duro.kukie.chat.application.GetChatService
 import com.duro.kukie.chat.application.GetChatsService
+import com.duro.kukie.chat.application.RenameChatService
 import com.duro.kukie.chat.presentation.dto.request.CreateChatRequest
+import com.duro.kukie.chat.presentation.dto.request.RenameChatRequest
 import com.duro.kukie.chat.presentation.dto.response.ChatDetailResponse
 import com.duro.kukie.chat.presentation.dto.response.ChatResponse
 import com.duro.kukie.chat.presentation.dto.response.CreateChatResponse
@@ -15,6 +17,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -30,6 +33,7 @@ class ChatController(
     private val createChatService: CreateChatService,
     private val getChatsService: GetChatsService,
     private val getChatService: GetChatService,
+    private val renameChatService: RenameChatService,
     private val deleteChatService: DeleteChatService,
 ) : ChatControllerDocs {
 
@@ -55,6 +59,15 @@ class ChatController(
         @AuthUser userId: UUID,
     ): ResponseEntity<ChatDetailResponse> {
         return ResponseEntity.ok(getChatService(conversationId, userId))
+    }
+
+    @PatchMapping("/{conversationId}")
+    override fun renameChat(
+        @PathVariable conversationId: UUID,
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: RenameChatRequest,
+    ): ResponseEntity<ChatResponse> {
+        return ResponseEntity.ok(renameChatService(request.toCommand(conversationId, userId)))
     }
 
     @DeleteMapping("/{conversationId}")
