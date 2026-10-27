@@ -49,6 +49,10 @@ class User private constructor(
     fun matchesPassword(rawPassword: String, passwordEncoder: PasswordEncoder): Boolean =
         password?.let { passwordEncoder.matches(rawPassword, it) } ?: false
 
+    fun update(name: String) {
+        this.name = name
+    }
+
     companion object {
         const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
     }
