@@ -1,16 +1,22 @@
 package com.duro.kukie.user
 
+import com.duro.kukie.auth.exception.AuthErrorCode
+import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeVerificationCodeSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.exception.UserErrorCode
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import com.duro.kukie.user.presentation.dto.request.SendVerificationCodeRequest
+import com.duro.kukie.user.presentation.dto.request.UpdateUserRequest
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 
 class UserIntegrationTest : IntegrationTest() {
 
@@ -82,6 +88,59 @@ class UserIntegrationTest : IntegrationTest() {
         }
     }
 
+    @Test
+    fun `로그인 한 유저가 이름을 앞뒤 공백 없이 변경한다`() {
+        // given
+        val user = loggedInUser()
+
+        // when
+        mockMvc.put("/users/me") {
+            authorization(user.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateUserRequest("  새 이름  ").toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(user.user.id.toString()) }
+            jsonPath("$.name") { value("새 이름") }
+        }
+
+        // then
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect {
+            jsonPath("$.name") { value("새 이름") }
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidNames")
+    fun `빈 이름이나 제어문자가 든 이름, 50자를 넘는 이름으로는 변경할 수 없다`(name: String) {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.put("/users/me") {
+            authorization(user.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateUserRequest(name).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(GlobalErrorCode.BAD_REQUEST.code) }
+        }
+    }
+
+    @Test
+    fun `로그인하지 않으면 이름을 변경할 수 없다`() {
+        // when & then
+        mockMvc.put("/users/me") {
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateUserRequest("새 이름").toJson()
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
+        }
+    }
+
     private fun sendVerificationCode(email: String = UserFixture.DEFAULT_EMAIL): ResultActionsDsl {
         val request = SendVerificationCodeRequest(email)
 
@@ -106,5 +165,10 @@ class UserIntegrationTest : IntegrationTest() {
             contentType = MediaType.APPLICATION_JSON
             content = request.toJson()
         }
+    }
+
+    companion object {
+        @JvmStatic
+        fun invalidNames() = listOf("\u00a0 ", "줄\n바꿈", "가".repeat(51))
     }
 }

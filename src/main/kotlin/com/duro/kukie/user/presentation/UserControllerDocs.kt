@@ -6,6 +6,7 @@ import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import com.duro.kukie.user.exception.UserNotFoundException
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import com.duro.kukie.user.presentation.dto.request.SendVerificationCodeRequest
+import com.duro.kukie.user.presentation.dto.request.UpdateUserRequest
 import com.duro.kukie.user.presentation.dto.response.UserResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -27,4 +28,8 @@ interface UserControllerDocs {
     @Operation(summary = "회원 정보 조회", description = "자신의 정보를 조회합니다.")
     @ApiErrorResponses(UserNotFoundException::class)
     fun getMe(userId: UUID): ResponseEntity<UserResponse>
+
+    @Operation(summary = "회원 정보 수정", description = "자신의 정보를 변경합니다.")
+    @ApiErrorResponses(UserNotFoundException::class)
+    fun updateUser(userId: UUID, request: UpdateUserRequest): ResponseEntity<UserResponse>
 }
