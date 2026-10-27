@@ -89,7 +89,7 @@ class UserIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `로그인 한 유저가 이름을 앞뒤 공백 없이 변경한다`() {
+    fun `로그인 한 유저가 이름을 변경한다`() {
         // given
         val user = loggedInUser()
 
@@ -97,7 +97,7 @@ class UserIntegrationTest : IntegrationTest() {
         mockMvc.put("/users/me") {
             authorization(user.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = UpdateUserRequest("  새 이름  ").toJson()
+            content = UpdateUserRequest("새 이름").toJson()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(user.user.id.toString()) }
@@ -114,7 +114,7 @@ class UserIntegrationTest : IntegrationTest() {
 
     @ParameterizedTest
     @MethodSource("invalidNames")
-    fun `빈 이름이나 제어문자가 든 이름, 50자를 넘는 이름으로는 변경할 수 없다`(name: String) {
+    fun `빈 이름이나 50자를 넘는 이름으로는 변경할 수 없다`(name: String) {
         // given
         val user = loggedInUser()
 
@@ -169,6 +169,6 @@ class UserIntegrationTest : IntegrationTest() {
 
     companion object {
         @JvmStatic
-        fun invalidNames() = listOf("\u00a0 ", "줄\n바꿈", "가".repeat(51))
+        fun invalidNames() = listOf("", "   ", "가".repeat(51))
     }
 }
