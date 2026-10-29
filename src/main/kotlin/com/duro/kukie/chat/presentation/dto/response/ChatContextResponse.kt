@@ -23,6 +23,7 @@ data class ChatContextResponse(
         val context: String,
         val namespace: String,
         val clusterFingerprint: String,
+        val repoLinkState: Map<String, Any?>?,
     ) {
         companion object {
             fun from(access: ChatAccess): Chat {
@@ -37,6 +38,7 @@ data class ChatContextResponse(
                     context = session.contextName,
                     namespace = session.namespace,
                     clusterFingerprint = session.clusterFingerprint,
+                    repoLinkState = session.repoLinkState,
                 )
             }
         }

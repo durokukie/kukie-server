@@ -31,6 +31,13 @@ data class ActionPlanDetailResponse(
     val sideEffects: List<String>,
     val dryRunResult: Map<String, Any?>?,
     val decisionGuidance: String?,
+    /** ArgoCD 가 관리하는 리소스면 에이전트가 붙인 경고(summary·level·warning·applications·resources). 아니면 null */
+    val argocd: Map<String, Any?>?,
+    /** 아래 넷은 GitOps 길(매니페스트 레포 PR)일 때만 있다 */
+    val pullRequestNumber: Long?,
+    val pullRequestUrl: String?,
+    val mergeCommit: String?,
+    val syncResult: Map<String, Any?>?,
 ) {
     companion object {
         fun of(plan: ActionPlan, markdown: String) = ActionPlanDetailResponse(
@@ -56,7 +63,14 @@ data class ActionPlanDetailResponse(
             sideEffects = strings(plan.payload["side_effects"]),
             dryRunResult = stringKeyed(plan.payload[ActionPlan.DRY_RUN_RESULT]),
             decisionGuidance = (plan.payload[ActionPlan.DECISION_GUIDANCE] as? String)?.ifBlank { null },
+            argocd = stringKeyed(plan.payload["argocd"]),
+            pullRequestNumber = (pullRequest(plan)?.get("number") as? Number)?.toLong(),
+            pullRequestUrl = (pullRequest(plan)?.get("url") as? String)?.ifBlank { null },
+            mergeCommit = (plan.executionResult?.get(ActionPlan.MERGE_COMMIT) as? String)?.ifBlank { null },
+            syncResult = stringKeyed(plan.executionResult?.get(ActionPlan.SYNC_RESULT)),
         )
+
+        private fun pullRequest(plan: ActionPlan): Map<*, *>? = plan.payload[ActionPlan.PULL_REQUEST] as? Map<*, *>
 
         private fun stringKeyed(value: Any?): Map<String, Any?>? =
             (value as? Map<*, *>)?.entries?.associate { (key, item) -> key.toString() to item }

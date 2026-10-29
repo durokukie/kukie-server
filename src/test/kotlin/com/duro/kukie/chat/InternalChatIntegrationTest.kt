@@ -30,6 +30,7 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import java.util.UUID
 
 class InternalChatIntegrationTest : IntegrationTest() {
@@ -77,6 +78,7 @@ class InternalChatIntegrationTest : IntegrationTest() {
             jsonPath("$.conversation.context") { value(ChatFixture.DEFAULT_CONTEXT) }
             jsonPath("$.conversation.namespace") { value(ChatFixture.DEFAULT_NAMESPACE) }
             jsonPath("$.conversation.clusterFingerprint") { value(ChatFixture.FINGERPRINT) }
+            jsonPath("$.conversation.repoLinkState") { value(null) }
             jsonPath("$.activeRun.id") { value(active.id.toString()) }
             jsonPath("$.activeRun.status") { value("awaiting_approval") }
             jsonPath("$.activeRunPlans[*].id") { value(contains(waiting.id.toString())) }
@@ -282,6 +284,84 @@ class InternalChatIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isOk() }
             jsonPath("$.runs[0].status") { value("interrupted") }
+        }
+    }
+
+    @Test
+    fun `마지막으로 본 레포 연결 상태를 덮어쓰고 다시 읽는다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+        val updatedAt = chatSessionRepository.findByIdOrNull(session.id)!!.updatedAt
+
+        // when
+        mockMvc.put("/internal/conversations/${session.id}/repo-link-state") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("state" to mapOf("acme/manifests" to "connected", "acme/old" to "disconnected")).toJson()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.state['acme/manifests']") { value("connected") }
+        }
+        mockMvc.put("/internal/conversations/${session.id}/repo-link-state") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("state" to mapOf("acme/manifests" to "disconnected")).toJson()
+        }.andExpect { status { isOk() } }
+
+        // then
+        mockMvc.get("/internal/conversations/${session.id}/repo-link-state") {
+            internalToken()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.state['acme/manifests']") { value("disconnected") }
+            jsonPath("$.state['acme/old']") { doesNotExist() }
+        }
+        val saved = chatSessionRepository.findByIdOrNull(session.id)!!
+        saved.repoLinkState shouldBe mapOf("acme/manifests" to "disconnected")
+        saved.updatedAt shouldBe updatedAt
+    }
+
+    @Test
+    fun `레포 연결 상태를 저장한 적이 없으면 비어 있다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when & then
+        mockMvc.get("/internal/conversations/${session.id}/repo-link-state") {
+            internalToken()
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.state") { value(null) }
+        }
+    }
+
+    @Test
+    fun `없는 대화의 레포 연결 상태는 저장할 수 없다`() {
+        // when & then
+        mockMvc.put("/internal/conversations/${UUID.randomUUID()}/repo-link-state") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("state" to mapOf("acme/manifests" to "connected")).toJson()
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ChatErrorCode.NOT_FOUND.code) }
+        }
+    }
+
+    @Test
+    fun `레포 연결 상태는 내부 토큰이 있어야 읽는다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when & then
+        mockMvc.get("/internal/conversations/${session.id}/repo-link-state") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.INVALID_INTERNAL_TOKEN.code) }
         }
     }
 

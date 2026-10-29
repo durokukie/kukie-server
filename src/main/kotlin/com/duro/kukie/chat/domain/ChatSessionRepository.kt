@@ -48,6 +48,11 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
     @Query("update ChatSession s set s.title = :title, s.version = s.version + 1 where s.id = :id")
     fun updateTitle(@Param("id") id: UUID, @Param("title") title: String)
 
+    /** 제목과 같은 이유로 updatedAt 을 건드리지 않는다. 고친 행 수를 돌려준다. */
+    @Modifying(clearAutomatically = true)
+    @Query("update ChatSession s set s.repoLinkState = :state where s.id = :id")
+    fun updateRepoLinkState(@Param("id") id: UUID, @Param("state") state: Map<String, Any?>): Int
+
     @Modifying
     @Query("delete from ChatSession s where s.clusterId in (select c.id from Cluster c where c.teamId = :teamId)")
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)

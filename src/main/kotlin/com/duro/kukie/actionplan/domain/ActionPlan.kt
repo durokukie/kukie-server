@@ -123,9 +123,12 @@ class ActionPlan(
         }
     }
 
-    fun offer(guidance: String) {
+    fun offer(guidance: String, pullRequest: PlanPullRequest? = null) {
         requireState(status == PlanStatus.DRAFT && dryRunPassed && decisionGuidance == null)
         payload = payload + (DECISION_GUIDANCE to guidance.withoutNul())
+        if (pullRequest != null) {
+            payload = payload + (PULL_REQUEST to linkedMapOf("number" to pullRequest.number, "url" to pullRequest.url.withoutNul()))
+        }
         status = PlanStatus.WAITING_APPROVAL
     }
 
@@ -155,16 +158,26 @@ class ActionPlan(
         status = PlanStatus.EXECUTING
     }
 
-    fun recordResult(success: Boolean, stdout: String, stderr: String, exitCode: Int?) {
+    fun recordResult(
+        success: Boolean,
+        stdout: String,
+        stderr: String,
+        exitCode: Int?,
+        mergeCommit: String? = null,
+        syncResult: Map<String, Any?>? = null,
+    ) {
         requireState(status in RUNNABLE && decision != null && executionResult == null)
         val at = now()
-        executionResult = linkedMapOf(
+        executionResult = linkedMapOf<String, Any?>(
             "success" to success,
             "stdout" to stdout.withoutNul(),
             "stderr" to stderr.withoutNul(),
             "exit_code" to exitCode,
             "at" to at.wire(),
-        )
+        ).apply {
+            mergeCommit?.let { put(MERGE_COMMIT, it.withoutNul()) }
+            syncResult?.let { put(SYNC_RESULT, it.withoutNul()) }
+        }
         if (success && exitCode == 0) {
             appliedAt = LocalDateTime.ofInstant(at, ZoneOffset.UTC)
             status = PlanStatus.APPLIED
@@ -213,6 +226,9 @@ class ActionPlan(
     companion object {
         const val DRY_RUN_RESULT = "dry_run_result"
         const val DECISION_GUIDANCE = "decision_guidance"
+        const val PULL_REQUEST = "pull_request"
+        const val MERGE_COMMIT = "merge_commit"
+        const val SYNC_RESULT = "sync_result"
 
         private val DECIDABLE = setOf(PlanStatus.DRAFT, PlanStatus.WAITING_APPROVAL)
         private val RUNNABLE = setOf(PlanStatus.APPROVED, PlanStatus.EXECUTING)

@@ -3,6 +3,8 @@ package com.duro.kukie.actionplan
 import com.duro.kukie.actionplan.ActionPlanFixture.executing
 import com.duro.kukie.actionplan.domain.ActionPlan
 import com.duro.kukie.actionplan.domain.ActionPlanRepository
+import com.duro.kukie.actionplan.domain.DryRunStatus
+import com.duro.kukie.actionplan.domain.PlanPullRequest
 import com.duro.kukie.chat.ChatFixture
 import com.duro.kukie.chat.domain.ChatRun
 import com.duro.kukie.chat.domain.ChatRunRepository
@@ -103,6 +105,40 @@ class ActionPlanIntegrationTest : IntegrationTest() {
             jsonPath("$.command.length()") { value(ActionPlanFixture.COMMAND.size) }
             jsonPath("$.expectedEffects[0]") { value("파드가 3개가 된다") }
             jsonPath("$.sideEffects[0]") { value("잠깐 부하가 늘 수 있다") }
+            jsonPath("$.argocd") { value(null) }
+            jsonPath("$.pullRequestNumber") { value(null) }
+            jsonPath("$.mergeCommit") { value(null) }
+        }
+    }
+
+    @Test
+    fun `GitOps 길 계획 상세에 ArgoCD 경고와 PR·머지 커밋·sync 결과를 꺼내 준다`() {
+        // given
+        val me = loggedInUser()
+        val run = savedRun(me.user.id, savedCluster(me.user.id), visibility = ChatVisibility.SHARED)
+        val argocd = mapOf("summary" to "ArgoCD 앱 api 가 관리합니다", "level" to "self_heal", "applications" to listOf("api"))
+        val plan = actionPlanRepository.save(ActionPlanFixture.plan(run.id, payload = ActionPlanFixture.payload() + ("argocd" to argocd)).let {
+            it.apply {
+                recordDryRun(DryRunStatus.SUCCEEDED, "diff", "")
+                offer("PR 을 닫으면 되돌린다", PlanPullRequest(12, "https://github.com/acme/manifests/pull/12"))
+                approve(ActionPlanFixture.call(), me.user.id)
+                start()
+                recordResult(true, "merged", "", 0, "abc123", mapOf("status" to "Synced", "health" to "Healthy"))
+            }
+        })
+
+        // when & then
+        mockMvc.get("/action-plans/${plan.id}") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.argocd.level") { value("self_heal") }
+            jsonPath("$.argocd.applications[0]") { value("api") }
+            jsonPath("$.pullRequestNumber") { value(12) }
+            jsonPath("$.pullRequestUrl") { value("https://github.com/acme/manifests/pull/12") }
+            jsonPath("$.mergeCommit") { value("abc123") }
+            jsonPath("$.syncResult.status") { value("Synced") }
+            jsonPath("$.syncResult.health") { value("Healthy") }
         }
     }
 

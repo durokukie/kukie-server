@@ -15,7 +15,7 @@ class OfferPlanService(
     @Transactional
     operator fun invoke(command: OfferPlanCommand): PlanResponse {
         val plan = actionPlanRepository.lockByIdOrThrow(command.planId)
-        plan.offer(command.decisionGuidance)
+        plan.offer(command.decisionGuidance, command.pullRequest)
         actionPlanRepository.flush()
 
         return PlanResponse.from(plan)
