@@ -159,12 +159,15 @@ class AwsEksAccessGateway(
         delay: Duration = ASSOCIATE_DELAY,
     ) {
         require(accessLevel == AccessLevel.FULL || namespaces.isNotEmpty()) { "LIMITED needs namespaces" }
-        // 스택 업데이트는 역할 정책을 바꾼 뒤 알린다. 바뀐 정책이 IAM 에 퍼지기 전에는 entry 만들기·붙이기가 거부되므로 몇 번 다시 한다
+        // 스택 업데이트는 역할 정책을 바꾼 뒤 알린다. 바뀐 정책이 IAM 에 퍼지기 전에는 entry 만들기·붙이기·떼기가 거부되므로 몇 번 다시 한다.
+        // 떼기까지 넣는 것은 full → limited 에서 관리자 정책이 남은 채 끝나지 않게 하려는 것이다
+        val other = if (accessLevel == AccessLevel.FULL) AccessLevel.LIMITED else AccessLevel.FULL
         var attempt = 1
         while (true) {
             try {
                 createSelfEntry(eks, clusterName, principalArn)
                 associate(eks, clusterName, principalArn, accessLevel, namespaces)
+                detach(eks, clusterName, principalArn, other)
                 break
             } catch (exception: AccessDeniedException) {
                 if (attempt++ >= ASSOCIATE_ATTEMPTS) throw exception
@@ -176,9 +179,11 @@ class AwsEksAccessGateway(
                 }
             }
         }
-        val other = if (accessLevel == AccessLevel.FULL) AccessLevel.LIMITED else AccessLevel.FULL
+    }
+
+    private fun detach(eks: EksClient, clusterName: String, principalArn: String, accessLevel: AccessLevel) {
         try {
-            eks.disassociateAccessPolicy { it.clusterName(clusterName).principalArn(principalArn).policyArn(policyArnOf(other)) }
+            eks.disassociateAccessPolicy { it.clusterName(clusterName).principalArn(principalArn).policyArn(policyArnOf(accessLevel)) }
         } catch (_: ResourceNotFoundException) {
             // 붙어 있지 않던 정책이다
         }
@@ -237,19 +242,30 @@ class AwsEksAccessGateway(
         val principalArn = roleArn(target)
         withSession(target) { credentials ->
             eks(credentials, region).use { eks ->
-                translate<Unit> {
-                    if (keepNamespaces.isEmpty()) {
-                        try {
-                            eks.deleteAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }
-                        } catch (_: ResourceNotFoundException) {
-                            // 이미 지운 entry 다
-                        }
-                        return@translate
-                    }
-                    associate(eks, clusterName, principalArn, AccessLevel.LIMITED, keepNamespaces)
-                }
+                translate { unregisterSelfOn(eks, clusterName, principalArn, keepNamespaces, accessLevel) }
             }
         }
+    }
+
+    internal fun unregisterSelfOn(
+        eks: EksClient,
+        clusterName: String,
+        principalArn: String,
+        keepNamespaces: Set<String>,
+        accessLevel: AccessLevel,
+    ) {
+        if (keepNamespaces.isEmpty()) {
+            try {
+                eks.deleteAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }
+            } catch (_: ResourceNotFoundException) {
+                // 이미 지운 entry 다
+            }
+            return
+        }
+        if (accessLevel == AccessLevel.FULL) return
+        associate(eks, clusterName, principalArn, AccessLevel.LIMITED, keepNamespaces)
+        // limited 로 바꾸다 떼지 못한 관리자 정책이 남아 있을 수 있다
+        detach(eks, clusterName, principalArn, AccessLevel.FULL)
     }
 
     override fun namespaceStatus(

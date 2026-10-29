@@ -390,6 +390,23 @@ class AwsEksAccessGatewayTest {
     }
 
     @Test
+    fun `옛 정책 떼기가 거부되어도 다시 해서 관리자 정책을 남기지 않는다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true, exists = true, deniedDisassociations = 1)
+
+        // when
+        gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-demo"), AccessLevel.LIMITED, Duration.ZERO)
+
+        // then
+        eks.policyCalls shouldBe listOf(
+            "associate" to EDIT_POLICY,
+            "disassociate" to CLUSTER_ADMIN_POLICY,
+            "associate" to EDIT_POLICY,
+            "disassociate" to CLUSTER_ADMIN_POLICY,
+        )
+    }
+
+    @Test
     fun `끝내 붙이지 못하면 옛 정책을 떼지 않고 던진다`() {
         // given
         val eks = FakeEksClient(denyGroups = true, exists = true, deniedAssociations = Int.MAX_VALUE)
@@ -399,6 +416,31 @@ class AwsEksAccessGatewayTest {
             gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-demo"), AccessLevel.FULL, Duration.ZERO)
         }
         eks.policyCalls.map { it.first }.distinct() shouldBe listOf("associate")
+    }
+
+    @Test
+    fun `제한된 권한의 등록을 지우면 남은 namespace 로 Edit 범위를 좁히고 남아 있을 수 있는 관리자 정책을 뗀다`() {
+        // given — 관리자 정책은 이미 없다
+        val eks = FakeEksClient(denyGroups = true, detachedAlready = true)
+
+        // when
+        gateway.unregisterSelfOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-app"), AccessLevel.LIMITED)
+
+        // then
+        eks.policyCalls shouldBe listOf("associate" to EDIT_POLICY, "disassociate" to CLUSTER_ADMIN_POLICY)
+        eks.associations.single().accessScope().namespaces() shouldBe listOf("kukie-app")
+    }
+
+    @Test
+    fun `전체 권한의 등록을 지워도 같은 EKS 의 다른 등록이 남아 있으면 정책을 그대로 둔다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true)
+
+        // when
+        gateway.unregisterSelfOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-app"), AccessLevel.FULL)
+
+        // then
+        eks.policyCalls.shouldBeEmpty()
     }
 
     /** EKS 를 부르는 메서드처럼 캐시된 세션을 쓴다. */
@@ -441,7 +483,7 @@ class AwsEksAccessGatewayTest {
     /**
      * 고객 역할의 IAM 판단만 흉내 낸다: 그룹을 단 요청은 denyGroups 면 거부, 모든 요청은 denyAll 이면 거부.
      * 그룹 없는 entry 만들기는 처음 deniedEntries 번, 정책 붙이기는 처음 deniedAssociations 번 거부하고,
-     * detachedAlready 면 떼기가 붙어 있지 않다고 답한다.
+     * 떼기는 처음 deniedDisassociations 번 거부하고, detachedAlready 면 붙어 있지 않다고 답한다.
      */
     private class FakeEksClient(
         private val denyGroups: Boolean,
@@ -451,6 +493,7 @@ class AwsEksAccessGatewayTest {
         private val associated: List<AssociatedAccessPolicy> = emptyList(),
         private var deniedAssociations: Int = 0,
         private val detachedAlready: Boolean = false,
+        private var deniedDisassociations: Int = 0,
     ) : EksClient {
         val requests = mutableListOf<CreateAccessEntryRequest>()
         val associations = mutableListOf<AssociateAccessPolicyRequest>()
@@ -471,6 +514,10 @@ class AwsEksAccessGatewayTest {
 
         override fun disassociateAccessPolicy(request: DisassociateAccessPolicyRequest): DisassociateAccessPolicyResponse {
             policyCalls += "disassociate" to request.policyArn()
+            if (deniedDisassociations > 0) {
+                deniedDisassociations--
+                throw AccessDeniedException.builder().statusCode(403).message("not authorized").build()
+            }
             if (detachedAlready) throw ResourceNotFoundException.builder().statusCode(404).message("not associated").build()
             return DisassociateAccessPolicyResponse.builder().build()
         }

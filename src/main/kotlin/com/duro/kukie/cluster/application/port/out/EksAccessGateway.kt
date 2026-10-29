@@ -28,8 +28,8 @@ interface EksAccessGateway {
 
     /**
      * 역할 자신의 access entry 를 정리한다. keepNamespaces 가 비면 entry 를 지우고(없으면 그대로), 남은 namespace 가
-     * 있으면 LIMITED 는 Edit 정책 범위를 그 namespace 들로 좁힌다 — 같은 EKS 를 다른 namespace 로 연결한 등록이 끊기지 않게.
-     * FULL 은 클러스터 전체 범위라 그대로 둔다.
+     * 있으면 LIMITED 는 Edit 정책 범위를 그 namespace 들로 좁히고 남아 있을 수 있는 관리자 정책을 뗀다 — 같은 EKS 를 다른
+     * namespace 로 연결한 등록이 끊기지 않게. FULL 은 클러스터 전체 범위라 그대로 둔다.
      */
     fun unregisterSelf(
         target: AwsTarget,
