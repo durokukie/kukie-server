@@ -29,5 +29,9 @@ class FakeBeansConfig {
 
     @Bean
     @Primary
+    fun fakeGitHubAppGateway(): FakeGitHubAppGateway = FakeGitHubAppGateway()
+
+    @Bean
+    @Primary
     fun fakeStackNoticeResponder(): FakeStackNoticeResponder = FakeStackNoticeResponder()
 }

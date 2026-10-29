@@ -116,6 +116,27 @@ class InternalActionPlanIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `승인 전에 연 PR 을 승인 카드와 함께 남긴다`() {
+        // given
+        val plan = savedPlan { it.apply { recordDryRun(DryRunStatus.SUCCEEDED, "diff", "") } }
+
+        // when & then
+        action(
+            plan,
+            "offer",
+            mapOf(
+                "decisionGuidance" to "PR 을 닫으면 되돌린다",
+                "pullRequest" to mapOf("number" to 12, "url" to "https://github.com/acme/manifests/pull/12"),
+            ),
+        ).andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("WAITING_APPROVAL") }
+            jsonPath("$.payload.pull_request.number") { value(12) }
+            jsonPath("$.payload.pull_request.url") { value("https://github.com/acme/manifests/pull/12") }
+        }
+    }
+
+    @Test
     fun `승인하면 결정한 사람과 시각을 남긴다`() {
         // given
         val plan = savedPlan { it.offered() }
@@ -205,6 +226,31 @@ class InternalActionPlanIntegrationTest : IntegrationTest() {
             jsonPath("$.executionResult.at") { value(matchesPattern(AT)) }
         }
         actionPlanRepository.findByIdOrNull(plan.id)!!.appliedAt.shouldNotBeNull()
+    }
+
+    @Test
+    fun `PR 을 머지했으면 머지 커밋과 sync 결과를 실행 결과에 남긴다`() {
+        // given
+        val plan = savedPlan { it.executing(DECIDER) }
+
+        // when & then
+        action(
+            plan,
+            "result",
+            mapOf(
+                "success" to true,
+                "stdout" to "merged",
+                "stderr" to "",
+                "exitCode" to 0,
+                "mergeCommit" to " abc123 ",
+                "syncResult" to mapOf("status" to "Synced", "health" to "Healthy"),
+            ),
+        ).andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("APPLIED") }
+            jsonPath("$.executionResult.merge_commit") { value("abc123") }
+            jsonPath("$.executionResult.sync_result.status") { value("Synced") }
+        }
     }
 
     @Test

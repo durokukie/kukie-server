@@ -33,6 +33,7 @@ Package layout is **feature-first** with a shared `global` package:
 - `cluster` — Team-owned Kubernetes clusters (uploaded kubeconfigs and customer AWS EKS via STS AssumeRole/CloudFormation) and AES-256-GCM encrypted credentials (`Cluster`, `AwsConnection`).
 - `chat` — Cluster-bound conversation sessions (`ChatSession`, exposed at `/conversations`) and agent execution runs (`ChatRun`).
 - `actionplan` — Guardrail state machine (`ActionPlan`) for mutating agent tool calls: dry-run, approval/rejection, and execution results.
+- `gitops` — GitHub App installs bound to teams (`GitHubInstallation`, one team per installation), cluster ↔ manifest repo links (`ManifestRepo`, normalized lowercase `owner/repo`), and repo-scoped installation tokens for the agent. The App private key is used only in `GitHubAppCredentials` (App JWT signing + token cache).
 
 ### Layers
 
@@ -54,7 +55,7 @@ Not Spring Security — a custom interceptor chain (`InternalApiInterceptor` →
   - Every handler under `/internal/**` must have `@InternalApi`, and no other handler may (`InternalApiConventionTest`). The reverse proxy must not expose `/internal` publicly.
   - Every handler taking a `{teamId}` path variable must declare `@TeamRoleRequired(TeamRole.MEMBER|ADMIN)`, which is only valid on `@Authenticated` handlers with a `UUID` `{teamId}` parameter (`TeamRoleRequiredConventionTest`).
 - **Token resolution & CSRF**: `AuthenticationInterceptor` checks `Authorization: Bearer` first, else the `__Host-kukie_access` cookie (`accessCookieName` in `AuthCookieProperties`, which adds `__Host-` when `secure = true` and never falls back to the unprefixed cookie). A present-but-malformed Bearer header is an immediate 401 (no cookie fallback). Cookie auth is accepted only when `Sec-Fetch-Site` is `same-origin` or `none` — otherwise 403 `CROSS_SITE_COOKIE`. Login/refresh return tokens **both** as JSON and as httpOnly cookies via `AuthCookies`.
-- **Internal API — Entry vs non-entry**: The user's Bearer token is taken **only at the entry** of a workflow, where the server checks user permissions (`@InternalApi` + `@Authenticated`: conversation `context`, `runs/by-request/{requestId}`, `POST conversations/{id}/runs`, cluster `connection`). **Every other internal handler takes `X-Kukie-Internal-Token` only** (run update/interrupt, plan create/list/get and state actions, cluster status) because an access token expires in 30 minutes and a long-running agent run must still record its results. Never add `@Authenticated`/`@AuthUser` to a non-entry internal handler.
+- **Internal API — Entry vs non-entry**: The user's Bearer token is taken **only at the entry** of a workflow, where the server checks user permissions (`@InternalApi` + `@Authenticated`: conversation `context`, `runs/by-request/{requestId}`, `POST conversations/{id}/runs`, cluster `connection`). **Every other internal handler takes `X-Kukie-Internal-Token` only** (run update/interrupt, plan create/list/get and state actions, cluster status, manifest repos and repo tokens, conversation `repo-link-state`) because an access token expires in 30 minutes and a long-running agent run must still record its results. Never add `@Authenticated`/`@AuthUser` to a non-entry internal handler.
 
 ### Persistence
 
@@ -71,8 +72,8 @@ Not Spring Security — a custom interceptor chain (`InternalApiInterceptor` →
 - Test method names are Korean sentences in backticks (`` fun `로그인에 성공하면 토큰을 발급하고 리프레시 토큰을 저장한다`() ``) with `// given` / `// when` / `// then` comments.
 - **Test ordering**: within each use case, the success case comes first, followed by its exception cases.
 - **Unit tests** (`*ServiceTest`, `JwtTokenProviderTest`): no Spring context — MockK (`@ExtendWith(MockKExtension::class)`) plus kotest assertions (`shouldBe`, `shouldThrow`).
-- **Integration tests** (`*IntegrationTest`): extend `support/IntegrationTest` (`@SpringBootTest` + MockMvc against Testcontainers, with fake mail senders, `FakeOAuthClient`, `FakeHostResolver`, `FakeEksAccessGateway`, and `FakeStackNoticeResponder`). The base class truncates all tables and flushes Redis after each test — individual tests never clean up. Use the MockMvc Kotlin DSL.
-- Entity test data comes from fixture objects with overridable defaults (`UserFixture`, `TeamFixture`, `ClusterFixture`, `ChatFixture`, `ActionPlanFixture`).
+- **Integration tests** (`*IntegrationTest`): extend `support/IntegrationTest` (`@SpringBootTest` + MockMvc against Testcontainers, with fake mail senders, `FakeOAuthClient`, `FakeHostResolver`, `FakeEksAccessGateway`, `FakeGitHubAppGateway`, and `FakeStackNoticeResponder`). The base class truncates all tables and flushes Redis after each test — individual tests never clean up. Use the MockMvc Kotlin DSL.
+- Entity test data comes from fixture objects with overridable defaults (`UserFixture`, `TeamFixture`, `ClusterFixture`, `ChatFixture`, `ActionPlanFixture`, `GitOpsFixture`).
 - **Concurrency tests** (`*ConcurrencyTest`): open overlapping transactions with `TransactionTemplate` + latches or thread pools, and poll `pg_stat_activity` (`wait_event_type = 'Lock'`) from an outside connection when waiting for a row lock.
 
 ## Conventions

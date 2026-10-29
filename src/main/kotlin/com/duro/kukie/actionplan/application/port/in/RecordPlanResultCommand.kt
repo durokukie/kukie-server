@@ -8,4 +8,6 @@ data class RecordPlanResultCommand(
     val stdout: String,
     val stderr: String,
     val exitCode: Int?,
+    val mergeCommit: String?,
+    val syncResult: Map<String, Any?>?,
 )

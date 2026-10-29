@@ -15,6 +15,10 @@ web-app:
 internal:
   token: test-internal-token
 
+github-app:
+  id: 5531779
+  private-key: test-not-a-key
+
 cluster:
   credential-key: dGVzdC1jcmVkZW50aWFsLWtleS0zMi1ieXRlcy1vayE=
   allow-local: false

@@ -8,8 +8,10 @@ import com.duro.kukie.chat.exception.RequestMismatchException
 import com.duro.kukie.chat.exception.RunNotFoundException
 import com.duro.kukie.chat.presentation.dto.request.InterruptRunsRequest
 import com.duro.kukie.chat.presentation.dto.request.StartRunRequest
+import com.duro.kukie.chat.presentation.dto.request.UpdateRepoLinkStateRequest
 import com.duro.kukie.chat.presentation.dto.response.ChatContextResponse
 import com.duro.kukie.chat.presentation.dto.response.InterruptRunsResponse
+import com.duro.kukie.chat.presentation.dto.response.RepoLinkStateResponse
 import com.duro.kukie.chat.presentation.dto.response.RunResponse
 import com.duro.kukie.chat.presentation.dto.response.StartRunResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
@@ -58,4 +60,19 @@ interface InternalChatControllerDocs {
     )
     @ApiErrorResponses(InvalidInternalTokenException::class, ChatNotFoundException::class)
     fun interruptChat(conversationId: UUID, request: InterruptRunsRequest): ResponseEntity<InterruptRunsResponse>
+
+    @Operation(
+        summary = "[내부] 마지막으로 본 레포 연결 상태 읽기",
+        description = "대화마다 에이전트만 쓰는 숨은 칸입니다. 지금 연결 상태와 비교해 바뀐 때만 기록 끝에 메모를 넣는 데 씁니다. " +
+            "한 번도 저장하지 않았으면 state 가 null 입니다. 대화 컨텍스트의 conversation.repoLinkState 와 같은 값입니다.",
+    )
+    @ApiErrorResponses(InvalidInternalTokenException::class, ChatNotFoundException::class)
+    fun getRepoLinkState(conversationId: UUID): ResponseEntity<RepoLinkStateResponse>
+
+    @Operation(
+        summary = "[내부] 마지막으로 본 레포 연결 상태 저장",
+        description = "state 를 통째로 덮어씁니다(값 모양은 에이전트가 정합니다). 대화 목록 순서(updatedAt)는 바꾸지 않습니다.",
+    )
+    @ApiErrorResponses(InvalidInternalTokenException::class, ChatNotFoundException::class)
+    fun updateRepoLinkState(conversationId: UUID, request: UpdateRepoLinkStateRequest): ResponseEntity<RepoLinkStateResponse>
 }

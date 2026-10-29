@@ -8,6 +8,8 @@ import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.util.UUID
 
 @Entity
@@ -57,6 +59,12 @@ class ChatSession(
 
     @Column(nullable = false)
     var version = 1
+        protected set
+
+    /** 에이전트만 읽는 "마지막으로 본 레포 연결 상태". 바뀐 때만 대화 기록에 메모를 넣으려고 비교한다. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "repo_link_state")
+    var repoLinkState: Map<String, Any?>? = null
         protected set
 
     val hasDefaultTitle: Boolean

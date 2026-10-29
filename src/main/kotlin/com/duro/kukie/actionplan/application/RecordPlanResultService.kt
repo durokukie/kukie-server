@@ -15,7 +15,14 @@ class RecordPlanResultService(
     @Transactional
     operator fun invoke(command: RecordPlanResultCommand): PlanResponse {
         val plan = actionPlanRepository.lockByIdOrThrow(command.planId)
-        plan.recordResult(command.success, command.stdout, command.stderr, command.exitCode)
+        plan.recordResult(
+            command.success,
+            command.stdout,
+            command.stderr,
+            command.exitCode,
+            command.mergeCommit,
+            command.syncResult,
+        )
         actionPlanRepository.flush()
 
         return PlanResponse.from(plan)

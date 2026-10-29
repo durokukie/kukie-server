@@ -3,12 +3,16 @@ package com.duro.kukie.chat.presentation
 import com.duro.kukie.chat.application.ContextPurpose
 import com.duro.kukie.chat.application.FindRunByRequestService
 import com.duro.kukie.chat.application.GetChatContextService
+import com.duro.kukie.chat.application.GetRepoLinkStateService
 import com.duro.kukie.chat.application.InterruptChatService
 import com.duro.kukie.chat.application.StartRunService
+import com.duro.kukie.chat.application.UpdateRepoLinkStateService
 import com.duro.kukie.chat.presentation.dto.request.InterruptRunsRequest
 import com.duro.kukie.chat.presentation.dto.request.StartRunRequest
+import com.duro.kukie.chat.presentation.dto.request.UpdateRepoLinkStateRequest
 import com.duro.kukie.chat.presentation.dto.response.ChatContextResponse
 import com.duro.kukie.chat.presentation.dto.response.InterruptRunsResponse
+import com.duro.kukie.chat.presentation.dto.response.RepoLinkStateResponse
 import com.duro.kukie.chat.presentation.dto.response.RunResponse
 import com.duro.kukie.chat.presentation.dto.response.StartRunResponse
 import com.duro.kukie.global.security.AuthUser
@@ -20,6 +24,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -34,6 +39,8 @@ class InternalChatController(
     private val findRunByRequestService: FindRunByRequestService,
     private val startRunService: StartRunService,
     private val interruptChatService: InterruptChatService,
+    private val getRepoLinkStateService: GetRepoLinkStateService,
+    private val updateRepoLinkStateService: UpdateRepoLinkStateService,
 ) : InternalChatControllerDocs {
 
     @Authenticated
@@ -75,5 +82,20 @@ class InternalChatController(
         @RequestBody @Valid request: InterruptRunsRequest,
     ): ResponseEntity<InterruptRunsResponse> {
         return ResponseEntity.ok(interruptChatService(request.toCommand(conversationId)))
+    }
+
+    @GetMapping("/{conversationId}/repo-link-state")
+    override fun getRepoLinkState(
+        @PathVariable conversationId: UUID,
+    ): ResponseEntity<RepoLinkStateResponse> {
+        return ResponseEntity.ok(getRepoLinkStateService(conversationId))
+    }
+
+    @PutMapping("/{conversationId}/repo-link-state")
+    override fun updateRepoLinkState(
+        @PathVariable conversationId: UUID,
+        @RequestBody @Valid request: UpdateRepoLinkStateRequest,
+    ): ResponseEntity<RepoLinkStateResponse> {
+        return ResponseEntity.ok(updateRepoLinkStateService(request.toCommand(conversationId)))
     }
 }

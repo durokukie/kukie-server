@@ -40,6 +40,14 @@ web-app:
 internal:
   token: ${KUKIE_INTERNAL_TOKEN}
 
+# 매니페스트 레포에 PR 을 여는 GitHub App (kukie-gitops). 개인키는 서버에만 둔다
+github-app:
+  id: ${GITHUB_APP_ID}
+  slug: kukie-gitops
+  private-key: ${GITHUB_APP_PRIVATE_KEY}
+  api-url: https://api.github.com
+  web-url: https://github.com
+
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}
   allow-local: ${KUKIE_ALLOW_LOCAL_CLUSTER:false}
