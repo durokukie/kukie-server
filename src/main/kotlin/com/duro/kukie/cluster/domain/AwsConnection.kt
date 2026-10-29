@@ -66,6 +66,11 @@ class AwsConnection(
     var lastStackDeletedAt: LocalDateTime? = null
         protected set
 
+    /** 스택 알림이 알려 준 권한 레벨. 알림이 없었거나 v1~v4 스택이면 LIMITED. */
+    @Column(name = "access_level", nullable = false, length = 20)
+    var accessLevel = AccessLevel.LIMITED
+        protected set
+
     val connected: Boolean
         get() = accountId != null
 
@@ -74,8 +79,9 @@ class AwsConnection(
         if (this.accountId != null && this.accountId != accountId) throw AwsAccountMismatchException()
     }
 
-    fun connect(accountId: String, at: LocalDateTime, stackId: String?) {
+    fun connect(accountId: String, at: LocalDateTime, stackId: String?, accessLevel: AccessLevel) {
         this.accountId = accountId
+        this.accessLevel = accessLevel
         this.connectedAt = at
         this.stackId = stackId
         this.lastAccountId = null

@@ -5,13 +5,16 @@ import com.duro.kukie.cluster.application.port.out.ApiServerAddressChecker
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
 import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
+import com.duro.kukie.cluster.exception.EksAccessDeniedException
 import com.duro.kukie.cluster.exception.EksEndpointRejectedException
+import com.duro.kukie.cluster.exception.EksNamespaceNotAllowedException
 import com.duro.kukie.cluster.exception.InvalidNamespaceException
 import com.duro.kukie.cluster.exception.NamespaceGrantPendingException
 import com.duro.kukie.cluster.exception.NamespaceNotFoundException
@@ -52,7 +55,13 @@ class RegisterEksClusterService(
 
         val endpoint = eksAccessGateway.describeCluster(credential.target, command.region, command.clusterName)
         apiServerAddressChecker.rejectionOf(endpoint.endpoint)?.let { throw EksEndpointRejectedException(it) }
-        eksAccessGateway.registerSelf(credential.target, command.region, command.clusterName, command.namespace)
+        val accessLevel = connection.accessLevel
+        try {
+            eksAccessGateway.registerSelf(credential.target, command.region, command.clusterName, command.namespace, accessLevel)
+        } catch (exception: EksAccessDeniedException) {
+            if (accessLevel == AccessLevel.LIMITED) throw EksNamespaceNotAllowedException()
+            throw exception
+        }
         val namespaceStatus = eksAccessGateway.namespaceStatus(
             credential.target,
             command.region,
@@ -64,7 +73,7 @@ class RegisterEksClusterService(
         log.info("EKS namespace 확인: status={}", namespaceStatus)
         when (namespaceStatus) {
             NamespaceStatus.MISSING -> {
-                releaseNamespace(connection.teamId, credential)
+                releaseNamespace(connection.teamId, credential, accessLevel)
                 throw NamespaceNotFoundException(command.namespace)
             }
             // 권한을 거두면 다시 부를 때 또 처음부터 퍼지기를 기다려야 하므로 남겨 둔다
@@ -85,6 +94,7 @@ class RegisterEksClusterService(
                 defaultNamespace = command.namespace,
                 fingerprint = Cluster.fingerprintOf(endpoint.endpoint, endpoint.caData),
                 provider = ClusterProvider.EKS,
+                accessLevel = accessLevel,
             ),
         )
 
@@ -92,10 +102,10 @@ class RegisterEksClusterService(
     }
 
     /** 없는 namespace 에 붙인 권한을 거둔다. 실패해도 등록 거부는 그대로 알린다. */
-    private fun releaseNamespace(teamId: UUID, credential: EksCredential) {
+    private fun releaseNamespace(teamId: UUID, credential: EksCredential, accessLevel: AccessLevel) {
         try {
             val keepNamespaces = eksNamespaces.registeredOn(teamId, credential)
-            eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, keepNamespaces)
+            eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, keepNamespaces, accessLevel)
         } catch (exception: RuntimeException) {
             log.warn("없는 namespace 의 권한을 거두지 못했습니다: team={} reason={}", teamId, exception.javaClass.simpleName)
         }

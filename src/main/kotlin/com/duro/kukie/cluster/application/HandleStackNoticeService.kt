@@ -6,20 +6,23 @@ import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
 import com.duro.kukie.cluster.application.port.out.StackNoticeResponder
 import com.duro.kukie.cluster.application.port.out.StackNoticeResult
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
+import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
+import com.duro.kukie.global.util.utcNow
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.LocalDateTime
 
 /**
- * 템플릿 v2 스택 알림으로 고객 계정을 알아낸다 — 고객이 계정 번호를 적지 않아도 된다.
+ * 템플릿 v2 스택 알림으로 고객 계정을 알아낸다 — 고객이 계정 번호를 적지 않아도 된다. v5 부터는 권한 레벨(AccessLevel)도 실려 온다.
  *
  * 알림은 누구나 보낼 수 있어 힌트로만 쓴다. ExternalId 로 팀을 찾고, 알림이 말한 역할을 그 ExternalId 로 실제로
  * 맡아 본 뒤에만 계정을 저장한다. AWS 를 부르는 동안 DB 연결을 쥐지 않게 트랜잭션을 걸지 않는다(저장은 save 한 번).
@@ -56,6 +59,7 @@ class HandleStackNoticeService(
 
         val connection = notice.externalId?.let(awsConnectionRepository::findByExternalId)
             ?: return fail(notice, UNKNOWN_CONNECTION)
+        val accessLevel = AccessLevel.ofNotice(notice.accessLevel) ?: return fail(notice, UNKNOWN_ACCESS_LEVEL)
         val accountId = accountOf(notice.roleArn, connection.externalId) ?: return fail(notice, ROLE_MISMATCH)
         // 같은 링크를 다른 계정에서 다시 실행했거나(해제한 줄도 그 계정의 스택을 추적 중이다), 팀이 이미 다른 연결로 쓰는 계정이다.
         // 실패하면 CloudFormation 이 역할을 되돌린다
@@ -72,7 +76,7 @@ class HandleStackNoticeService(
             return false
         }
 
-        connection.connect(accountId, LocalDateTime.now(clock), StackConsoleUrl.stackIdOf(notice.stackId, accountId))
+        connection.connect(accountId, LocalDateTime.now(clock), StackConsoleUrl.stackIdOf(notice.stackId, accountId), accessLevel)
         try {
             awsConnectionRepository.save(connection)
         } catch (_: DataIntegrityViolationException) {
@@ -80,23 +84,79 @@ class HandleStackNoticeService(
             return fail(notice, ACCOUNT_ALREADY_CONNECTED)
         }
         stackNoticeResponder.respond(notice, StackNoticeResult(true, physicalId(notice), ""))
-        if (notice.requestType == StackNoticeCommand.CREATE) reattachEksAccess(connection, accountId)
+        when (notice.requestType) {
+            StackNoticeCommand.CREATE -> reattachEksAccess(connection, accountId)
+            StackNoticeCommand.UPDATE -> changeAccessLevel(connection, accountId)
+        }
         return true
     }
 
     /**
      * 스택을 다시 만든 경우다 — Kukie 에서 연결을 해제했든, 고객이 콘솔에서 스택을 바로 지웠든. 이 팀이 그 계정으로
-     * 등록해 둔 EKS 마다 access entry 를 지웠다가 다시 붙인다. 옛 entry 는 지워진 역할의 고유 ID 에 묶여 있어 같은 이름의
-     * 새 역할을 EKS 가 받아 주지 않을 수 있는데, registerSelf 는 이미 있는 entry 를 그대로 두기 때문이다
+     * 등록해 둔 EKS 마다 access entry 를 지웠다가 스택의 레벨로 다시 붙인다. 옛 entry 는 지워진 역할의 고유 ID 에 묶여 있어
+     * 같은 이름의 새 역할을 EKS 가 받아 주지 않을 수 있는데, registerSelf 는 이미 있는 entry 를 그대로 두기 때문이다
      * (새 역할도 자기 entry 는 지울 수 있다). 같은 EKS 의 namespace 는 registerSelf 가 합친다.
      *
      * 못 붙여도 알림 처리는 성공으로 둔다 — 그 클러스터는 연결할 때 오류가 나고, 지우고 다시 등록하면 된다.
      */
     private fun reattachEksAccess(connection: AwsConnection, accountId: String) {
-        val namespacesByEks = clusterRepository.findAllByTeamIdAndProvider(connection.teamId, ClusterProvider.EKS)
+        val accessLevel = connection.accessLevel
+        // 연결 해제가 access entry 를 지운 뒤 연결을 비우기 전에 이 알림이 끼어들면 연결이 비워질 수 있다. 창이 짧아 받아들인다
+        for ((credential, clusters) in eksClustersOf(connection, accountId)) {
+            applyAccessLevel(credential, clusters, accessLevel) {
+                eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, emptySet(), accessLevel)
+                for (namespace in clusters.map { it.defaultNamespace }.distinct()) {
+                    eksAccessGateway.registerSelf(credential.target, credential.region, credential.clusterName, namespace, accessLevel)
+                }
+            }
+        }
+    }
+
+    /**
+     * 스택 업데이트로 AccessLevel 이 바뀌었으면 그 계정에 등록된 EKS 마다 정책을 바꿔 붙인다. 레벨이 그대로여도 지난번에
+     * 못 바꾼 EKS 는 다시 해 본다. 한 EKS 가 실패해도 나머지는 계속한다.
+     */
+    private fun changeAccessLevel(connection: AwsConnection, accountId: String) {
+        val accessLevel = connection.accessLevel
+        for ((credential, clusters) in eksClustersOf(connection, accountId)) {
+            if (clusters.all { it.accessLevel == accessLevel && it.accessLevelFailedAt == null }) continue
+            applyAccessLevel(credential, clusters, accessLevel) {
+                val namespaces = clusters.map { it.defaultNamespace }.toSet()
+                eksAccessGateway.changeAccessLevel(credential.target, credential.region, credential.clusterName, namespaces, accessLevel)
+            }
+        }
+    }
+
+    /** 붙이기에 성공하면 그 EKS 의 클러스터들에 레벨을 적고, 실패하면 실패한 때를 남긴다(레벨은 그대로). */
+    private fun applyAccessLevel(
+        credential: EksCredential,
+        clusters: List<Cluster>,
+        accessLevel: AccessLevel,
+        attach: () -> Unit,
+    ) {
+        val ids = clusters.map { it.id }
+        try {
+            attach()
+        } catch (exception: RuntimeException) {
+            log.warn(
+                "EKS 에 권한 레벨을 붙이지 못했습니다: region={} cluster={} level={} reason={}",
+                credential.region,
+                credential.clusterName,
+                accessLevel.value,
+                exception.javaClass.simpleName,
+            )
+            clusterRepository.markAccessLevelFailed(ids, utcNow())
+            return
+        }
+        clusterRepository.recordAccessLevel(ids, accessLevel)
+    }
+
+    /** 이 연결(계정·ExternalId)로 등록한 팀의 EKS 클러스터를 EKS 하나씩 묶는다. */
+    private fun eksClustersOf(connection: AwsConnection, accountId: String): Map<EksCredential, List<Cluster>> =
+        clusterRepository.findAllByTeamIdAndProvider(connection.teamId, ClusterProvider.EKS)
             .mapNotNull { cluster ->
                 try {
-                    EksCredential.from(credentialCipher.decrypt(cluster.credential)) to cluster.defaultNamespace
+                    EksCredential.from(credentialCipher.decrypt(cluster.credential)) to cluster
                 } catch (exception: RuntimeException) {
                     log.warn("EKS 클러스터 연결 정보를 읽지 못했습니다: cluster={} reason={}", cluster.id, exception.javaClass.simpleName)
                     null
@@ -105,24 +165,6 @@ class HandleStackNoticeService(
             .filter { (credential, _) -> credential.accountId == accountId && credential.externalId == connection.externalId }
             // 계정·ExternalId·리전·클러스터 이름이 같으면 같은 EKS 다(DeleteClusterService.sameEks 와 같은 기준)
             .groupBy({ it.first }, { it.second })
-
-        // 연결 해제가 access entry 를 지운 뒤 연결을 비우기 전에 이 알림이 끼어들면 연결이 비워질 수 있다. 창이 짧아 받아들인다
-        for ((credential, namespaces) in namespacesByEks) {
-            try {
-                eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, emptySet())
-                for (namespace in namespaces.distinct()) {
-                    eksAccessGateway.registerSelf(credential.target, credential.region, credential.clusterName, namespace)
-                }
-            } catch (exception: RuntimeException) {
-                log.warn(
-                    "EKS access entry 를 다시 붙이지 못했습니다: region={} cluster={} reason={}",
-                    credential.region,
-                    credential.clusterName,
-                    exception.javaClass.simpleName,
-                )
-            }
-        }
-    }
 
     private fun fail(notice: StackNoticeCommand, reason: String): Boolean {
         stackNoticeResponder.respond(notice, StackNoticeResult(false, physicalId(notice), reason))
@@ -151,6 +193,8 @@ class HandleStackNoticeService(
             "The role name does not match the ExternalId. Use the Kukie template as is."
         private const val OTHER_ACCOUNT =
             "This Kukie link is already connected to another AWS account. Use Add AWS account in Kukie for this account."
+        private const val UNKNOWN_ACCESS_LEVEL =
+            "AccessLevel must be full or limited. Use the Kukie template as is."
         private const val ACCOUNT_ALREADY_CONNECTED =
             "This AWS account is already connected to the Kukie team. Delete this stack and use the existing connection."
     }

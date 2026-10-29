@@ -1,6 +1,7 @@
 package com.duro.kukie.cluster.presentation.dto.response
 
 import com.duro.kukie.cluster.application.StackConsoleUrl
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import java.util.UUID
@@ -13,6 +14,8 @@ data class AwsConnectionResponse(
     val accountId: String?,
     /** 연결을 해제하기 전 계정. 해제한 적이 없거나 다시 연결했으면 null. */
     val lastAccountId: String?,
+    /** 스택 알림이 알려 준 권한 레벨(full·limited). 연결되어 있지 않으면 null. v1~v4 스택은 limited. */
+    val accessLevel: AccessLevel?,
     /** 이 연결의 스택을 만드는(다시 연결할 때도 같은) CloudFormation 빠른 생성 링크. */
     val quickCreateUrl: String,
     val templateUrl: String,
@@ -39,6 +42,7 @@ data class AwsConnectionResponse(
                 externalId = connection.externalId,
                 accountId = connection.accountId,
                 lastAccountId = connection.lastAccountId,
+                accessLevel = connection.accessLevel.takeIf { connection.connected },
                 quickCreateUrl = properties.quickCreateUrlFor(connection.externalId),
                 templateUrl = properties.templateUrl,
                 stackName = stackName,

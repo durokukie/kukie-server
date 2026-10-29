@@ -3,6 +3,7 @@ package com.duro.kukie.cluster
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.Cluster
@@ -396,13 +397,15 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.status") { value("disconnected") }
             jsonPath("$.insecure") { value(false) }
             jsonPath("$.fingerprint") { value(Cluster.fingerprintOf(DEFAULT_ENDPOINT.endpoint, DEFAULT_ENDPOINT.caData)) }
+            jsonPath("$.accessLevel") { value("limited") }
+            jsonPath("$.accessLevelFailedAt") { value(null) }
         }.andReturn().response.contentAsString
 
         // then
         response shouldNotContain externalId
         JsonPath.read<Map<String, Any?>>(response, "$").keys shouldBe setOf(
             "id", "teamId", "registeredBy", "name", "provider", "apiServer", "context", "namespace", "fingerprint",
-            "status", "insecure", "lastCheckedAt", "hasGpu", "createdAt", "updatedAt",
+            "status", "insecure", "lastCheckedAt", "hasGpu", "accessLevel", "accessLevelFailedAt", "createdAt", "updatedAt",
         )
         val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
         fakeEksAccessGateway.registrations shouldBe listOf(
@@ -418,6 +421,39 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             "region" to DEFAULT_REGION,
             "clusterName" to DEFAULT_CLUSTER_NAME,
         )
+    }
+
+    @Test
+    fun `전체 권한으로 연결한 계정의 EKS 는 클러스터 관리자 정책으로 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+
+        // when
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.accessLevel") { value("full") }
+        }
+
+        // then
+        fakeEksAccessGateway.registrations shouldBe listOf(
+            FakeEksAccessGateway.Registration(
+                AwsTarget(accountId = ACCOUNT_ID, externalId = externalId),
+                DEFAULT_REGION,
+                DEFAULT_CLUSTER_NAME,
+                "kukie-demo",
+                AccessLevel.FULL,
+            ),
+        )
+        mockMvc.get("/clusters/aws/connections?teamId=$teamId") {
+            authorization(admin.accessToken)
+        }.andExpect { jsonPath("$[0].accessLevel") { value("full") } }
     }
 
     @Test
@@ -559,6 +595,48 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             authorization(admin.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = registerRequest(idOf(externalId), namespace = "payments").toJson()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.EKS_ACCESS_DENIED.code) }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `제한된 권한의 계정에서 namespace 를 붙이지 못하면 AllowedNamespaces 를 확인하라고 알린다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.deniedClusters = setOf(DEFAULT_CLUSTER_NAME)
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId), namespace = "payments").toJson()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.EKS_NAMESPACE_NOT_ALLOWED.code) }
+            jsonPath("$.message") { value(containsString("AllowedNamespaces")) }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `전체 권한의 계정에서 정책을 붙이지 못하면 namespace 대신 스택을 확인하라고 알린다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        fakeEksAccessGateway.deniedClusters = setOf(DEFAULT_CLUSTER_NAME)
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId)).toJson()
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value(ClusterErrorCode.EKS_ACCESS_DENIED.code) }
@@ -862,6 +940,28 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `전체 권한의 EKS 는 같은 EKS 의 다른 등록이 남아 있으면 정책을 그대로 둔다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        val demo = registerEks(admin, externalId, namespace = "kukie-demo", name = "데모")
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
+
+        // when
+        mockMvc.delete("/clusters/$demo") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        fakeEksAccessGateway.unregistrations.single().run {
+            keepNamespaces shouldBe setOf("kukie-app")
+            accessLevel shouldBe AccessLevel.FULL
+        }
+    }
+
+    @Test
     fun `access entry 를 정리하지 못해도 클러스터는 지운다`() {
         // given
         val admin = loggedInUser()
@@ -1153,9 +1253,14 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     /** 스택 알림을 확인한 것처럼 계정을 채운다. */
-    private fun connect(externalId: String, stackId: String?, accountId: String = ACCOUNT_ID) {
+    private fun connect(
+        externalId: String,
+        stackId: String?,
+        accountId: String = ACCOUNT_ID,
+        accessLevel: AccessLevel = AccessLevel.LIMITED,
+    ) {
         val connection = awsConnectionRepository.findByExternalId(externalId)!!
-        connection.connect(accountId, LocalDateTime.now(), stackId)
+        connection.connect(accountId, LocalDateTime.now(), stackId, accessLevel)
         awsConnectionRepository.save(connection)
     }
 

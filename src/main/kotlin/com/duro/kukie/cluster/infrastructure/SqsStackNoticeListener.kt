@@ -98,6 +98,7 @@ class SqsStackNoticeListener(
             physicalResourceId = root.text("PhysicalResourceId"),
             externalId = properties.text("ExternalId"),
             roleArn = properties.text("RoleArn"),
+            accessLevel = properties.text("AccessLevel"),
         )
     }
 
