@@ -363,6 +363,33 @@ class AwsEksAccessGatewayTest {
     }
 
     @Test
+    fun `바뀐 역할 정책이 퍼지기 전에 entry 만들기가 거부되어도 다시 한다`() {
+        // given — v5 역할은 그룹 달기를 늘 거부하고, 그룹 없는 만들기도 처음 두 번은 거부된다
+        val eks = FakeEksClient(denyGroups = true, deniedEntries = 2)
+
+        // when
+        gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-demo"), AccessLevel.FULL, Duration.ZERO)
+
+        // then
+        eks.requests.size shouldBe 6
+        eks.policyCalls shouldBe listOf("associate" to CLUSTER_ADMIN_POLICY, "disassociate" to EDIT_POLICY)
+    }
+
+    @Test
+    fun `다시 하려고 기다리다 인터럽트되면 옛 정책을 떼지 않고 던지며 인터럽트 표시를 남긴다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true, exists = true, deniedAssociations = 1)
+        Thread.currentThread().interrupt()
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-demo"), AccessLevel.FULL, Duration.ofSeconds(1))
+        }
+        Thread.interrupted() shouldBe true
+        eks.policyCalls shouldBe listOf("associate" to CLUSTER_ADMIN_POLICY)
+    }
+
+    @Test
     fun `끝내 붙이지 못하면 옛 정책을 떼지 않고 던진다`() {
         // given
         val eks = FakeEksClient(denyGroups = true, exists = true, deniedAssociations = Int.MAX_VALUE)
@@ -413,12 +440,14 @@ class AwsEksAccessGatewayTest {
 
     /**
      * 고객 역할의 IAM 판단만 흉내 낸다: 그룹을 단 요청은 denyGroups 면 거부, 모든 요청은 denyAll 이면 거부.
-     * 정책 붙이기는 처음 deniedAssociations 번 거부하고, detachedAlready 면 떼기가 붙어 있지 않다고 답한다.
+     * 그룹 없는 entry 만들기는 처음 deniedEntries 번, 정책 붙이기는 처음 deniedAssociations 번 거부하고,
+     * detachedAlready 면 떼기가 붙어 있지 않다고 답한다.
      */
     private class FakeEksClient(
         private val denyGroups: Boolean,
         private val denyAll: Boolean = false,
         private val exists: Boolean = false,
+        private var deniedEntries: Int = 0,
         private val associated: List<AssociatedAccessPolicy> = emptyList(),
         private var deniedAssociations: Int = 0,
         private val detachedAlready: Boolean = false,
@@ -449,6 +478,10 @@ class AwsEksAccessGatewayTest {
         override fun createAccessEntry(request: CreateAccessEntryRequest): CreateAccessEntryResponse {
             requests += request
             if (denyAll || (denyGroups && request.hasKubernetesGroups() && request.kubernetesGroups().isNotEmpty())) {
+                throw AccessDeniedException.builder().statusCode(403).message("not authorized").build()
+            }
+            if (deniedEntries > 0) {
+                deniedEntries--
                 throw AccessDeniedException.builder().statusCode(403).message("not authorized").build()
             }
             if (exists) throw ResourceInUseException.builder().statusCode(409).message("exists").build()

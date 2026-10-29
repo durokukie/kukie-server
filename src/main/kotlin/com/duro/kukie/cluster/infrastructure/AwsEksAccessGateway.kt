@@ -159,16 +159,21 @@ class AwsEksAccessGateway(
         delay: Duration = ASSOCIATE_DELAY,
     ) {
         require(accessLevel == AccessLevel.FULL || namespaces.isNotEmpty()) { "LIMITED needs namespaces" }
-        createSelfEntry(eks, clusterName, principalArn)
-        // 스택 업데이트는 역할 정책을 바꾼 뒤 알린다. 바뀐 정책이 IAM 에 퍼지기 전에는 거부되므로 몇 번 다시 붙인다
+        // 스택 업데이트는 역할 정책을 바꾼 뒤 알린다. 바뀐 정책이 IAM 에 퍼지기 전에는 entry 만들기·붙이기가 거부되므로 몇 번 다시 한다
         var attempt = 1
         while (true) {
             try {
+                createSelfEntry(eks, clusterName, principalArn)
                 associate(eks, clusterName, principalArn, accessLevel, namespaces)
                 break
             } catch (exception: AccessDeniedException) {
                 if (attempt++ >= ASSOCIATE_ATTEMPTS) throw exception
-                Thread.sleep(delay)
+                try {
+                    Thread.sleep(delay)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw exception
+                }
             }
         }
         val other = if (accessLevel == AccessLevel.FULL) AccessLevel.LIMITED else AccessLevel.FULL
