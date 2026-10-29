@@ -6,9 +6,12 @@ import jakarta.persistence.LockModeType
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 import java.util.UUID
 
 interface ClusterRepository : JpaRepository<Cluster, UUID> {
@@ -33,6 +36,17 @@ interface ClusterRepository : JpaRepository<Cluster, UUID> {
     fun lockIdsByTeamId(@Param("teamId") teamId: UUID): List<UUID>
 
     fun deleteAllByTeamId(teamId: UUID)
+
+    /** 엔티티를 통째로 save 하면 그사이 에이전트가 남긴 상태 확인을 덮어쓰므로 레벨 칸만 바꾼다. */
+    @Transactional
+    @Modifying
+    @Query("update Cluster c set c.accessLevel = :accessLevel, c.accessLevelFailedAt = null where c.id in :ids")
+    fun recordAccessLevel(@Param("ids") ids: Collection<UUID>, @Param("accessLevel") accessLevel: AccessLevel): Int
+
+    @Transactional
+    @Modifying
+    @Query("update Cluster c set c.accessLevelFailedAt = :at where c.id in :ids")
+    fun markAccessLevelFailed(@Param("ids") ids: Collection<UUID>, @Param("at") at: LocalDateTime): Int
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Cluster c where c.id = :id")

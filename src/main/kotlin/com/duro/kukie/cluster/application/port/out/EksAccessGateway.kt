@@ -1,5 +1,7 @@
 package com.duro.kukie.cluster.application.port.out
 
+import com.duro.kukie.cluster.domain.AccessLevel
+
 interface EksAccessGateway {
 
     /**
@@ -18,14 +20,36 @@ interface EksAccessGateway {
 
     fun describeCluster(target: AwsTarget, region: String, clusterName: String): EksClusterEndpoint
 
-    /** 역할 자신을 클러스터의 access entry 로 넣고 그 namespace 에 Edit 정책을 붙인다. 이미 있으면 그대로 둔다. */
-    fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String)
+    /**
+     * 역할 자신을 클러스터의 access entry 로 넣고 레벨의 정책을 붙인다 — FULL 이면 클러스터 관리자(클러스터 전체),
+     * LIMITED 면 그 namespace 에 Edit. 이미 있으면 그대로 둔다.
+     */
+    fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String, accessLevel: AccessLevel)
 
     /**
      * 역할 자신의 access entry 를 정리한다. keepNamespaces 가 비면 entry 를 지우고(없으면 그대로), 남은 namespace 가
-     * 있으면 Edit 정책 범위를 그 namespace 들로 좁힌다 — 같은 EKS 를 다른 namespace 로 연결한 등록이 끊기지 않게.
+     * 있으면 LIMITED 는 Edit 정책 범위를 그 namespace 들로 좁힌다 — 같은 EKS 를 다른 namespace 로 연결한 등록이 끊기지 않게.
+     * FULL 은 클러스터 전체 범위라 그대로 둔다.
      */
-    fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>)
+    fun unregisterSelf(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        keepNamespaces: Set<String>,
+        accessLevel: AccessLevel,
+    )
+
+    /**
+     * 스택의 레벨이 바뀌었을 때 이미 등록한 EKS 의 정책을 바꾼다. 새 레벨의 정책을 먼저 붙이고(LIMITED 면 namespaces 범위)
+     * 다른 레벨의 정책을 뗀다. entry 가 없으면 만든다.
+     */
+    fun changeAccessLevel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        namespaces: Set<String>,
+        accessLevel: AccessLevel,
+    )
 
     /**
      * namespace 의 default ServiceAccount 를 쿠버네티스 API 로 읽어 namespace 가 있는지 본다.

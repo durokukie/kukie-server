@@ -3,6 +3,7 @@ package com.duro.kukie.cluster.application
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
@@ -44,7 +45,9 @@ class DeleteClusterService(
         try {
             val credential = EksCredential.from(credentialCipher.decrypt(cluster.credential))
             val keepNamespaces = eksNamespaces.registeredOn(cluster.teamId, credential, except = cluster.id)
-            eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, keepNamespaces)
+            // 이 클러스터에 실제로 붙은 레벨을 따른다(레벨 바꾸기에 실패했으면 바꾸기 전 레벨). 등록 칸이 생기기 전 EKS 는 v4 다
+            val accessLevel = cluster.accessLevel ?: AccessLevel.LIMITED
+            eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, keepNamespaces, accessLevel)
         } catch (exception: RuntimeException) {
             // 역할 없음·권한 없음(BusinessException), AWS SDK 오류, 자격 정보를 못 읽음 — 어느 쪽이든 삭제는 계속한다
             log.warn("EKS access entry 를 정리하지 못했습니다: cluster={} reason={}", cluster.id, exception.javaClass.simpleName)

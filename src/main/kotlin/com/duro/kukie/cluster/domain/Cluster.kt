@@ -27,6 +27,7 @@ class Cluster(
     defaultNamespace: String,
     fingerprint: String,
     provider: ClusterProvider = ClusterProvider.GENERIC,
+    accessLevel: AccessLevel? = null,
 ) : BaseTimeEntity() {
 
     @Id
@@ -90,6 +91,16 @@ class Cluster(
     /** null 은 아직 모른다 — 노드 읽기 권한이 없는 클러스터는 계속 null 이다. */
     @Column(name = "has_gpu")
     var hasGpu: Boolean? = null
+        protected set
+
+    /** EKS 에 마지막으로 붙이는 데 성공한 권한 레벨. kubeconfig 클러스터는 null. */
+    @Column(name = "access_level", length = 20)
+    var accessLevel = accessLevel
+        protected set
+
+    /** 스택의 레벨로 바꿔 붙이지 못한 때. 그동안 accessLevel 은 바꾸기 전 레벨이다. 다시 붙이면 비운다. */
+    @Column(name = "access_level_failed_at")
+    var accessLevelFailedAt: LocalDateTime? = null
         protected set
 
     fun rename(name: String) {

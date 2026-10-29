@@ -10,6 +10,8 @@ import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
 import com.duro.kukie.cluster.application.port.out.EksSubnet
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
+import com.duro.kukie.cluster.domain.AccessLevel
+import com.duro.kukie.cluster.exception.EksAccessDeniedException
 
 class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
@@ -24,6 +26,9 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     /** 설정하면 모든 호출이 이 예외로 실패한다 (역할을 맡지 못함, 권한 없음 등). */
     var failure: RuntimeException? = null
 
+    /** 이 이름의 EKS 에 정책을 붙이는 호출(registerSelf·changeAccessLevel)만 거부된다. */
+    var deniedClusters: Set<String> = emptySet()
+
     val targets = mutableListOf<AwsTarget>()
 
     /** roleExists 가 돌려줄 값. */
@@ -35,6 +40,8 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     val registrations = mutableListOf<Registration>()
 
     val unregistrations = mutableListOf<Unregistration>()
+
+    val levelChanges = mutableListOf<LevelChange>()
 
     /** namespaceStatus 가 돌려줄 값. */
     var namespaceStatus: NamespaceStatus = NamespaceStatus.EXISTS
@@ -64,16 +71,36 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         return endpoint
     }
 
-    override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String) {
+    override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String, accessLevel: AccessLevel) {
         record(target)
-        registrations += Registration(target, region, clusterName, namespace)
-        accessChanges += Registration(target, region, clusterName, namespace)
+        if (clusterName in deniedClusters) throw EksAccessDeniedException()
+        registrations += Registration(target, region, clusterName, namespace, accessLevel)
+        accessChanges += Registration(target, region, clusterName, namespace, accessLevel)
     }
 
-    override fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>) {
+    override fun unregisterSelf(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        keepNamespaces: Set<String>,
+        accessLevel: AccessLevel,
+    ) {
         record(target)
-        unregistrations += Unregistration(target, region, clusterName, keepNamespaces)
-        accessChanges += Unregistration(target, region, clusterName, keepNamespaces)
+        unregistrations += Unregistration(target, region, clusterName, keepNamespaces, accessLevel)
+        accessChanges += Unregistration(target, region, clusterName, keepNamespaces, accessLevel)
+    }
+
+    override fun changeAccessLevel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        namespaces: Set<String>,
+        accessLevel: AccessLevel,
+    ) {
+        record(target)
+        if (clusterName in deniedClusters) throw EksAccessDeniedException()
+        levelChanges += LevelChange(target, region, clusterName, namespaces, accessLevel)
+        accessChanges += LevelChange(target, region, clusterName, namespaces, accessLevel)
     }
 
     override fun namespaceStatus(
@@ -112,11 +139,13 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         setup = DEFAULT_SETUP
         setupRequests.clear()
         failure = null
+        deniedClusters = emptySet()
         targets.clear()
         roleExists = true
         roleChecks.clear()
         registrations.clear()
         unregistrations.clear()
+        levelChanges.clear()
         namespaceStatus = NamespaceStatus.EXISTS
         namespaceChecks.clear()
         accessChanges.clear()
@@ -138,6 +167,7 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val region: String,
         val clusterName: String,
         val keepNamespaces: Set<String>,
+        val accessLevel: AccessLevel = AccessLevel.LIMITED,
     )
 
     data class Registration(
@@ -145,6 +175,15 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val region: String,
         val clusterName: String,
         val namespace: String,
+        val accessLevel: AccessLevel = AccessLevel.LIMITED,
+    )
+
+    data class LevelChange(
+        val target: AwsTarget,
+        val region: String,
+        val clusterName: String,
+        val namespaces: Set<String>,
+        val accessLevel: AccessLevel,
     )
 
     companion object {

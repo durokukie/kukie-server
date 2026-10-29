@@ -13,9 +13,12 @@ data class StackNoticeCommand(
     val physicalResourceId: String?,
     val externalId: String?,
     val roleArn: String?,
+    /** 템플릿 v5 의 AccessLevel(full·limited). v1~v4 스택은 보내지 않는다. */
+    val accessLevel: String?,
 ) {
     companion object {
         const val CREATE = "Create"
+        const val UPDATE = "Update"
         const val DELETE = "Delete"
     }
 }

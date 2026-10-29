@@ -1,5 +1,6 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import org.yaml.snakeyaml.DumperOptions
@@ -54,6 +55,7 @@ object ClusterFixture {
         fingerprint: String = "fp",
         defaultNamespace: String = DEFAULT_NAMESPACE,
         provider: ClusterProvider = ClusterProvider.GENERIC,
+        accessLevel: AccessLevel? = if (provider == ClusterProvider.EKS) AccessLevel.LIMITED else null,
     ): Cluster = Cluster(
         teamId = teamId,
         registeredBy = registeredBy,
@@ -66,5 +68,6 @@ object ClusterFixture {
         defaultNamespace = defaultNamespace,
         fingerprint = fingerprint,
         provider = provider,
+        accessLevel = accessLevel,
     )
 }

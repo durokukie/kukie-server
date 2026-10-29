@@ -33,7 +33,11 @@ enum class ClusterErrorCode(
     ),
     EKS_ACCESS_DENIED(
         HttpStatus.FORBIDDEN,
-        "KukieAccess 역할에 이 작업 권한이 없습니다. 스택에서 허용한 namespace(AllowedNamespaces)인지 확인해 주세요.",
+        "KukieAccess 역할에 이 작업 권한이 없습니다. Kukie 템플릿을 고치지 않고 스택을 만들었는지, 스택 업데이트가 끝났는지 확인해 주세요.",
+    ),
+    EKS_NAMESPACE_NOT_ALLOWED(
+        HttpStatus.FORBIDDEN,
+        "제한된 권한(limited)으로 연결한 AWS 계정입니다. 스택에서 허용한 namespace(AllowedNamespaces)인지 확인해 주세요.",
     ),
     EKS_ENDPOINT_REJECTED(HttpStatus.BAD_REQUEST, "받아들일 수 없는 클러스터 주소입니다."),
     NAMESPACE_NOT_FOUND(

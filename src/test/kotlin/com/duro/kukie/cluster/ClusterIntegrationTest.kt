@@ -91,7 +91,7 @@ class ClusterIntegrationTest : IntegrationTest() {
         response shouldNotContain ClusterFixture.DEFAULT_TOKEN
         JsonPath.read<Map<String, Any?>>(response, "$").keys shouldBe setOf(
             "id", "teamId", "registeredBy", "name", "provider", "apiServer", "context", "namespace", "fingerprint",
-            "status", "insecure", "lastCheckedAt", "hasGpu", "createdAt", "updatedAt",
+            "status", "insecure", "lastCheckedAt", "hasGpu", "accessLevel", "accessLevelFailedAt", "createdAt", "updatedAt",
         )
         val stored = clusterRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.id")))!!
         stored.credential shouldNotContain ClusterFixture.DEFAULT_TOKEN

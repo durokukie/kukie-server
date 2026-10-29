@@ -65,7 +65,13 @@ class DisconnectAwsConnectionService(
         // 계정·ExternalId·리전·클러스터 이름이 같으면 같은 EKS 다(DeleteClusterService.sameEks 와 같은 기준)
         for (credential in credentials.filter { it.externalId == connection.externalId }.distinct()) {
             try {
-                eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, emptySet())
+                eksAccessGateway.unregisterSelf(
+                    credential.target,
+                    credential.region,
+                    credential.clusterName,
+                    emptySet(),
+                    connection.accessLevel,
+                )
             } catch (exception: RuntimeException) {
                 // 역할 없음·권한 없음(BusinessException), AWS SDK 오류 — 어느 쪽이든 해제는 계속한다
                 log.warn(

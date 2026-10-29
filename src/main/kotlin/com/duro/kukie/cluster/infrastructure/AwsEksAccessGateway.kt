@@ -10,6 +10,7 @@ import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
 import com.duro.kukie.cluster.application.port.out.EksSubnet
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
 import com.duro.kukie.cluster.exception.EksAccessEntryDisabledException
@@ -104,30 +105,100 @@ class AwsEksAccessGateway(
         return EksClusterEndpoint(endpoint = endpoint.trimEnd('/'), caData = caData)
     }
 
-    override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String) {
+    override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String, accessLevel: AccessLevel) {
         val principalArn = roleArn(target)
         withSession(target) { credentials ->
             eks(credentials, region).use { eks ->
-                translate<Unit> {
-                    createSelfEntry(eks, clusterName, principalArn)
-
-                    val current = eks.listAssociatedAccessPolicies { it.clusterName(clusterName).principalArn(principalArn) }
-                        .associatedAccessPolicies()
-                        .firstOrNull { it.policyArn() == EDIT_POLICY_ARN }
-                        ?.accessScope()
-                    if (current?.type() == AccessScopeType.CLUSTER || namespace in current?.namespaces().orEmpty()) return@translate
-
-                    // 정책을 다시 붙이면 범위가 바뀌므로 같은 EKS 에 먼저 등록한 namespace 를 함께 넣는다
-                    val namespaces = (current?.namespaces().orEmpty() + namespace).distinct().sorted()
-                    eks.associateAccessPolicy {
-                        it.clusterName(clusterName)
-                            .principalArn(principalArn)
-                            .policyArn(EDIT_POLICY_ARN)
-                            .accessScope(AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(namespaces).build())
-                    }
-                }
+                translate { registerSelfOn(eks, clusterName, principalArn, namespace, accessLevel) }
             }
         }
+    }
+
+    internal fun registerSelfOn(eks: EksClient, clusterName: String, principalArn: String, namespace: String, accessLevel: AccessLevel) {
+        createSelfEntry(eks, clusterName, principalArn)
+        val current = eks.listAssociatedAccessPolicies { it.clusterName(clusterName).principalArn(principalArn) }
+            .associatedAccessPolicies()
+        when (accessLevel) {
+            AccessLevel.FULL -> {
+                val attached = current.any {
+                    it.policyArn() == CLUSTER_ADMIN_POLICY_ARN && it.accessScope()?.type() == AccessScopeType.CLUSTER
+                }
+                if (!attached) associate(eks, clusterName, principalArn, AccessLevel.FULL, emptySet())
+            }
+            AccessLevel.LIMITED -> {
+                val scope = current.firstOrNull { it.policyArn() == EDIT_POLICY_ARN }?.accessScope()
+                if (scope?.type() == AccessScopeType.CLUSTER || namespace in scope?.namespaces().orEmpty()) return
+                // 정책을 다시 붙이면 범위가 바뀌므로 같은 EKS 에 먼저 등록한 namespace 를 함께 넣는다
+                associate(eks, clusterName, principalArn, AccessLevel.LIMITED, scope?.namespaces().orEmpty() + namespace)
+            }
+        }
+    }
+
+    override fun changeAccessLevel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        namespaces: Set<String>,
+        accessLevel: AccessLevel,
+    ) {
+        val principalArn = roleArn(target)
+        withSession(target) { credentials ->
+            eks(credentials, region).use { eks ->
+                translate { changeAccessLevelOn(eks, clusterName, principalArn, namespaces, accessLevel) }
+            }
+        }
+    }
+
+    /** 새 정책을 먼저 붙이고 옛 정책을 뗀다 — 중간에 실패해도 정책이 하나도 없는 entry 가 되지 않는다. */
+    internal fun changeAccessLevelOn(
+        eks: EksClient,
+        clusterName: String,
+        principalArn: String,
+        namespaces: Set<String>,
+        accessLevel: AccessLevel,
+        delay: Duration = ASSOCIATE_DELAY,
+    ) {
+        require(accessLevel == AccessLevel.FULL || namespaces.isNotEmpty()) { "LIMITED needs namespaces" }
+        createSelfEntry(eks, clusterName, principalArn)
+        // 스택 업데이트는 역할 정책을 바꾼 뒤 알린다. 바뀐 정책이 IAM 에 퍼지기 전에는 거부되므로 몇 번 다시 붙인다
+        var attempt = 1
+        while (true) {
+            try {
+                associate(eks, clusterName, principalArn, accessLevel, namespaces)
+                break
+            } catch (exception: AccessDeniedException) {
+                if (attempt++ >= ASSOCIATE_ATTEMPTS) throw exception
+                Thread.sleep(delay)
+            }
+        }
+        val other = if (accessLevel == AccessLevel.FULL) AccessLevel.LIMITED else AccessLevel.FULL
+        try {
+            eks.disassociateAccessPolicy { it.clusterName(clusterName).principalArn(principalArn).policyArn(policyArnOf(other)) }
+        } catch (_: ResourceNotFoundException) {
+            // 붙어 있지 않던 정책이다
+        }
+    }
+
+    private fun associate(
+        eks: EksClient,
+        clusterName: String,
+        principalArn: String,
+        accessLevel: AccessLevel,
+        namespaces: Collection<String>,
+    ) {
+        val scope = when (accessLevel) {
+            AccessLevel.FULL -> AccessScope.builder().type(AccessScopeType.CLUSTER).build()
+            AccessLevel.LIMITED ->
+                AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(namespaces.distinct().sorted()).build()
+        }
+        eks.associateAccessPolicy {
+            it.clusterName(clusterName).principalArn(principalArn).policyArn(policyArnOf(accessLevel)).accessScope(scope)
+        }
+    }
+
+    private fun policyArnOf(accessLevel: AccessLevel): String = when (accessLevel) {
+        AccessLevel.FULL -> CLUSTER_ADMIN_POLICY_ARN
+        AccessLevel.LIMITED -> EDIT_POLICY_ARN
     }
 
     /**
@@ -150,7 +221,14 @@ class AwsEksAccessGateway(
         }
     }
 
-    override fun unregisterSelf(target: AwsTarget, region: String, clusterName: String, keepNamespaces: Set<String>) {
+    override fun unregisterSelf(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        keepNamespaces: Set<String>,
+        accessLevel: AccessLevel,
+    ) {
+        if (keepNamespaces.isNotEmpty() && accessLevel == AccessLevel.FULL) return
         val principalArn = roleArn(target)
         withSession(target) { credentials ->
             eks(credentials, region).use { eks ->
@@ -163,12 +241,7 @@ class AwsEksAccessGateway(
                         }
                         return@translate
                     }
-                    eks.associateAccessPolicy {
-                        it.clusterName(clusterName)
-                            .principalArn(principalArn)
-                            .policyArn(EDIT_POLICY_ARN)
-                            .accessScope(AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(keepNamespaces.sorted()).build())
-                    }
+                    associate(eks, clusterName, principalArn, AccessLevel.LIMITED, keepNamespaces)
                 }
             }
         }
@@ -423,6 +496,7 @@ class AwsEksAccessGateway(
     companion object {
         private const val STANDARD_ENTRY = "STANDARD"
         private const val EDIT_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+        private const val CLUSTER_ADMIN_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
         internal const val GPU_READ_GROUP = "kukie-gpu-reader"
         private const val OK = 200
         private const val UNAUTHORIZED = 401
@@ -442,6 +516,9 @@ class AwsEksAccessGateway(
         // 막 붙인 access policy 가 퍼지기를 잠깐만 기다린다. 더 걸리면 앱이 등록을 다시 부른다
         private const val GRANT_ATTEMPTS = 3
         private val GRANT_DELAY: Duration = Duration.ofSeconds(2)
+
+        private const val ASSOCIATE_ATTEMPTS = 4
+        private val ASSOCIATE_DELAY: Duration = Duration.ofSeconds(3)
 
         /** 연결마다 부르는 확인이라 응답하지 않는 API 서버가 kubectl 실행을 오래 붙잡지 않게 짧게 둔다. */
         private val PROBE_TIMEOUT: Duration = Duration.ofSeconds(3)
