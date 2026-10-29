@@ -132,7 +132,7 @@ class GitHubAppIntegrationTest : IntegrationTest() {
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
         fakeGitHubAppGateway.install(INSTALLATION_ID, "acme/manifests")
-        val expired = InstallState(teamId, admin.user.id, "expired-nonce", Instant.now().minusSeconds(1))
+        val expired = InstallState(teamId, admin.user.id, "expired-nonce", Instant.now().minusSeconds(1801), Instant.now().minusSeconds(1))
         installStateRepository.save(expired.nonce, teamId, Duration.ofMinutes(30))
 
         // when
@@ -231,7 +231,69 @@ class GitHubAppIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `GitHub 설정에서 레포 고르기를 바꾸고 돌아오면 묶인 설치의 레포 목록만 다시 읽는다`() {
+    fun `state 없이 온 설정 변경은 GitHub 를 부르지 않고 앱으로만 보낸다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        fakeGitHubAppGateway.install(INSTALLATION_ID, "acme/manifests")
+        setup(installationId = INSTALLATION_ID, action = "install", state = startInstall(admin, teamId))
+        val callsBefore = fakeGitHubAppGateway.calls
+
+        // when
+        val landing = setup(installationId = INSTALLATION_ID, action = "update", state = null)
+
+        // then
+        landing.queryParams.toSingleValueMap() shouldBe mapOf("result" to "updated")
+        fakeGitHubAppGateway.calls shouldBe callsBefore
+    }
+
+    @Test
+    fun `state 가 없거나 틀리면 GitHub 를 부르지 않는다`() {
+        // given
+        fakeGitHubAppGateway.install(INSTALLATION_ID, "acme/manifests")
+
+        // when
+        val missing = setup(installationId = INSTALLATION_ID, action = "install", state = null)
+        val broken = setup(installationId = INSTALLATION_ID, action = "install", state = "not-a-state")
+
+        // then
+        missing.queryParams.toSingleValueMap() shouldBe mapOf("result" to "failed", "error" to GitOpsErrorCode.INVALID_INSTALL_STATE.code)
+        broken.queryParams.toSingleValueMap() shouldBe mapOf("result" to "failed", "error" to GitOpsErrorCode.INVALID_INSTALL_STATE.code)
+        fakeGitHubAppGateway.calls shouldBe 0
+    }
+
+    @Test
+    fun `state 를 받기 전부터 있던 설치는 묶지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        fakeGitHubAppGateway.install(INSTALLATION_ID, "victim/manifests", createdAt = Instant.now().minus(Duration.ofDays(3)))
+
+        // when
+        val landing = setup(installationId = INSTALLATION_ID, action = "install", state = startInstall(admin, teamId))
+
+        // then
+        landing.queryParams.toSingleValueMap() shouldBe mapOf("result" to "failed", "error" to GitOpsErrorCode.INSTALLATION_NOT_VERIFIED.code)
+        gitHubInstallationRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `묶이지 않은 설치의 설정 변경은 state 가 있어도 묶지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        fakeGitHubAppGateway.install(INSTALLATION_ID, "acme/manifests")
+
+        // when
+        val landing = setup(installationId = INSTALLATION_ID, action = "update", state = startInstall(admin, teamId))
+
+        // then
+        landing.queryParams.toSingleValueMap() shouldBe mapOf("result" to "failed", "error" to GitOpsErrorCode.INSTALLATION_NOT_VERIFIED.code)
+        gitHubInstallationRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `팀 관리자가 다시 읽으면 묶인 설치의 레포 목록을 GitHub 에서 새로 읽는다`() {
         // given
         val admin = loggedInUser()
         val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
@@ -239,26 +301,16 @@ class GitHubAppIntegrationTest : IntegrationTest() {
         setup(installationId = INSTALLATION_ID, action = "install", state = startInstall(admin, teamId))
         fakeGitHubAppGateway.install(INSTALLATION_ID, "acme/manifests", "acme/apps")
 
-        // when
-        val landing = setup(installationId = INSTALLATION_ID, action = "update", state = null)
-
-        // then
-        landing.queryParams.toSingleValueMap() shouldBe mapOf("result" to "updated", "teamId" to teamId.toString())
+        // when & then
+        mockMvc.post("/teams/$teamId/github-app/refresh") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("INSTALLED") }
+            jsonPath("$.installations[0].repositories.length()") { value(2) }
+        }
         gitHubInstallationRepository.findByInstallationId(INSTALLATION_ID)!!.repositories shouldBe
             listOf("acme/manifests", "acme/apps")
-    }
-
-    @Test
-    fun `묶인 적 없는 설치의 설정 변경은 받지 않는다`() {
-        // given
-        fakeGitHubAppGateway.install(INSTALLATION_ID, "acme/manifests")
-
-        // when
-        val landing = setup(installationId = INSTALLATION_ID, action = "update", state = null)
-
-        // then
-        landing.queryParams.toSingleValueMap() shouldBe mapOf("result" to "failed", "error" to GitOpsErrorCode.INSTALLATION_NOT_FOUND.code)
-        gitHubInstallationRepository.count() shouldBe 0
     }
 
     private fun startInstall(admin: LoggedInUser, teamId: UUID): String {

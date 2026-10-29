@@ -1,6 +1,7 @@
 package com.duro.kukie.gitops.presentation
 
 import com.duro.kukie.gitops.application.GetGitHubAppStatusService
+import com.duro.kukie.gitops.application.RefreshGitHubAppService
 import com.duro.kukie.gitops.application.StartGitHubInstallService
 import com.duro.kukie.gitops.presentation.dto.response.GitHubAppStatusResponse
 import com.duro.kukie.gitops.presentation.dto.response.GitHubInstallLinkResponse
@@ -22,6 +23,7 @@ import java.util.UUID
 class GitHubAppController(
     private val startGitHubInstallService: StartGitHubInstallService,
     private val getGitHubAppStatusService: GetGitHubAppStatusService,
+    private val refreshGitHubAppService: RefreshGitHubAppService,
 ) : GitHubAppControllerDocs {
 
     @TeamRoleRequired(TeamRole.ADMIN)
@@ -39,5 +41,13 @@ class GitHubAppController(
         @PathVariable teamId: UUID,
     ): ResponseEntity<GitHubAppStatusResponse> {
         return ResponseEntity.ok(getGitHubAppStatusService(teamId))
+    }
+
+    @TeamRoleRequired(TeamRole.ADMIN)
+    @PostMapping("/refresh")
+    override fun refreshGitHubApp(
+        @PathVariable teamId: UUID,
+    ): ResponseEntity<GitHubAppStatusResponse> {
+        return ResponseEntity.ok(refreshGitHubAppService(teamId))
     }
 }

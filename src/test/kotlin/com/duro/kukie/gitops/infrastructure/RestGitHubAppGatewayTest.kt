@@ -21,6 +21,7 @@ import org.springframework.test.web.client.match.MockRestRequestMatchers.method
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withStatus
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
+import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.RestClient
 import java.security.interfaces.RSAPublicKey
 import java.time.Clock
@@ -35,7 +36,9 @@ class RestGitHubAppGatewayTest {
         slug = "kukie-gitops",
         privateKey = TestRsaKeys.pkcs1Pem(),
         apiUrl = API,
-        webUrl = "https://github.com",
+        webUrl = WEB,
+        clientId = "Iv23li-client",
+        clientSecret = "client-secret",
     )
     private val credentials = GitHubAppCredentials(properties, Clock.fixed(now, ZoneOffset.UTC))
     private val builder = RestClient.builder().baseUrl(API)
@@ -116,6 +119,7 @@ class RestGitHubAppGatewayTest {
         installation.account.type shouldBe "Organization"
         installation.repositorySelection shouldBe "selected"
         installation.suspended shouldBe false
+        installation.createdAt shouldBe Instant.parse("2026-10-30T08:59:00Z")
     }
 
     @Test
@@ -154,6 +158,60 @@ class RestGitHubAppGatewayTest {
         credentials.cachedRepoToken(7, 42).shouldBeNull()
     }
 
+    @Test
+    fun `사용자 인증 code 로 그 사용자가 접근할 수 있는 우리 앱 설치를 찾고 사용자 토큰은 거둔다`() {
+        // given
+        server.expect(requestTo("$WEB/login/oauth/access_token"))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(
+                content().formData(
+                    LinkedMultiValueMap(
+                        mapOf(
+                            "client_id" to listOf("Iv23li-client"),
+                            "client_secret" to listOf("client-secret"),
+                            "code" to listOf("code-1"),
+                        ),
+                    ),
+                ),
+            )
+            .andRespond(withSuccess("""{"access_token":"ghu_user","token_type":"bearer"}""", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$API/user/installations?per_page=100&page=1"))
+            .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer ghu_user"))
+            .andRespond(
+                withSuccess(
+                    """{"total_count":2,"installations":[${installationJson(7, APP_ID)},${installationJson(8, 1)}]}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+        server.expect(requestTo("$API/user/installations?per_page=100&page=2"))
+            .andRespond(withSuccess("""{"total_count":2,"installations":[]}""", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$API/applications/Iv23li-client/token"))
+            .andExpect(method(HttpMethod.DELETE))
+            .andExpect(content().json("""{"access_token":"ghu_user"}"""))
+            .andRespond(withStatus(HttpStatus.NO_CONTENT))
+
+        // when
+        val ids = gateway.userInstallationIds("code-1")
+
+        // then
+        server.verify()
+        ids shouldBe setOf(7L)
+    }
+
+    @Test
+    fun `틀린 code 면 접근할 수 있는 설치가 없다`() {
+        // given
+        server.expect(requestTo("$WEB/login/oauth/access_token"))
+            .andRespond(withSuccess("""{"error":"bad_verification_code"}""", MediaType.APPLICATION_JSON))
+
+        // when
+        val ids = gateway.userInstallationIds("wrong")
+
+        // then
+        server.verify()
+        ids shouldBe emptySet()
+    }
+
     private fun verifiedAppJwt(jwt: String) {
         Jwts.parser()
             .verifyWith(TestRsaKeys.keyPair.public as RSAPublicKey)
@@ -173,18 +231,22 @@ class RestGitHubAppGatewayTest {
         }
     """.trimIndent()
 
-    private fun installationBody(appId: Long) = """
+    private fun installationBody(appId: Long) = installationJson(7, appId)
+
+    private fun installationJson(id: Long, appId: Long) = """
         {
-          "id": 7,
+          "id": $id,
           "app_id": $appId,
           "account": {"login": "acme", "type": "Organization", "id": 99},
           "repository_selection": "selected",
-          "suspended_at": null
+          "suspended_at": null,
+          "created_at": "2026-10-30T08:59:00Z"
         }
     """.trimIndent()
 
     companion object {
         private const val API = "https://api.github.test"
+        private const val WEB = "https://github.test"
         private const val APP_ID = 5531779L
     }
 }

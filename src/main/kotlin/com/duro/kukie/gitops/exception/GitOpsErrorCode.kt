@@ -16,6 +16,10 @@ enum class GitOpsErrorCode(
         "GitHub App 설치 요청이 맞지 않거나 만료되었습니다. Kukie 에서 설치를 다시 시작해 주세요.",
     ),
     INSTALLATION_NOT_FOUND(HttpStatus.NOT_FOUND, "Kukie GitHub App 설치를 찾을 수 없습니다."),
+    INSTALLATION_NOT_VERIFIED(
+        HttpStatus.FORBIDDEN,
+        "이 GitHub App 설치를 이 팀에 묶을 수 없습니다. Kukie 에서 설치를 다시 시작해 주세요.",
+    ),
     INSTALLATION_TAKEN(HttpStatus.CONFLICT, "이 GitHub App 설치는 다른 팀에 연결되어 있습니다."),
     GITHUB_APP_NOT_INSTALLED(
         HttpStatus.CONFLICT,

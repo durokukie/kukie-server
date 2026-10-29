@@ -24,8 +24,9 @@ class StartGitHubInstallService(
 
     operator fun invoke(teamId: UUID, userId: UUID): GitHubInstallLinkResponse {
         val nonce = HexFormat.of().formatHex(ByteArray(NONCE_BYTES).also(random::nextBytes))
-        val expiresAt = clock.instant().plus(STATE_TTL).truncatedTo(ChronoUnit.SECONDS)
-        val state = InstallState(teamId = teamId, userId = userId, nonce = nonce, expiresAt = expiresAt)
+        val issuedAt = clock.instant().truncatedTo(ChronoUnit.SECONDS)
+        val expiresAt = issuedAt.plus(STATE_TTL)
+        val state = InstallState(teamId = teamId, userId = userId, nonce = nonce, issuedAt = issuedAt, expiresAt = expiresAt)
         installStateRepository.save(nonce, teamId, STATE_TTL)
 
         return GitHubInstallLinkResponse(

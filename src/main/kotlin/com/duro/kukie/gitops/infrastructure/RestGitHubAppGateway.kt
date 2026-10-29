@@ -13,9 +13,12 @@ import com.duro.kukie.global.util.logger
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
+import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
@@ -61,7 +64,24 @@ class RestGitHubAppGateway internal constructor(
             account = GitHubAccount(login = installation.account.login, type = installation.account.type),
             repositorySelection = installation.repositorySelection,
             suspended = installation.suspendedAt != null,
+            createdAt = installation.createdAt,
         )
+    }
+
+    override fun userInstallationIds(code: String): Set<Long> {
+        val userToken = exchangeCode(code) ?: return emptySet()
+        try {
+            return generateSequence(1) { it + 1 }
+                .take(MAX_PAGES)
+                .map { page -> userInstallationsPage(userToken, page) }
+                .takeWhile { it.isNotEmpty() }
+                .flatten()
+                .filter { it.appId == properties.id }
+                .map { it.id }
+                .toSet()
+        } finally {
+            revokeUserToken(userToken)
+        }
     }
 
     override fun installationRepositories(installationId: Long): List<RepoName> {
@@ -143,6 +163,50 @@ class RestGitHubAppGateway internal constructor(
             }
         } ?: throw GitHubUnavailableException()
 
+    /** GitHub 는 틀린 code 에도 200 과 error 칸으로 답한다. */
+    private fun exchangeCode(code: String): String? {
+        val body = LinkedMultiValueMap<String, String>().apply {
+            add("client_id", properties.clientId.orEmpty())
+            add("client_secret", properties.clientSecret.orEmpty())
+            add("code", code)
+        }
+        val response = call {
+            restClient.post()
+                .uri("${properties.webUrl}/login/oauth/access_token")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body<OAuthTokenResponse>()
+        }
+        return response?.accessToken?.takeIf { response.error == null }
+    }
+
+    private fun userInstallationsPage(userToken: String, page: Int): List<InstallationResponse> =
+        call {
+            restClient.get()
+                .uri("/user/installations?per_page={size}&page={page}", PAGE_SIZE, page)
+                .headers { it.github(userToken) }
+                .retrieve()
+                .body<UserInstallationsResponse>()
+        }?.installations.orEmpty()
+
+    private fun revokeUserToken(userToken: String) {
+        try {
+            restClient.method(HttpMethod.DELETE)
+                .uri("/applications/{clientId}/token", properties.clientId)
+                .headers {
+                    it.setBasicAuth(properties.clientId.orEmpty(), properties.clientSecret.orEmpty())
+                    it.set(HttpHeaders.ACCEPT, "application/vnd.github+json")
+                }
+                .body(mapOf("access_token" to userToken))
+                .retrieve()
+                .toBodilessEntity()
+        } catch (exception: RestClientException) {
+            log.warn("GitHub 사용자 토큰을 거두지 못했습니다: reason={}", exception.javaClass.simpleName)
+        }
+    }
+
     private fun repositoriesPage(token: String, page: Int): List<RepositoryResponse> =
         call {
             restClient.get()
@@ -196,6 +260,18 @@ class RestGitHubAppGateway internal constructor(
         val repositorySelection: String,
         @JsonProperty("suspended_at")
         val suspendedAt: String?,
+        @JsonProperty("created_at")
+        val createdAt: Instant,
+    )
+
+    private class OAuthTokenResponse(
+        @JsonProperty("access_token")
+        val accessToken: String?,
+        val error: String?,
+    )
+
+    private data class UserInstallationsResponse(
+        val installations: List<InstallationResponse>,
     )
 
     private data class AccountResponse(

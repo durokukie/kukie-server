@@ -10,6 +10,12 @@ interface GitHubAppGateway {
     /** 우리 앱의 설치가 아니거나 없으면 null. */
     fun findInstallation(installationId: Long): GitHubInstallationInfo?
 
+    /**
+     * 설치 화면에서 사용자 인증(OAuth)으로 받은 code 를 사용자 토큰으로 바꿔, 그 사용자가 접근할 수 있는 우리 앱 설치의 id 를 준다.
+     * code 가 틀렸으면 빈 집합.
+     */
+    fun userInstallationIds(code: String): Set<Long>
+
     /** 설치가 볼 수 있는 레포들. */
     fun installationRepositories(installationId: Long): List<RepoName>
 
@@ -30,6 +36,7 @@ data class GitHubInstallationInfo(
     val account: GitHubAccount,
     val repositorySelection: String,
     val suspended: Boolean,
+    val createdAt: Instant,
 )
 
 class RepoToken(

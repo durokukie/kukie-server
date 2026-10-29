@@ -8,5 +8,6 @@ data class InstallState(
     val teamId: UUID,
     val userId: UUID,
     val nonce: String,
+    val issuedAt: Instant,
     val expiresAt: Instant,
 )

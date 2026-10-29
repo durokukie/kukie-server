@@ -20,22 +20,49 @@ class FakeGitHubAppGateway : GitHubAppGateway, Resettable {
 
     val revoked = mutableListOf<Issued>()
 
-    fun install(installationId: Long, vararg repositories: String, account: String = "acme", suspended: Boolean = false) {
+    /** 사용자 인증 code 마다 그 사용자가 접근할 수 있는 설치. */
+    val userInstallations = mutableMapOf<String, Set<Long>>()
+
+    /** GitHub 를 부른 횟수. 인증 없는 요청이 GitHub 를 부르지 않는지 본다. */
+    var calls = 0
+        private set
+
+    fun install(
+        installationId: Long,
+        vararg repositories: String,
+        account: String = "acme",
+        suspended: Boolean = false,
+        createdAt: Instant = Instant.now(),
+    ) {
         installations[installationId] = GitHubInstallationInfo(
             installationId = installationId,
             account = GitHubAccount(login = account, type = "Organization"),
             repositorySelection = "selected",
             suspended = suspended,
+            createdAt = createdAt.truncatedTo(ChronoUnit.SECONDS),
         )
         installationRepos[installationId] = repositories.map(RepoName::parse)
     }
 
-    override fun findInstallation(installationId: Long): GitHubInstallationInfo? = installations[installationId]
+    override fun findInstallation(installationId: Long): GitHubInstallationInfo? {
+        calls++
+        return installations[installationId]
+    }
 
-    override fun installationRepositories(installationId: Long): List<RepoName> = installationRepos[installationId].orEmpty()
+    override fun userInstallationIds(code: String): Set<Long> {
+        calls++
+        return userInstallations[code].orEmpty()
+    }
 
-    override fun findRepoInstallationId(repository: RepoName): Long? =
-        installationRepos.entries.firstOrNull { repository in it.value }?.key
+    override fun installationRepositories(installationId: Long): List<RepoName> {
+        calls++
+        return installationRepos[installationId].orEmpty()
+    }
+
+    override fun findRepoInstallationId(repository: RepoName): Long? {
+        calls++
+        return installationRepos.entries.firstOrNull { repository in it.value }?.key
+    }
 
     override fun issueRepoToken(installationId: Long, repository: RepoName): RepoToken {
         if (repository !in installationRepos[installationId].orEmpty()) throw GitHubAppNotInstalledException()
@@ -53,6 +80,7 @@ class FakeGitHubAppGateway : GitHubAppGateway, Resettable {
     }
 
     private fun token(installationId: Long, repository: RepoName): RepoToken {
+        calls++
         val repositoryId = repositoryIdOf(repository)
         issued += Issued(installationId, repositoryId)
         return RepoToken(
@@ -68,6 +96,8 @@ class FakeGitHubAppGateway : GitHubAppGateway, Resettable {
         installationRepos.clear()
         issued.clear()
         revoked.clear()
+        userInstallations.clear()
+        calls = 0
     }
 
     data class Issued(

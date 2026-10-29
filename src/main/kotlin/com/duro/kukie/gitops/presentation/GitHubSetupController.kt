@@ -26,11 +26,12 @@ class GitHubSetupController(
         @RequestParam("installation_id", required = false) installationId: String?,
         @RequestParam("setup_action", required = false) setupAction: String?,
         @RequestParam(required = false) state: String?,
+        @RequestParam(required = false) code: String?,
     ): ResponseEntity<Unit> {
-        val command = GitHubSetupCommand(installationId?.toLongOrNull(), setupAction, state)
+        val command = GitHubSetupCommand(installationId?.toLongOrNull(), setupAction, state, code)
         val query = try {
             val result = handleGitHubSetupService(command)
-            mapOf(RESULT to result.outcome.value, TEAM_ID to result.teamId.toString())
+            mapOf(RESULT to result.outcome.value) + listOfNotNull(result.teamId?.let { TEAM_ID to it.toString() })
         } catch (exception: BusinessException) {
             mapOf(RESULT to FAILED, ERROR to exception.errorCode.code)
         }

@@ -1,6 +1,7 @@
 package com.duro.kukie.gitops.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
+import com.duro.kukie.gitops.exception.GitHubUnavailableException
 import com.duro.kukie.gitops.presentation.dto.response.GitHubAppStatusResponse
 import com.duro.kukie.gitops.presentation.dto.response.GitHubInstallLinkResponse
 import com.duro.kukie.team.exception.InsufficientTeamRoleException
@@ -26,4 +27,12 @@ interface GitHubAppControllerDocs {
     )
     @ApiErrorResponses(NotTeamMemberException::class)
     fun getGitHubAppStatus(teamId: UUID): ResponseEntity<GitHubAppStatusResponse>
+
+    @Operation(
+        summary = "GitHub App 설치 다시 읽기",
+        description = "팀에 묶인 설치마다 GitHub 에서 계정·레포 목록·정지 여부를 다시 읽어 상태를 줍니다. GitHub 설정에서 레포 " +
+            "고르기를 바꾸고 돌아왔을 때(result=updated) 부르세요. GitHub 에서 지운 설치는 그대로 둡니다. 팀 관리자만 할 수 있습니다.",
+    )
+    @ApiErrorResponses(NotTeamMemberException::class, InsufficientTeamRoleException::class, GitHubUnavailableException::class)
+    fun refreshGitHubApp(teamId: UUID): ResponseEntity<GitHubAppStatusResponse>
 }

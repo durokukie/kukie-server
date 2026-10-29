@@ -24,6 +24,7 @@ class JwtInstallStateCodec(
             .subject(state.teamId.toString())
             .claim(TYPE, TYPE_VALUE)
             .claim(USER_ID, state.userId.toString())
+            .issuedAt(Date.from(state.issuedAt))
             .expiration(Date.from(state.expiresAt))
             .signWith(secretKey, Jwts.SIG.HS256)
             .compact()
@@ -36,6 +37,7 @@ class JwtInstallStateCodec(
                 teamId = UUID.fromString(claims.subject),
                 userId = UUID.fromString(claims[USER_ID] as String),
                 nonce = claims.id ?: return null,
+                issuedAt = claims.issuedAt?.toInstant() ?: return null,
                 expiresAt = claims.expiration.toInstant(),
             )
         }.getOrNull()
