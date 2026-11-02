@@ -186,6 +186,20 @@ class ActionPlan(
         }
     }
 
+    /** 머지를 먼저 기록해 둔 PR 길 계획에 지켜본 sync 결과를 나중에 얹는다. 지켜보는 중인 계획만 바꾼다 — 같은 값이 다시 오면 그대로 성공한다. */
+    fun recordSyncResult(syncResult: Map<String, Any?>) {
+        val result = executionResult
+        val current = result?.get(SYNC_RESULT) as? Map<*, *>
+        val next = syncResult.withoutNul()
+        if (status == PlanStatus.APPLIED && current != null && JsonValues.same(current, next)) return
+        requireState(
+            status == PlanStatus.APPLIED &&
+                result?.get(MERGE_COMMIT) != null &&
+                current?.get("status") == SYNC_WATCHING,
+        )
+        executionResult = result!! + (SYNC_RESULT to next)
+    }
+
     fun fail(reason: PlanFailureReason) {
         requireState(status.open)
         markFailed(reason)
@@ -229,6 +243,9 @@ class ActionPlan(
         const val PULL_REQUEST = "pull_request"
         const val MERGE_COMMIT = "merge_commit"
         const val SYNC_RESULT = "sync_result"
+
+        /** sync_result.status 중 서버가 아는 값 하나 — 아직 지켜보는 중. 나머지 모양은 에이전트가 정한다. */
+        const val SYNC_WATCHING = "syncing"
 
         private val DECIDABLE = setOf(PlanStatus.DRAFT, PlanStatus.WAITING_APPROVAL)
         private val RUNNABLE = setOf(PlanStatus.APPROVED, PlanStatus.EXECUTING)

@@ -11,6 +11,7 @@ import com.duro.kukie.actionplan.exception.ActionPlanErrorCode
 import com.duro.kukie.chat.ChatFixture
 import com.duro.kukie.chat.domain.ChatRun
 import com.duro.kukie.chat.domain.ChatRunRepository
+import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.cluster.ClusterFixture
 import com.duro.kukie.cluster.domain.ClusterRepository
@@ -25,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.util.UUID
 
@@ -254,6 +256,83 @@ class InternalActionPlanIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `머지를 먼저 기록한 계획에 지켜본 sync 결과를 나중에 얹는다`() {
+        // given
+        val plan = mergedPlan()
+        val healthy = mapOf("status" to "healthy", "message" to "정상")
+
+        // when & then
+        action(plan, "sync-result", mapOf("syncResult" to healthy)).andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("APPLIED") }
+            jsonPath("$.executionResult.merge_commit") { value("abc123") }
+            jsonPath("$.executionResult.stdout") { value("merged") }
+            jsonPath("$.executionResult.sync_result.status") { value("healthy") }
+        }
+
+        // 응답을 잃어 같은 값을 다시 보내도 성공한다
+        action(plan, "sync-result", mapOf("syncResult" to healthy)).andExpect {
+            status { isOk() }
+            jsonPath("$.executionResult.sync_result.status") { value("healthy") }
+        }
+
+        // 끝난 결과는 다른 값으로 덮지 않는다
+        action(plan, "sync-result", mapOf("syncResult" to mapOf("status" to "interrupted"))).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ActionPlanErrorCode.PLAN_STATE_CONFLICT.code) }
+        }
+    }
+
+    @Test
+    fun `머지가 기록되지 않았거나 지켜보는 중이 아니면 sync 결과를 받지 않는다`() {
+        // given
+        val executing = savedPlan("call-1") { it.executing(DECIDER) }
+        val noMerge = savedPlan("call-2") { it.executing(DECIDER) }
+        action(noMerge, "result", mapOf("success" to true, "stdout" to "", "stderr" to "", "exitCode" to 0))
+        val settled = mergedPlan("call-3", sync = "healthy")
+        val body = mapOf("syncResult" to mapOf("status" to "degraded"))
+
+        // when & then
+        listOf(executing, noMerge, settled).forEach { plan ->
+            action(plan, "sync-result", body).andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value(ActionPlanErrorCode.PLAN_STATE_CONFLICT.code) }
+            }
+        }
+    }
+
+    @Test
+    fun `끝나지 않은 PR 길 계획과 그 클러스터를 돌려준다`() {
+        // given
+        val watching = mergedPlan("call-1")
+        val executing = savedPlan("call-2", GITOPS) { it.gitopsApproved().apply { start() } }
+        val approved = savedPlan("call-3", GITOPS) { it.gitopsApproved() }
+        mergedPlan("call-4", sync = "healthy")
+        savedPlan("call-5", GITOPS) { it.offered() }
+        savedPlan("call-6") { it.executing(DECIDER) }                       // 다른 도구
+        val closed = mergedPlan("call-7")
+        chatRunRepository.saveAndFlush(chatRunRepository.findByIdOrNull(closed.runId)!!.apply { changeStatus(RunStatus.COMPLETED) })
+
+        // when & then
+        mockMvc.get("/internal/plans/unsettled") {
+            internalToken()
+            param("toolName", GITOPS)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(4) }
+            jsonPath("$[0].plan.id") { value(watching.id.toString()) }
+            jsonPath("$[0].plan.executionResult.sync_result.status") { value("syncing") }
+            jsonPath("$[0].clusterId") { value(runOwner.second.toString()) }
+            jsonPath("$[0].runActive") { value(true) }
+            jsonPath("$[1].plan.id") { value(executing.id.toString()) }
+            jsonPath("$[1].plan.status") { value("EXECUTING") }
+            jsonPath("$[2].plan.id") { value(approved.id.toString()) }
+            jsonPath("$[3].plan.id") { value(closed.id.toString()) }
+            jsonPath("$[3].runActive") { value(false) }
+        }
+    }
+
+    @Test
     fun `실행에 실패하면 계획을 실패로 닫는다`() {
         // given
         val failed = savedPlan { it.executing(DECIDER) }
@@ -343,6 +422,23 @@ class InternalActionPlanIntegrationTest : IntegrationTest() {
     private fun savedPlan(toolCallId: String = "call-1", prepare: (ActionPlan) -> ActionPlan = { it }): ActionPlan =
         actionPlanRepository.save(prepare(ActionPlanFixture.plan(savedRun().id, toolCallId = toolCallId)))
 
+    private fun savedPlan(toolCallId: String, toolName: String, prepare: (ActionPlan) -> ActionPlan): ActionPlan =
+        actionPlanRepository.save(prepare(ActionPlanFixture.plan(savedRun().id, toolCallId = toolCallId, toolName = toolName)))
+
+    private fun mergedBody(sync: String): Map<String, Any?> = mapOf(
+        "success" to true,
+        "stdout" to "merged",
+        "stderr" to "",
+        "exitCode" to 0,
+        "mergeCommit" to "abc123",
+        "syncResult" to mapOf("status" to sync),
+    )
+
+    private fun mergedPlan(toolCallId: String = "call-1", sync: String = "syncing"): ActionPlan =
+        savedPlan(toolCallId, GITOPS) { it.gitopsApproved().apply { start() } }.also { action(it, "result", mergedBody(sync)) }
+
+    private fun ActionPlan.gitopsApproved(): ActionPlan = offered().apply { approve(ActionPlanFixture.call(tool = GITOPS), DECIDER) }
+
     private val runOwner: Pair<UUID, UUID> by lazy {
         val owner = loggedInUser().user.id
         owner to clusterRepository.save(ClusterFixture.cluster(registeredBy = owner, teamId = savedTeam(owner to TeamRole.ADMIN))).id
@@ -350,6 +446,7 @@ class InternalActionPlanIntegrationTest : IntegrationTest() {
 
     companion object {
         private val DECIDER: UUID = UUID.fromString("01900000-0000-7000-8000-0000000000aa")
+        private const val GITOPS = "propose_git_change"
 
         private const val AT = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z"
     }
