@@ -714,6 +714,144 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `권한 대기 뒤에도 인증이 안 되는 옛 entry 면 지우고 다시 만들어 같은 EKS 의 다른 namespace 까지 다시 붙인 뒤 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
+        fakeEksAccessGateway.accessChanges.clear()
+        fakeEksAccessGateway.namespaceStatuses += NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.accessChanges shouldBe listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo"),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, emptySet()),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo"),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-app"),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+        )
+        clusterRepository.count() shouldBe 2
+    }
+
+    @Test
+    fun `전체 권한의 계정도 옛 entry 면 전체 권한으로 다시 만들어 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        fakeEksAccessGateway.namespaceStatuses += NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.accessChanges shouldBe listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo", AccessLevel.FULL),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, emptySet(), AccessLevel.FULL),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo", AccessLevel.FULL),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+        )
+        clusterRepository.count() shouldBe 1
+    }
+
+    @Test
+    fun `같은 EKS 의 다른 namespace 를 다시 붙이지 못해도 새 등록은 마친다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
+        fakeEksAccessGateway.deniedNamespaces = setOf("kukie-app")
+        fakeEksAccessGateway.namespaceStatuses += NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        clusterRepository.count() shouldBe 2
+    }
+
+    @Test
+    fun `옛 entry 를 다시 만들어도 인증이 안 되면 안내하고 다시 불러도 퍼지는 동안은 또 지우지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        repeat(2) {
+            mockMvc.post("/clusters/aws") {
+                authorization(admin.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = registerRequest(idOf(externalId)).toJson()
+            }.andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+            }
+            fakeEksAccessGateway.selfEntrySettled = false
+        }
+
+        // then — 첫 호출에서 한 번만 지운다
+        fakeEksAccessGateway.unregistrations.size shouldBe 1
+        fakeEksAccessGateway.namespaceChecks.size shouldBe 3
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `막 만든 entry 의 401 은 퍼지는 중으로 보고 지우지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNAUTHENTICATED
+        fakeEksAccessGateway.selfEntrySettled = false
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+        }
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+        fakeEksAccessGateway.registrations.size shouldBe 1
+    }
+
+    @Test
+    fun `옛 entry 를 지우지 못하면 다시 붙이지 않고 안내한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNAUTHENTICATED
+        fakeEksAccessGateway.unregisterFailure = EksAccessDeniedException()
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+        }
+        fakeEksAccessGateway.registrations.size shouldBe 1
+        fakeEksAccessGateway.namespaceChecks.size shouldBe 1
+    }
+
+    @Test
     fun `namespace 를 확인하지 못해도 EKS 클러스터를 등록한다`() {
         // given
         val admin = loggedInUser()

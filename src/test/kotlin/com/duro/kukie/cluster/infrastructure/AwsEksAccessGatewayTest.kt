@@ -13,6 +13,7 @@ import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.eks.EksClient
 import software.amazon.awssdk.services.eks.model.AccessDeniedException
+import software.amazon.awssdk.services.eks.model.AccessEntry
 import software.amazon.awssdk.services.eks.model.AccessScope
 import software.amazon.awssdk.services.eks.model.AccessScopeType
 import software.amazon.awssdk.services.eks.model.AssociateAccessPolicyRequest
@@ -20,6 +21,10 @@ import software.amazon.awssdk.services.eks.model.AssociateAccessPolicyResponse
 import software.amazon.awssdk.services.eks.model.AssociatedAccessPolicy
 import software.amazon.awssdk.services.eks.model.CreateAccessEntryRequest
 import software.amazon.awssdk.services.eks.model.CreateAccessEntryResponse
+import software.amazon.awssdk.services.eks.model.DeleteAccessEntryRequest
+import software.amazon.awssdk.services.eks.model.DeleteAccessEntryResponse
+import software.amazon.awssdk.services.eks.model.DescribeAccessEntryRequest
+import software.amazon.awssdk.services.eks.model.DescribeAccessEntryResponse
 import software.amazon.awssdk.services.eks.model.DisassociateAccessPolicyRequest
 import software.amazon.awssdk.services.eks.model.DisassociateAccessPolicyResponse
 import software.amazon.awssdk.services.eks.model.EksException
@@ -193,6 +198,34 @@ class AwsEksAccessGatewayTest {
     }
 
     @Test
+    fun `끝까지 401 만 받으면 인증이 안 된다고 본다`() {
+        // given
+        val responses = ArrayDeque(listOf(401, 401, 401))
+
+        // when & then
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { responses.removeFirst() } shouldBe NamespaceStatus.UNAUTHENTICATED
+        responses.shouldBeEmpty()
+    }
+
+    @Test
+    fun `403 을 한 번이라도 받았으면 인증은 된 것이라 권한이 퍼지는 중으로 본다`() {
+        // given
+        val responses = ArrayDeque(listOf(401, 403, 401))
+
+        // when & then
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { responses.removeFirst() } shouldBe NamespaceStatus.GRANT_PENDING
+    }
+
+    @Test
+    fun `401 뒤에 오류가 나면 인증 실패로 단정하지 않는다`() {
+        // given
+        val responses = ArrayDeque(listOf(401, 503))
+
+        // when & then
+        gateway.probeNamespace(attempts = 3, delay = Duration.ZERO) { responses.removeFirst() } shouldBe NamespaceStatus.GRANT_PENDING
+    }
+
+    @Test
     fun `401·403 뒤에 오류가 나도 권한이 아직 퍼지지 않았다고 본다`() {
         // given
         val responses = ArrayDeque(listOf(403, 503))
@@ -314,6 +347,122 @@ class AwsEksAccessGatewayTest {
         request.policyArn() shouldBe EDIT_POLICY
         request.accessScope().type() shouldBe AccessScopeType.NAMESPACE
         request.accessScope().namespaces() shouldBe listOf("kukie-app", "kukie-demo")
+    }
+
+    @Test
+    fun `등록에 성공하면 만든 entry 를 지우지 않는다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true)
+
+        // when
+        gateway.registerSelfOn(eks, "kukie-gpu", PRINCIPAL, "kukie-demo", AccessLevel.LIMITED)
+
+        // then
+        eks.deletions shouldBe 0
+    }
+
+    @Test
+    fun `제한된 권한의 등록이 거부되면 이번에 만든 entry 를 지우고 거부를 던진다`() {
+        // given — AllowedNamespaces 밖의 namespace 면 붙이기가 거부된다
+        val eks = FakeEksClient(denyGroups = true, deniedAssociations = Int.MAX_VALUE)
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.registerSelfOn(eks, "kukie-gpu", PRINCIPAL, "default", AccessLevel.LIMITED)
+        }
+        eks.deletions shouldBe 1
+    }
+
+    @Test
+    fun `전체 권한의 등록이 거부되어도 이번에 만든 entry 를 지우고 거부를 던진다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true, deniedAssociations = Int.MAX_VALUE)
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.registerSelfOn(eks, "kukie-gpu", PRINCIPAL, "kukie-demo", AccessLevel.FULL)
+        }
+        eks.deletions shouldBe 1
+    }
+
+    @Test
+    fun `등록이 거부되어도 이미 있던 entry 는 다른 namespace 가 쓰므로 지우지 않는다`() {
+        // given
+        val eks = FakeEksClient(
+            denyGroups = true,
+            exists = true,
+            associated = listOf(associated(EDIT_POLICY, namespaceScope("kukie-app"))),
+            deniedAssociations = Int.MAX_VALUE,
+        )
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.registerSelfOn(eks, "kukie-gpu", PRINCIPAL, "default", AccessLevel.LIMITED)
+        }
+        eks.deletions shouldBe 0
+    }
+
+    @Test
+    fun `이번에 만든 entry 라도 그사이 다른 등록이 정책을 붙였으면 지우지 않는다`() {
+        // given
+        val eks = FakeEksClient(
+            denyGroups = true,
+            deniedAssociations = Int.MAX_VALUE,
+            associatedLater = listOf(associated(EDIT_POLICY, namespaceScope("kukie-app"))),
+        )
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.registerSelfOn(eks, "kukie-gpu", PRINCIPAL, "default", AccessLevel.LIMITED)
+        }
+        eks.deletions shouldBe 0
+    }
+
+    @Test
+    fun `만든 entry 를 지우지 못해도 처음 거부를 던진다`() {
+        // given
+        val eks = FakeEksClient(
+            denyGroups = true,
+            deniedAssociations = Int.MAX_VALUE,
+            deleteFailure = eksException(500, "ServerException", "boom"),
+        )
+
+        // when & then — 지우기 오류로 바뀌면 호출부가 EksAccessDeniedException 으로 옮기지 못한다
+        shouldThrow<AccessDeniedException> {
+            gateway.registerSelfOn(eks, "kukie-gpu", PRINCIPAL, "default", AccessLevel.LIMITED)
+        }
+        eks.deletions shouldBe 1
+    }
+
+    @Test
+    fun `entry 를 만든 지 오래됐으면 권한이 퍼지기를 다 기다린 것으로 본다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true, entryCreatedAt = Instant.now().minus(Duration.ofHours(8)))
+
+        // when & then
+        gateway.selfEntrySettledOn(eks, "kukie-gpu", PRINCIPAL) shouldBe true
+    }
+
+    @Test
+    fun `entry 를 막 만들었거나 만든 시각을 모르면 아직 기다리는 중으로 본다`() {
+        // when & then
+        val recent = FakeEksClient(denyGroups = true, entryCreatedAt = Instant.now().minusSeconds(30))
+        gateway.selfEntrySettledOn(recent, "kukie-gpu", PRINCIPAL) shouldBe false
+        gateway.selfEntrySettledOn(FakeEksClient(denyGroups = true), "kukie-gpu", PRINCIPAL) shouldBe false
+    }
+
+    @Test
+    fun `없는 entry 지우기가 템플릿 조건에 거부되면 그대로 던진다`() {
+        // given
+        val eks = FakeEksClient(
+            denyGroups = true,
+            deleteFailure = AccessDeniedException.builder().statusCode(403).message("not authorized").build(),
+        )
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.unregisterSelfOn(eks, "kukie-gpu", PRINCIPAL, emptySet(), AccessLevel.FULL)
+        }
     }
 
     @Test
@@ -538,7 +687,8 @@ class AwsEksAccessGatewayTest {
      * 고객 역할의 IAM 판단만 흉내 낸다: 그룹을 단 요청은 denyGroups 면 거부, 모든 요청은 denyAll 이면 거부.
      * 그룹 없는 entry 만들기는 처음 deniedEntries 번, 정책 붙이기는 처음 deniedAssociations 번 거부하고,
      * 떼기는 처음 deniedDisassociations 번 거부하고, disassociateFailure 를 주면 그 오류로 실패하고,
-     * detachedAlready 면 붙어 있지 않다고 답한다.
+     * detachedAlready 면 붙어 있지 않다고 답한다. 정책 목록은 associatedLater 를 주면 두 번째 조회부터 그 값이고,
+     * entry 지우기는 deleteFailure 를 주면 그 오류로 실패하며, entry 의 만든 시각은 entryCreatedAt 이다.
      */
     private class FakeEksClient(
         private val denyGroups: Boolean,
@@ -550,13 +700,29 @@ class AwsEksAccessGatewayTest {
         private val detachedAlready: Boolean = false,
         private var deniedDisassociations: Int = 0,
         private val disassociateFailure: EksException? = null,
+        private val associatedLater: List<AssociatedAccessPolicy>? = null,
+        private val deleteFailure: RuntimeException? = null,
+        private val entryCreatedAt: Instant? = null,
     ) : EksClient {
         val requests = mutableListOf<CreateAccessEntryRequest>()
         val associations = mutableListOf<AssociateAccessPolicyRequest>()
         val policyCalls = mutableListOf<Pair<String, String>>()
+        var deletions = 0
+        private var listCalls = 0
 
-        override fun listAssociatedAccessPolicies(request: ListAssociatedAccessPoliciesRequest): ListAssociatedAccessPoliciesResponse =
-            ListAssociatedAccessPoliciesResponse.builder().associatedAccessPolicies(associated).build()
+        override fun listAssociatedAccessPolicies(request: ListAssociatedAccessPoliciesRequest): ListAssociatedAccessPoliciesResponse {
+            val policies = if (listCalls++ == 0) associated else associatedLater ?: associated
+            return ListAssociatedAccessPoliciesResponse.builder().associatedAccessPolicies(policies).build()
+        }
+
+        override fun deleteAccessEntry(request: DeleteAccessEntryRequest): DeleteAccessEntryResponse {
+            deletions++
+            deleteFailure?.let { throw it }
+            return DeleteAccessEntryResponse.builder().build()
+        }
+
+        override fun describeAccessEntry(request: DescribeAccessEntryRequest): DescribeAccessEntryResponse =
+            DescribeAccessEntryResponse.builder().accessEntry(AccessEntry.builder().createdAt(entryCreatedAt).build()).build()
 
         override fun associateAccessPolicy(request: AssociateAccessPolicyRequest): AssociateAccessPolicyResponse {
             policyCalls += "associate" to request.policyArn()

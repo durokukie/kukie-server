@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.eks.EksClient
 import software.amazon.awssdk.services.eks.model.AccessDeniedException
 import software.amazon.awssdk.services.eks.model.AccessScope
 import software.amazon.awssdk.services.eks.model.AccessScopeType
+import software.amazon.awssdk.services.eks.model.AssociatedAccessPolicy
 import software.amazon.awssdk.services.eks.model.AuthenticationMode
 import software.amazon.awssdk.services.eks.model.ResourceInUseException
 import software.amazon.awssdk.services.eks.model.ResourceNotFoundException
@@ -115,23 +116,56 @@ class AwsEksAccessGateway(
     }
 
     internal fun registerSelfOn(eks: EksClient, clusterName: String, principalArn: String, namespace: String, accessLevel: AccessLevel) {
-        createSelfEntry(eks, clusterName, principalArn)
-        val current = eks.listAssociatedAccessPolicies { it.clusterName(clusterName).principalArn(principalArn) }
-            .associatedAccessPolicies()
-        when (accessLevel) {
-            AccessLevel.FULL -> {
-                val attached = current.any {
-                    it.policyArn() == CLUSTER_ADMIN_POLICY_ARN && it.accessScope()?.type() == AccessScopeType.CLUSTER
+        val created = createSelfEntry(eks, clusterName, principalArn)
+        try {
+            val current = associatedPolicies(eks, clusterName, principalArn)
+            when (accessLevel) {
+                AccessLevel.FULL -> {
+                    val attached = current.any {
+                        it.policyArn() == CLUSTER_ADMIN_POLICY_ARN && it.accessScope()?.type() == AccessScopeType.CLUSTER
+                    }
+                    if (!attached) associate(eks, clusterName, principalArn, AccessLevel.FULL, emptySet())
                 }
-                if (!attached) associate(eks, clusterName, principalArn, AccessLevel.FULL, emptySet())
+                AccessLevel.LIMITED -> {
+                    val scope = current.firstOrNull { it.policyArn() == EDIT_POLICY_ARN }?.accessScope()
+                    if (scope?.type() == AccessScopeType.CLUSTER || namespace in scope?.namespaces().orEmpty()) return
+                    // 정책을 다시 붙이면 범위가 바뀌므로 같은 EKS 에 먼저 등록한 namespace 를 함께 넣는다
+                    associate(eks, clusterName, principalArn, AccessLevel.LIMITED, scope?.namespaces().orEmpty() + namespace)
+                }
             }
-            AccessLevel.LIMITED -> {
-                val scope = current.firstOrNull { it.policyArn() == EDIT_POLICY_ARN }?.accessScope()
-                if (scope?.type() == AccessScopeType.CLUSTER || namespace in scope?.namespaces().orEmpty()) return
-                // 정책을 다시 붙이면 범위가 바뀌므로 같은 EKS 에 먼저 등록한 namespace 를 함께 넣는다
-                associate(eks, clusterName, principalArn, AccessLevel.LIMITED, scope?.namespaces().orEmpty() + namespace)
+        } catch (exception: AccessDeniedException) {
+            if (created) discardUnusedEntry(eks, clusterName, principalArn)
+            throw exception
+        }
+    }
+
+    /**
+     * 등록에 실패한 entry 는 DB 에 남지 않아 연결 해제가 지우지 못하고, 스택을 다시 만들면 새 역할을 막는 옛 entry 가 된다.
+     * 그사이 같은 EKS 의 다른 등록이 정책을 붙였으면 그 등록의 entry 이므로 지우지 않는다.
+     */
+    private fun discardUnusedEntry(eks: EksClient, clusterName: String, principalArn: String) {
+        runCatching {
+            if (associatedPolicies(eks, clusterName, principalArn).isEmpty()) deleteEntry(eks, clusterName, principalArn)
+        }.onFailure { log.warn("등록에 실패한 access entry 를 지우지 못했습니다: cluster={} reason={}", clusterName, it.javaClass.simpleName) }
+    }
+
+    private fun associatedPolicies(eks: EksClient, clusterName: String, principalArn: String): List<AssociatedAccessPolicy> =
+        eks.listAssociatedAccessPolicies { it.clusterName(clusterName).principalArn(principalArn) }
+            .associatedAccessPolicies()
+
+    override fun selfEntrySettled(target: AwsTarget, region: String, clusterName: String): Boolean {
+        val principalArn = roleArn(target)
+        return withSession(target) { credentials ->
+            eks(credentials, region).use { eks ->
+                translate { selfEntrySettledOn(eks, clusterName, principalArn) }
             }
         }
+    }
+
+    internal fun selfEntrySettledOn(eks: EksClient, clusterName: String, principalArn: String): Boolean {
+        val createdAt = eks.describeAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }.accessEntry()?.createdAt()
+            ?: return false
+        return Duration.between(createdAt, Instant.now(clock)) >= ENTRY_SETTLE_TIME
     }
 
     override fun changeAccessLevel(
@@ -225,9 +259,9 @@ class AwsEksAccessGateway(
      * 자기 access entry 를 만든다. 템플릿 v4 에서 고객이 GPU 읽기(GpuRead)를 켰으면 그룹 kukie-gpu-reader 를 달고, 켜지 않았거나
      * v1~v3 역할이면 IAM 이 거부하므로 그룹 없이 다시 만든다. 그룹의 실제 권한(노드·파드 읽기, 고른 namespace 의 파드 프록시)은
      * 고객 클러스터 관리자가 적용한 RBAC 가 정한다(kukie-infra gpu-read-rbac). 그룹은 만들 때만 달 수 있어(템플릿이
-     * UpdateAccessEntry 를 주지 않는다) 이미 있는 entry 는 그대로 둔다.
+     * UpdateAccessEntry 를 주지 않는다) 이미 있는 entry 는 그대로 둔다. 이번 호출이 만들었으면 true.
      */
-    internal fun createSelfEntry(eks: EksClient, clusterName: String, principalArn: String) {
+    internal fun createSelfEntry(eks: EksClient, clusterName: String, principalArn: String): Boolean =
         try {
             try {
                 eks.createAccessEntry {
@@ -236,10 +270,11 @@ class AwsEksAccessGateway(
             } catch (_: AccessDeniedException) {
                 eks.createAccessEntry { it.clusterName(clusterName).principalArn(principalArn).type(STANDARD_ENTRY) }
             }
+            true
         } catch (_: ResourceInUseException) {
             // 이미 만든 access entry 다
+            false
         }
-    }
 
     override fun unregisterSelf(
         target: AwsTarget,
@@ -265,17 +300,21 @@ class AwsEksAccessGateway(
         accessLevel: AccessLevel,
     ) {
         if (keepNamespaces.isEmpty()) {
-            try {
-                eks.deleteAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }
-            } catch (_: ResourceNotFoundException) {
-                // 이미 지운 entry 다
-            }
+            deleteEntry(eks, clusterName, principalArn)
             return
         }
         if (accessLevel == AccessLevel.FULL) return
         associate(eks, clusterName, principalArn, AccessLevel.LIMITED, keepNamespaces)
         // limited 로 바꾸다 떼지 못한 관리자 정책이 남아 있을 수 있다
         detach(eks, clusterName, principalArn, AccessLevel.FULL)
+    }
+
+    private fun deleteEntry(eks: EksClient, clusterName: String, principalArn: String) {
+        try {
+            eks.deleteAccessEntry { it.clusterName(clusterName).principalArn(principalArn) }
+        } catch (_: ResourceNotFoundException) {
+            // 이미 지운 entry 다
+        }
     }
 
     override fun namespaceStatus(
@@ -448,13 +487,14 @@ class AwsEksAccessGateway(
             if (exception.awsErrorDetails()?.errorCode() == EC2_UNAUTHORIZED) null else throw exception
         }
 
-    /** 401·403 은 attempts 까지 다시 묻는다. 한 번이라도 401·403 을 받았으면 뒤의 오류도 반영 중으로 본다. */
+    /** 401·403 은 attempts 까지 다시 묻는다. 한 번이라도 401·403 을 받았으면 뒤의 오류도 반영 중으로 본다. 끝까지 401 뿐이면 인증이 안 된 것이다. */
     internal fun probeNamespace(
         attempts: Int,
         delay: Duration = GRANT_DELAY,
         status: () -> Int,
     ): NamespaceStatus {
         var pending = false
+        var authenticated = false
         try {
             repeat(attempts) { attempt ->
                 val code = try {
@@ -469,6 +509,7 @@ class AwsEksAccessGateway(
                     NOT_FOUND -> return NamespaceStatus.MISSING
                     UNAUTHORIZED, FORBIDDEN -> {
                         pending = true
+                        if (code == FORBIDDEN) authenticated = true
                         if (attempt < attempts - 1) Thread.sleep(delay)
                     }
                     else -> return unknown("status $code", pending)
@@ -478,7 +519,7 @@ class AwsEksAccessGateway(
             Thread.currentThread().interrupt()
             return unknown("interrupted", pending)
         }
-        return NamespaceStatus.GRANT_PENDING
+        return if (authenticated) NamespaceStatus.GRANT_PENDING else NamespaceStatus.UNAUTHENTICATED
     }
 
     /** 확인이 조용히 꺼지면(UNKNOWN 은 등록을 막지 않는다) 왜인지 알 수 없으므로 이유를 남긴다. */
@@ -547,6 +588,9 @@ class AwsEksAccessGateway(
         // 막 붙인 access policy 가 퍼지기를 잠깐만 기다린다. 더 걸리면 앱이 등록을 다시 부른다
         private const val GRANT_ATTEMPTS = 3
         private val GRANT_DELAY: Duration = Duration.ofSeconds(2)
+
+        // 퍼지는 중인 새 entry 를 옛 entry 로 오해해 지우면 전파가 처음부터 다시 시작되므로 넉넉히 둔다
+        private val ENTRY_SETTLE_TIME: Duration = Duration.ofMinutes(5)
 
         private const val ASSOCIATE_ATTEMPTS = 4
         private val ASSOCIATE_DELAY: Duration = Duration.ofSeconds(3)
