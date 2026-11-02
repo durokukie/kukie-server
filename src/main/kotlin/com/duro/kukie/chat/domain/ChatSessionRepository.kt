@@ -32,7 +32,10 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
     @Query("select s from ChatSession s join ChatRun r on r.sessionId = s.id where r.id = :runId")
     fun findByRunId(@Param("runId") runId: UUID): ChatSession?
 
-    fun existsByClusterId(clusterId: UUID): Boolean
+    fun countByClusterId(clusterId: UUID): Long
+
+    @Query(value = "select id from tbl_chat_session where cluster_id = :clusterId order by id for update", nativeQuery = true)
+    fun lockIdsByClusterId(@Param("clusterId") clusterId: UUID): List<UUID>
 
     @Query(
         value = """
@@ -56,6 +59,10 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
     @Modifying
     @Query("delete from ChatSession s where s.clusterId in (select c.id from Cluster c where c.teamId = :teamId)")
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)
+
+    @Modifying
+    @Query("delete from ChatSession s where s.clusterId = :clusterId")
+    fun deleteAllByClusterId(@Param("clusterId") clusterId: UUID)
 }
 
 fun ChatSessionRepository.findByIdOrThrow(id: UUID): ChatSession =

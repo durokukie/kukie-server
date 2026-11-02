@@ -72,6 +72,15 @@ interface ActionPlanRepository : JpaRepository<ActionPlan, UUID> {
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)
 
     @Modifying
+    @Query(
+        """
+        delete from ActionPlan p where p.runId in (
+            select r.id from ChatRun r where r.sessionId in (select s.id from ChatSession s where s.clusterId = :clusterId))
+        """,
+    )
+    fun deleteAllByClusterId(@Param("clusterId") clusterId: UUID)
+
+    @Modifying
     @Query("delete from ActionPlan p where p.runId in (select r.id from ChatRun r where r.sessionId = :sessionId)")
     fun deleteAllBySessionId(@Param("sessionId") sessionId: UUID)
 }

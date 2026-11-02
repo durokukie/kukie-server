@@ -12,6 +12,7 @@ enum class ClusterErrorCode(
     NOTHING_TO_UPDATE(HttpStatus.BAD_REQUEST, "바꿀 내용이 없습니다."),
     CLUSTER_NAME_TAKEN(HttpStatus.CONFLICT, "같은 이름의 클러스터가 이미 있습니다."),
     CLUSTER_IN_USE(HttpStatus.CONFLICT, "이 클러스터를 쓰는 대화가 있어 삭제할 수 없습니다."),
+    CLUSTER_HAS_ACTIVE_RUN(HttpStatus.CONFLICT, "이 클러스터의 대화에 아직 끝나지 않은 요청이 있어 삭제할 수 없습니다. 요청이 끝난 뒤 다시 시도해 주세요."),
     CLUSTER_CHANGED(HttpStatus.CONFLICT, "이 대화가 쓰던 클러스터의 접속 대상이 바뀌었습니다. 새 대화를 시작해 주세요."),
     CLUSTER_PROVIDER_MISMATCH(HttpStatus.BAD_REQUEST, "EKS 클러스터는 kubeconfig 나 namespace 를 바꿀 수 없습니다. 다시 등록해 주세요."),
     INVALID_NAMESPACE(

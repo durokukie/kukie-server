@@ -1,6 +1,7 @@
 package com.duro.kukie.cluster.presentation
 
 import com.duro.kukie.cluster.application.DeleteClusterService
+import com.duro.kukie.cluster.application.GetClusterConversationCountService
 import com.duro.kukie.cluster.application.GetClusterService
 import com.duro.kukie.cluster.application.GetClusterSetupService
 import com.duro.kukie.cluster.application.GetClustersService
@@ -8,6 +9,7 @@ import com.duro.kukie.cluster.application.RegisterClusterService
 import com.duro.kukie.cluster.application.UpdateClusterService
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterRequest
+import com.duro.kukie.cluster.presentation.dto.response.ClusterConversationCountResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterSetupResponse
 import com.duro.kukie.global.security.AuthUser
@@ -36,6 +38,7 @@ class ClusterController(
     private val getClusterSetupService: GetClusterSetupService,
     private val updateClusterService: UpdateClusterService,
     private val deleteClusterService: DeleteClusterService,
+    private val getClusterConversationCountService: GetClusterConversationCountService,
 ) : ClusterControllerDocs {
 
     @PostMapping
@@ -70,6 +73,14 @@ class ClusterController(
         return ResponseEntity.ok(getClusterSetupService(clusterId, userId))
     }
 
+    @GetMapping("/{clusterId}/conversations/count")
+    override fun getClusterConversationCount(
+        @PathVariable clusterId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<ClusterConversationCountResponse> {
+        return ResponseEntity.ok(getClusterConversationCountService(clusterId, userId))
+    }
+
     @PatchMapping("/{clusterId}")
     override fun updateCluster(
         @PathVariable clusterId: UUID,
@@ -83,8 +94,9 @@ class ClusterController(
     override fun deleteCluster(
         @PathVariable clusterId: UUID,
         @AuthUser userId: UUID,
+        @RequestParam(defaultValue = "false") deleteConversations: Boolean,
     ): ResponseEntity<Unit> {
-        deleteClusterService(clusterId, userId)
+        deleteClusterService(clusterId, userId, deleteConversations)
 
         return ResponseEntity.noContent().build()
     }

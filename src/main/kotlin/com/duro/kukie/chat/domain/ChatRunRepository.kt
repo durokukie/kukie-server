@@ -20,6 +20,8 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
 
     fun existsBySessionIdAndStatusIn(sessionId: UUID, statuses: Collection<RunStatus>): Boolean
 
+    fun existsBySessionIdInAndStatusIn(sessionIds: Collection<UUID>, statuses: Collection<RunStatus>): Boolean
+
     @Query("select r.sessionId from ChatRun r where r.id = :id")
     fun findSessionIdById(@Param("id") id: UUID): UUID?
 
@@ -87,6 +89,10 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
         """,
     )
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)
+
+    @Modifying
+    @Query("delete from ChatRun r where r.sessionId in (select s.id from ChatSession s where s.clusterId = :clusterId)")
+    fun deleteAllByClusterId(@Param("clusterId") clusterId: UUID)
 
     @Modifying
     @Query("delete from ChatRun r where r.sessionId = :sessionId")

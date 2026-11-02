@@ -1,7 +1,12 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.actionplan.ActionPlanFixture
+import com.duro.kukie.actionplan.domain.ActionPlanRepository
 import com.duro.kukie.chat.ChatFixture
+import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSessionRepository
+import com.duro.kukie.chat.domain.ChatVisibility
+import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.cluster.ClusterFixture.kubeconfig
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.domain.ClusterProvider
@@ -57,6 +62,12 @@ class ClusterIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var chatSessionRepository: ChatSessionRepository
+
+    @Autowired
+    private lateinit var chatRunRepository: ChatRunRepository
+
+    @Autowired
+    private lateinit var actionPlanRepository: ActionPlanRepository
 
     @Autowired
     private lateinit var dataSource: DataSource
@@ -366,6 +377,195 @@ class ClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_IN_USE.code) }
         }
         clusterRepository.existsById(cluster.id) shouldBe true
+    }
+
+    @Test
+    fun `관리자가 대화 삭제를 함께 요청하면 다른 구성원의 Private 대화까지 지우고 클러스터를 삭제한다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+        val shared = chatSessionRepository.save(ChatFixture.session(admin.user.id, cluster.id, visibility = ChatVisibility.SHARED))
+        val othersPrivate = chatSessionRepository.save(ChatFixture.session(member.user.id, cluster.id))
+        val run = chatRunRepository.save(ChatFixture.run(shared.id, status = RunStatus.COMPLETED))
+        val plan = actionPlanRepository.save(ActionPlanFixture.plan(run.id))
+
+        // when
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(cluster.id) shouldBe false
+        chatSessionRepository.existsById(shared.id) shouldBe false
+        chatSessionRepository.existsById(othersPrivate.id) shouldBe false
+        chatRunRepository.existsById(run.id) shouldBe false
+        actionPlanRepository.existsById(plan.id) shouldBe false
+    }
+
+    @Test
+    fun `대화 삭제를 요청해도 다른 클러스터의 대화는 남는다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val target = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId))
+        val other = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "다른 클러스터"))
+        chatSessionRepository.save(ChatFixture.session(me.user.id, target.id))
+        val kept = chatSessionRepository.save(ChatFixture.session(me.user.id, other.id))
+        val keptRun = chatRunRepository.save(ChatFixture.run(kept.id, status = RunStatus.COMPLETED))
+        val keptPlan = actionPlanRepository.save(ActionPlanFixture.plan(keptRun.id))
+
+        // when
+        mockMvc.delete("/clusters/${target.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(other.id) shouldBe true
+        chatSessionRepository.existsById(kept.id) shouldBe true
+        chatRunRepository.existsById(keptRun.id) shouldBe true
+        actionPlanRepository.existsById(keptPlan.id) shouldBe true
+    }
+
+    @Test
+    fun `대화 삭제를 false 로 보내면 값을 안 보낸 요청처럼 거부한다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = savedTeam(me.user.id to TeamRole.ADMIN)))
+        val session = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "false")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_IN_USE.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(session.id) shouldBe true
+    }
+
+    @Test
+    fun `대화 삭제 값을 알아볼 수 없으면 아무것도 지우지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = savedTeam(me.user.id to TeamRole.ADMIN)))
+        val session = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "maybe")
+        }.andExpect { status { isBadRequest() } }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(session.id) shouldBe true
+    }
+
+    @Test
+    fun `관리자가 아니면 대화 삭제를 함께 요청해도 아무것도 지우지 못한다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+        val mine = chatSessionRepository.save(ChatFixture.session(member.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(member.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(mine.id) shouldBe true
+    }
+
+    @Test
+    fun `팀 밖의 사용자가 대화 삭제를 함께 요청하면 클러스터가 없는 것처럼 답한다`() {
+        // given
+        val admin = loggedInUser()
+        val stranger = loggedInUser(UserFixture.user(email = "stranger@example.com"))
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = savedTeam(admin.user.id to TeamRole.ADMIN)))
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(stranger.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.NOT_FOUND.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(session.id) shouldBe true
+    }
+
+    @Test
+    fun `끝나지 않은 요청이 있는 대화가 하나라도 있으면 아무것도 지우지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = savedTeam(me.user.id to TeamRole.ADMIN)))
+        val finished = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id))
+        val finishedRun = chatRunRepository.save(ChatFixture.run(finished.id, status = RunStatus.COMPLETED))
+        val running = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id, visibility = ChatVisibility.SHARED))
+        val activeRun = chatRunRepository.save(ChatFixture.run(running.id, status = RunStatus.AWAITING_APPROVAL))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_HAS_ACTIVE_RUN.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(finished.id) shouldBe true
+        chatRunRepository.existsById(finishedRun.id) shouldBe true
+        chatRunRepository.existsById(activeRun.id) shouldBe true
+    }
+
+    @Test
+    fun `관리자는 다른 구성원의 Private 대화까지 포함한 대화 수를 본다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+        val other = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId, name = "다른 클러스터"))
+        chatSessionRepository.save(ChatFixture.session(admin.user.id, cluster.id, visibility = ChatVisibility.SHARED))
+        chatSessionRepository.save(ChatFixture.session(member.user.id, cluster.id))
+        chatSessionRepository.save(ChatFixture.session(admin.user.id, other.id))
+
+        // when & then
+        mockMvc.get("/clusters/${cluster.id}/conversations/count") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.count") { value(2) }
+        }
+    }
+
+    @Test
+    fun `관리자가 아니면 대화 수를 볼 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+
+        // when & then
+        mockMvc.get("/clusters/${cluster.id}/conversations/count") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
     }
 
     private fun activeConnections(): Int =

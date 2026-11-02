@@ -37,6 +37,10 @@ interface ClusterRepository : JpaRepository<Cluster, UUID> {
 
     fun deleteAllByTeamId(teamId: UUID)
 
+    /** for update 라야 대화를 새로 만드는 쪽의 외래 키 잠금과 부딪혀 지우는 동안 새 대화가 끼지 못한다. */
+    @Query(value = "select id from tbl_cluster where id = :id for update", nativeQuery = true)
+    fun lockIdById(@Param("id") id: UUID): UUID?
+
     /** 엔티티를 통째로 save 하면 그사이 에이전트가 남긴 상태 확인을 덮어쓰므로 레벨 칸만 바꾼다. */
     @Transactional
     @Modifying
