@@ -104,11 +104,25 @@ class HandleStackNoticeService(
         // 연결 해제가 access entry 를 지운 뒤 연결을 비우기 전에 이 알림이 끼어들면 연결이 비워질 수 있다. 창이 짧아 받아들인다
         for ((credential, clusters) in eksClustersOf(connection, accountId)) {
             applyAccessLevel(credential, clusters, accessLevel) {
-                eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, emptySet(), accessLevel)
+                removeOldEntry(credential, accessLevel)
                 for (namespace in clusters.map { it.defaultNamespace }.distinct()) {
                     eksAccessGateway.registerSelf(credential.target, credential.region, credential.clusterName, namespace, accessLevel)
                 }
             }
+        }
+    }
+
+    /** 연결 해제가 이미 지웠으면 템플릿 조건 때문에 거부된다(entry 가 없으면 eks:principalArn 값이 없다). 그래도 다시 붙여야 하므로 넘어간다. */
+    private fun removeOldEntry(credential: EksCredential, accessLevel: AccessLevel) {
+        try {
+            eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, emptySet(), accessLevel)
+        } catch (exception: RuntimeException) {
+            log.warn(
+                "옛 access entry 를 지우지 못했지만 다시 붙입니다: region={} cluster={} reason={}",
+                credential.region,
+                credential.clusterName,
+                exception.javaClass.simpleName,
+            )
         }
     }
 

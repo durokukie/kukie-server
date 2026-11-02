@@ -13,6 +13,7 @@ import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.ClusterErrorCode
+import com.duro.kukie.cluster.exception.EksAccessDeniedException
 import com.duro.kukie.support.FakeEksAccessGateway
 import com.duro.kukie.support.FakeEksAccessGateway.Companion.DEFAULT_CLUSTER_NAME
 import com.duro.kukie.support.FakeEksAccessGateway.Companion.DEFAULT_REGION
@@ -183,6 +184,74 @@ class StackNoticeIntegrationTest : IntegrationTest() {
             FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo", AccessLevel.FULL),
         )
         clusterRepository.findByIdOrNull(clusterId)!!.accessLevel shouldBe AccessLevel.FULL
+    }
+
+    @Test
+    fun `전체 권한으로 다시 만들 때 없는 entry 지우기가 거부되어도 다시 붙이고 레벨을 적는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        val clusterId = saveEks(teamId, admin.user.id, "데모", eksCredential(connection.externalId), "kukie-demo")
+        fakeEksAccessGateway.unregisterFailure = EksAccessDeniedException()
+
+        // when
+        handleStackNoticeService(notice(connection.externalId, accessLevel = "full"))
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = connection.externalId)
+        fakeEksAccessGateway.registrations shouldBe listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo", AccessLevel.FULL),
+        )
+        clusterRepository.findByIdOrNull(clusterId)!!.run {
+            accessLevel shouldBe AccessLevel.FULL
+            accessLevelFailedAt.shouldBeNull()
+        }
+    }
+
+    @Test
+    fun `제한된 권한으로 다시 만들 때 없는 entry 지우기가 거부되어도 등록한 namespace 마다 다시 붙인다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        val externalId = connection.externalId
+        val clusterId = saveEks(teamId, admin.user.id, "데모", eksCredential(externalId), "kukie-demo")
+        saveEks(teamId, admin.user.id, "앱", eksCredential(externalId), "kukie-app")
+        fakeEksAccessGateway.unregisterFailure = EksAccessDeniedException()
+
+        // when
+        handleStackNoticeService(notice(externalId, accessLevel = "limited"))
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.registrations shouldContainExactlyInAnyOrder listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo", AccessLevel.LIMITED),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-app", AccessLevel.LIMITED),
+        )
+        clusterRepository.findByIdOrNull(clusterId)!!.run {
+            accessLevel shouldBe AccessLevel.LIMITED
+            accessLevelFailedAt.shouldBeNull()
+        }
+    }
+
+    @Test
+    fun `다시 붙이기까지 거부되면 알림은 성공으로 두고 실패 시각을 남긴다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+        val clusterId = saveEks(teamId, admin.user.id, "데모", eksCredential(connection.externalId), "kukie-demo")
+        fakeEksAccessGateway.unregisterFailure = EksAccessDeniedException()
+        fakeEksAccessGateway.deniedClusters = setOf(DEFAULT_CLUSTER_NAME)
+
+        // when
+        val done = handleStackNoticeService(notice(connection.externalId, accessLevel = "full"))
+
+        // then
+        done shouldBe true
+        fakeStackNoticeResponder.responses.single().success shouldBe true
+        clusterRepository.findByIdOrNull(clusterId)!!.accessLevelFailedAt.shouldNotBeNull()
     }
 
     @Test

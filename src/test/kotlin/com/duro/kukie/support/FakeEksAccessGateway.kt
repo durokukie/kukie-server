@@ -29,6 +29,15 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     /** 이 이름의 EKS 에 정책을 붙이는 호출(registerSelf·changeAccessLevel)만 거부된다. */
     var deniedClusters: Set<String> = emptySet()
 
+    /** 이 namespace 를 붙이는 registerSelf 만 거부된다. */
+    var deniedNamespaces: Set<String> = emptySet()
+
+    /** 설정하면 unregisterSelf 가 이 예외로 실패한다. */
+    var unregisterFailure: RuntimeException? = null
+
+    /** selfEntrySettled 가 돌려줄 값. */
+    var selfEntrySettled: Boolean = true
+
     val targets = mutableListOf<AwsTarget>()
 
     /** roleExists 가 돌려줄 값. */
@@ -45,6 +54,9 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     /** namespaceStatus 가 돌려줄 값. */
     var namespaceStatus: NamespaceStatus = NamespaceStatus.EXISTS
+
+    /** 있으면 namespaceStatus 보다 먼저 하나씩 돌려준다. */
+    val namespaceStatuses = ArrayDeque<NamespaceStatus>()
 
     val namespaceChecks = mutableListOf<NamespaceCheck>()
 
@@ -73,9 +85,14 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String, accessLevel: AccessLevel) {
         record(target)
-        if (clusterName in deniedClusters) throw EksAccessDeniedException()
+        if (clusterName in deniedClusters || namespace in deniedNamespaces) throw EksAccessDeniedException()
         registrations += Registration(target, region, clusterName, namespace, accessLevel)
         accessChanges += Registration(target, region, clusterName, namespace, accessLevel)
+    }
+
+    override fun selfEntrySettled(target: AwsTarget, region: String, clusterName: String): Boolean {
+        record(target)
+        return selfEntrySettled
     }
 
     override fun unregisterSelf(
@@ -86,6 +103,7 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         accessLevel: AccessLevel,
     ) {
         record(target)
+        unregisterFailure?.let { throw it }
         unregistrations += Unregistration(target, region, clusterName, keepNamespaces, accessLevel)
         accessChanges += Unregistration(target, region, clusterName, keepNamespaces, accessLevel)
     }
@@ -114,7 +132,7 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         record(target)
         namespaceChecks += NamespaceCheck(namespace, waitForGrant)
         accessChanges += NamespaceCheck(namespace, waitForGrant)
-        return namespaceStatus
+        return namespaceStatuses.removeFirstOrNull() ?: namespaceStatus
     }
 
     override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
@@ -140,6 +158,9 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         setupRequests.clear()
         failure = null
         deniedClusters = emptySet()
+        deniedNamespaces = emptySet()
+        unregisterFailure = null
+        selfEntrySettled = true
         targets.clear()
         roleExists = true
         roleChecks.clear()
@@ -147,6 +168,7 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         unregistrations.clear()
         levelChanges.clear()
         namespaceStatus = NamespaceStatus.EXISTS
+        namespaceStatuses.clear()
         namespaceChecks.clear()
         accessChanges.clear()
     }

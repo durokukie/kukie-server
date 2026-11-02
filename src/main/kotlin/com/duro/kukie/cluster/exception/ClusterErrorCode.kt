@@ -47,7 +47,8 @@ enum class ClusterErrorCode(
     ),
     NAMESPACE_GRANT_PENDING(
         HttpStatus.CONFLICT,
-        "Kukie 권한이 아직 클러스터에 반영되지 않아 네임스페이스를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+        "Kukie 권한이 아직 클러스터에 반영되지 않아 네임스페이스를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요. " +
+            "몇 분이 지나도 같으면 EKS 콘솔의 접근 항목에서 KukieAccess 항목을 지운 뒤 다시 시도해 주세요.",
     ),
     ;
 
