@@ -96,6 +96,10 @@ interface InternalActionPlanControllerDocs {
     @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)
     fun failPlan(planId: UUID, request: FailPlanRequest): ResponseEntity<PlanResponse>
 
+    @Operation(summary = "[내부] 전제 깨짐", description = "승인 순간 전제가 바뀌어 실행하지 않은, 결정 전 계획을 STALE 로 닫는다. 이미 STALE 이면 그대로 돌려준다.")
+    @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)
+    fun markPlanStale(planId: UUID): ResponseEntity<PlanResponse>
+
     @Operation(summary = "[내부] 확인 불가", description = "결과 없이 APPROVED·EXECUTING 인 계획을 UNKNOWN 으로 닫습니다.")
     @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)
     fun markPlanUnknown(planId: UUID): ResponseEntity<PlanResponse>

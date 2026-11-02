@@ -205,6 +205,12 @@ class ActionPlan(
         markFailed(reason)
     }
 
+    fun markStale() {
+        if (status == PlanStatus.STALE) return
+        requireState(status in DECIDABLE && decision == null && executionResult == null)
+        status = PlanStatus.STALE
+    }
+
     fun markUnknown() {
         requireState(status in RUNNABLE && executionResult == null)
         status = PlanStatus.UNKNOWN
