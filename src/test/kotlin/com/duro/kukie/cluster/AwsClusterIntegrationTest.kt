@@ -1,5 +1,9 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.chat.ChatFixture
+import com.duro.kukie.chat.domain.ChatRunRepository
+import com.duro.kukie.chat.domain.ChatSessionRepository
+import com.duro.kukie.chat.domain.ChatVisibility
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
@@ -54,6 +58,12 @@ class AwsClusterIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var clusterRepository: ClusterRepository
+
+    @Autowired
+    private lateinit var chatSessionRepository: ChatSessionRepository
+
+    @Autowired
+    private lateinit var chatRunRepository: ChatRunRepository
 
     @Autowired
     private lateinit var credentialCipher: CredentialCipher
@@ -975,6 +985,80 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             authorization(admin.accessToken)
         }.andExpect { status { isNoContent() } }
         clusterRepository.existsById(clusterId) shouldBe false
+    }
+
+    @Test
+    fun `대화까지 지운 EKS 클러스터도 access entry 를 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId))
+
+        // when
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(clusterId) shouldBe false
+        chatSessionRepository.existsById(session.id) shouldBe false
+        fakeEksAccessGateway.unregistrations.single().clusterName shouldBe DEFAULT_CLUSTER_NAME
+    }
+
+    @Test
+    fun `access entry 를 정리하지 못해도 대화와 클러스터는 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId))
+        fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
+
+        // when & then
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+        clusterRepository.existsById(clusterId) shouldBe false
+        chatSessionRepository.existsById(session.id) shouldBe false
+    }
+
+    @Test
+    fun `대화 때문에 삭제가 거부되면 access entry 를 건드리지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId))
+
+        // when & then
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isConflict() } }
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+    }
+
+    @Test
+    fun `끝나지 않은 요청 때문에 삭제가 거부되면 access entry 를 건드리지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId, visibility = ChatVisibility.SHARED))
+        chatRunRepository.save(ChatFixture.run(session.id))
+
+        // when & then
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isConflict() } }
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
     }
 
     // ── AWS 연결 해제 ────────────────────────────────────────────

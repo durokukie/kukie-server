@@ -1,6 +1,7 @@
 package com.duro.kukie.cluster.presentation
 
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
+import com.duro.kukie.cluster.exception.ClusterHasActiveRunException
 import com.duro.kukie.cluster.exception.ClusterInUseException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
@@ -11,6 +12,7 @@ import com.duro.kukie.cluster.exception.KubeconfigRejectedException
 import com.duro.kukie.cluster.exception.NothingToUpdateException
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterRequest
+import com.duro.kukie.cluster.presentation.dto.response.ClusterConversationCountResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterSetupResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
@@ -81,13 +83,26 @@ interface ClusterControllerDocs {
     @Operation(
         summary = "클러스터 삭제",
         description = "클러스터와 자격증명을 삭제합니다. 팀 관리자만 할 수 있습니다. " +
-            "이 클러스터를 쓰는 대화가 있으면 삭제할 수 없습니다.",
+            "이 클러스터를 쓰는 대화가 있으면 삭제할 수 없습니다. " +
+            "deleteConversations=true 를 함께 보내면 다른 구성원의 Private 대화를 포함한 그 대화들을 실행 기록·Action Plan 까지 함께 지웁니다. " +
+            "되돌릴 수 없으며, 끝나지 않은 요청이 있는 대화가 있으면 아무것도 지우지 않습니다.",
     )
     @ApiResponse(responseCode = "204", description = "No Content")
     @ApiErrorResponses(
         NotTeamAdminException::class,
         ClusterNotFoundException::class,
         ClusterInUseException::class,
+        ClusterHasActiveRunException::class,
     )
-    fun deleteCluster(clusterId: UUID, userId: UUID): ResponseEntity<Unit>
+    fun deleteCluster(clusterId: UUID, userId: UUID, deleteConversations: Boolean): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "클러스터의 대화 수",
+        description = "이 클러스터를 쓰는 대화 수입니다. 다른 구성원의 Private 대화도 셉니다. 팀 관리자만 볼 수 있습니다.",
+    )
+    @ApiErrorResponses(
+        NotTeamAdminException::class,
+        ClusterNotFoundException::class,
+    )
+    fun getClusterConversationCount(clusterId: UUID, userId: UUID): ResponseEntity<ClusterConversationCountResponse>
 }
