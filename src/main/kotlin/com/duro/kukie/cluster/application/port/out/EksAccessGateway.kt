@@ -41,7 +41,7 @@ interface EksAccessGateway {
 
     /**
      * 스택의 레벨이 바뀌었을 때 이미 등록한 EKS 의 정책을 바꾼다. 새 레벨의 정책을 먼저 붙이고(LIMITED 면 namespaces 범위)
-     * 다른 레벨의 정책을 뗀다. entry 가 없으면 만든다.
+     * 다른 레벨의 정책을 뗀다. entry 가 없으면 만든다. LIMITED 로 내리다 끝내 거부되면 정책 없는 entry 가 되더라도 관리자 정책을 떼고 던진다.
      */
     fun changeAccessLevel(
         target: AwsTarget,

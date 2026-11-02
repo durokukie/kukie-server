@@ -45,7 +45,7 @@ class DeleteClusterService(
         try {
             val credential = EksCredential.from(credentialCipher.decrypt(cluster.credential))
             val keepNamespaces = eksNamespaces.registeredOn(cluster.teamId, credential, except = cluster.id)
-            // 이 클러스터에 실제로 붙은 레벨을 따른다(레벨 바꾸기에 실패했으면 바꾸기 전 레벨). 등록 칸이 생기기 전 EKS 는 v4 다
+            // 이 클러스터에 기록된 레벨을 따른다(레벨 바꾸기에 실패했으면 바꾸기 전 레벨). 등록 칸이 생기기 전 EKS 는 v4 다
             val accessLevel = cluster.accessLevel ?: AccessLevel.LIMITED
             eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, keepNamespaces, accessLevel)
         } catch (exception: RuntimeException) {

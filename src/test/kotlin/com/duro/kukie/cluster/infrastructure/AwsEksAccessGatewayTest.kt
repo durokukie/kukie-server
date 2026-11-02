@@ -407,7 +407,20 @@ class AwsEksAccessGatewayTest {
     }
 
     @Test
-    fun `끝내 붙이지 못하면 옛 정책을 떼지 않고 던진다`() {
+    fun `제한된 권한으로 내릴 때 거부가 잠깐이면 붙인 뒤에만 관리자 정책을 떼어 정책 없는 entry 를 만들지 않는다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true, exists = true, deniedAssociations = 3)
+
+        // when
+        gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-demo"), AccessLevel.LIMITED, Duration.ZERO)
+
+        // then
+        eks.policyCalls shouldBe List(4) { "associate" to EDIT_POLICY } + ("disassociate" to CLUSTER_ADMIN_POLICY)
+        eks.associations.single().policyArn() shouldBe EDIT_POLICY
+    }
+
+    @Test
+    fun `전체 권한으로 올리다 끝내 붙이지 못하면 옛 정책을 떼지 않고 던진다`() {
         // given
         val eks = FakeEksClient(denyGroups = true, exists = true, deniedAssociations = Int.MAX_VALUE)
 
@@ -416,6 +429,47 @@ class AwsEksAccessGatewayTest {
             gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-demo"), AccessLevel.FULL, Duration.ZERO)
         }
         eks.policyCalls.map { it.first }.distinct() shouldBe listOf("associate")
+    }
+
+    @Test
+    fun `제한된 권한으로 내리다 namespace 가 끝내 거부되면 재시도를 마친 뒤 관리자 정책을 떼고 던진다`() {
+        // given — 등록한 namespace 가 AllowedNamespaces 밖이면 붙이기는 몇 번을 해도 거부된다
+        val eks = FakeEksClient(denyGroups = true, exists = true, deniedAssociations = Int.MAX_VALUE)
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("default"), AccessLevel.LIMITED, Duration.ZERO)
+        }
+        eks.policyCalls shouldBe List(4) { "associate" to EDIT_POLICY } + ("disassociate" to CLUSTER_ADMIN_POLICY)
+    }
+
+    @Test
+    fun `제한된 권한으로 내리다 entry 만들기가 끝내 거부되어도 관리자 정책을 뗀다`() {
+        // given
+        val eks = FakeEksClient(denyGroups = true, deniedEntries = Int.MAX_VALUE)
+
+        // when & then
+        shouldThrow<AccessDeniedException> {
+            gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("kukie-demo"), AccessLevel.LIMITED, Duration.ZERO)
+        }
+        eks.policyCalls shouldBe listOf("disassociate" to CLUSTER_ADMIN_POLICY)
+    }
+
+    @Test
+    fun `제한된 권한으로 내리다 관리자 정책 떼기까지 실패해도 처음 거부를 던진다`() {
+        // given
+        val eks = FakeEksClient(
+            denyGroups = true,
+            exists = true,
+            deniedAssociations = Int.MAX_VALUE,
+            disassociateFailure = eksException(500, "ServerException", "boom"),
+        )
+
+        // when & then — 떼기 오류로 바뀌면 호출부가 EksAccessDeniedException 으로 옮기지 못한다
+        shouldThrow<AccessDeniedException> {
+            gateway.changeAccessLevelOn(eks, "kukie-gpu", PRINCIPAL, setOf("default"), AccessLevel.LIMITED, Duration.ZERO)
+        }
+        eks.policyCalls.last() shouldBe ("disassociate" to CLUSTER_ADMIN_POLICY)
     }
 
     @Test
@@ -483,7 +537,8 @@ class AwsEksAccessGatewayTest {
     /**
      * 고객 역할의 IAM 판단만 흉내 낸다: 그룹을 단 요청은 denyGroups 면 거부, 모든 요청은 denyAll 이면 거부.
      * 그룹 없는 entry 만들기는 처음 deniedEntries 번, 정책 붙이기는 처음 deniedAssociations 번 거부하고,
-     * 떼기는 처음 deniedDisassociations 번 거부하고, detachedAlready 면 붙어 있지 않다고 답한다.
+     * 떼기는 처음 deniedDisassociations 번 거부하고, disassociateFailure 를 주면 그 오류로 실패하고,
+     * detachedAlready 면 붙어 있지 않다고 답한다.
      */
     private class FakeEksClient(
         private val denyGroups: Boolean,
@@ -494,6 +549,7 @@ class AwsEksAccessGatewayTest {
         private var deniedAssociations: Int = 0,
         private val detachedAlready: Boolean = false,
         private var deniedDisassociations: Int = 0,
+        private val disassociateFailure: EksException? = null,
     ) : EksClient {
         val requests = mutableListOf<CreateAccessEntryRequest>()
         val associations = mutableListOf<AssociateAccessPolicyRequest>()
@@ -514,6 +570,7 @@ class AwsEksAccessGatewayTest {
 
         override fun disassociateAccessPolicy(request: DisassociateAccessPolicyRequest): DisassociateAccessPolicyResponse {
             policyCalls += "disassociate" to request.policyArn()
+            disassociateFailure?.let { throw it }
             if (deniedDisassociations > 0) {
                 deniedDisassociations--
                 throw AccessDeniedException.builder().statusCode(403).message("not authorized").build()

@@ -98,7 +98,10 @@ class Cluster(
     var accessLevel = accessLevel
         protected set
 
-    /** 스택의 레벨로 바꿔 붙이지 못한 때. 그동안 accessLevel 은 바꾸기 전 레벨이다. 다시 붙이면 비운다. */
+    /**
+     * 스택의 레벨로 바꿔 붙이지 못한 때. 그동안 accessLevel 은 바꾸기 전 레벨이다. 다시 붙이면 비운다.
+     * limited 로 내리다 실패했으면 관리자 정책을 떼어 accessLevel 이 full 이어도 실제 권한은 없을 수 있다.
+     */
     @Column(name = "access_level_failed_at")
     var accessLevelFailedAt: LocalDateTime? = null
         protected set

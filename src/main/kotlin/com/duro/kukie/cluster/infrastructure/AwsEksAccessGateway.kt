@@ -149,7 +149,11 @@ class AwsEksAccessGateway(
         }
     }
 
-    /** 새 정책을 먼저 붙이고 옛 정책을 뗀다 — 중간에 실패해도 정책이 하나도 없는 entry 가 되지 않는다. */
+    /**
+     * 새 정책을 먼저 붙이고 옛 정책을 뗀다 — 중간에 실패해도 정책이 하나도 없는 entry 가 되지 않는다.
+     * 단 limited 로 내릴 때는 관리자 정책이 남는 쪽이 접속이 끊기는 쪽보다 위험하므로, 다시 해도 끝내 거부되면(등록한 namespace 가
+     * AllowedNamespaces 밖이면 그렇다) 정책 없는 entry 가 되더라도 관리자 정책을 떼고 던진다.
+     */
     internal fun changeAccessLevelOn(
         eks: EksClient,
         clusterName: String,
@@ -170,7 +174,13 @@ class AwsEksAccessGateway(
                 detach(eks, clusterName, principalArn, other)
                 break
             } catch (exception: AccessDeniedException) {
-                if (attempt++ >= ASSOCIATE_ATTEMPTS) throw exception
+                if (attempt++ >= ASSOCIATE_ATTEMPTS) {
+                    if (accessLevel == AccessLevel.LIMITED) {
+                        runCatching { detach(eks, clusterName, principalArn, other) }
+                            .onFailure { log.warn("관리자 정책을 떼지 못했습니다: cluster={} reason={}", clusterName, it.javaClass.simpleName) }
+                    }
+                    throw exception
+                }
                 try {
                     Thread.sleep(delay)
                 } catch (_: InterruptedException) {
