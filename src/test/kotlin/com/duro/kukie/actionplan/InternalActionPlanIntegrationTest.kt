@@ -365,6 +365,33 @@ class InternalActionPlanIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `승인 순간 전제가 깨진 결정 전 계획은 STALE 로 닫고 다시 불러도 그대로다`() {
+        // given
+        val plan = savedPlan { it.offered() }
+
+        // when & then
+        repeat(2) {
+            action(plan, "stale").andExpect {
+                status { isOk() }
+                jsonPath("$.status") { value("STALE") }
+                jsonPath("$.decision") { value(null) }
+            }
+        }
+    }
+
+    @Test
+    fun `이미 결정한 계획은 STALE 로 닫지 않는다`() {
+        // given
+        val plan = savedPlan { it.approved(DECIDER) }
+
+        // when & then
+        action(plan, "stale").andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ActionPlanErrorCode.PLAN_STATE_CONFLICT.code) }
+        }
+    }
+
+    @Test
     fun `지금 상태에서 할 수 없는 동작은 거부한다`() {
         // given
         val plan = savedPlan()

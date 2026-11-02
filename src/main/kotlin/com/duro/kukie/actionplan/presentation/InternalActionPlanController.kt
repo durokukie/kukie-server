@@ -6,6 +6,7 @@ import com.duro.kukie.actionplan.application.FailPlanService
 import com.duro.kukie.actionplan.application.GetPlanService
 import com.duro.kukie.actionplan.application.GetRunPlansService
 import com.duro.kukie.actionplan.application.GetUnsettledPlansService
+import com.duro.kukie.actionplan.application.MarkPlanStaleService
 import com.duro.kukie.actionplan.application.MarkPlanUnknownService
 import com.duro.kukie.actionplan.application.OfferPlanService
 import com.duro.kukie.actionplan.application.RecordDryRunService
@@ -47,6 +48,7 @@ class InternalActionPlanController(
     private val startPlanService: StartPlanService,
     private val recordPlanResultService: RecordPlanResultService,
     private val failPlanService: FailPlanService,
+    private val markPlanStaleService: MarkPlanStaleService,
     private val markPlanUnknownService: MarkPlanUnknownService,
     private val recordSyncResultService: RecordSyncResultService,
     private val getUnsettledPlansService: GetUnsettledPlansService,
@@ -138,6 +140,13 @@ class InternalActionPlanController(
         @RequestBody @Valid request: FailPlanRequest,
     ): ResponseEntity<PlanResponse> {
         return ResponseEntity.ok(failPlanService(request.toCommand(planId)))
+    }
+
+    @PostMapping("/plans/{planId}/stale")
+    override fun markPlanStale(
+        @PathVariable planId: UUID,
+    ): ResponseEntity<PlanResponse> {
+        return ResponseEntity.ok(markPlanStaleService(planId))
     }
 
     @PostMapping("/plans/{planId}/unknown")
