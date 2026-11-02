@@ -171,7 +171,7 @@ jobs:
   # develop 에서 시험한 이미지를 prod 로 올린다 — 다시 굽지 않고 dev-<커밋> 이미지에 prod-<커밋> 태그만 더 붙인다.
   # 찾는 커밋은 main 과 트리가 같은 커밋이다 — main 커밋 자신(fast-forward), 마지막 부모(머지 커밋), develop 끝(squash).
   # 트리가 다른 커밋의 이미지는 main 코드가 아니므로 쓰지 않는다. 머지 뒤 develop 이 앞서간 squash 는 찾지 못해 실패한다.
-  # 태그가 붙어도 배포되지는 않는다. kukie-manifest prod-image.yml 이 envs/prod digest PR 을 열고 사람이 머지해야 반영된다.
+  # 아래 알림을 받은 kukie-manifest update-image.yml 이 envs/prod digest 를 커밋한다. 이 저장소의 main 병합이 곧 prod 승인이다.
   # 출입증: develop 과 같은 AWS_ROLE_ARN 역할 (kukie-infra 가 이 레포 main 도 믿게 했다).
   promote:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -274,7 +274,7 @@ jobs:
           -f "client_payload[source_repo]=$GITHUB_REPOSITORY" \
           -f "client_payload[source_sha]=$GITHUB_SHA" \
           -f "client_payload[run_url]=$RUN_URL"
-        echo "- manifest 알림 보냄 — kukie-manifest 에 envs/prod PR 이 열린다" >> "$GITHUB_STEP_SUMMARY"
+        echo "- manifest 알림 보냄 — kukie-manifest 가 envs/prod digest 를 커밋한다" >> "$GITHUB_STEP_SUMMARY"
 
   dependency-submission:
 
