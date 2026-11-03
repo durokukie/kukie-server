@@ -50,6 +50,22 @@ enum class ClusterErrorCode(
         "Kukie 권한이 아직 클러스터에 반영되지 않아 네임스페이스를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요. " +
             "몇 분이 지나도 같으면 EKS 콘솔의 접근 항목에서 KukieAccess 항목을 지운 뒤 다시 시도해 주세요.",
     ),
+    GPU_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "AWS 역할로 연결한 EKS 클러스터에서만 할 수 있는 작업입니다."),
+    GPU_NODE_CONTROL_DENIED(
+        HttpStatus.FORBIDDEN,
+        "GPU 노드 수를 바꿀 권한이 없습니다. CloudFormation 스택의 AccessLevel 을 full, GpuNodeControl 을 true 로 바꿔 주세요.",
+    ),
+    GPU_NODE_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "이 클러스터에서 그 GPU 노드 그룹을 찾을 수 없습니다."),
+    NODE_GROUP_BUSY(HttpStatus.CONFLICT, "노드 그룹이 다른 변경을 처리하고 있습니다. 잠시 뒤 다시 시도해 주세요."),
+    INVALID_NODE_COUNT(HttpStatus.BAD_REQUEST, "노드 수는 노드 그룹의 최소값 이상, 최대값 이하여야 합니다."),
+    SERVED_MODEL_EXISTS(HttpStatus.CONFLICT, "이미 올라간 모델이 있습니다. GPU 한 장에 모델 하나만 올릴 수 있으니 먼저 중지해 주세요."),
+    SERVED_MODEL_NOT_FOUND(HttpStatus.NOT_FOUND, "그 모델을 찾을 수 없습니다."),
+    GPU_ADDON_NOT_INSTALLED(HttpStatus.CONFLICT, "클러스터에 GPU 애드온이 없습니다. 애드온과 llm namespace 를 설치했는지 확인해 주세요."),
+    GPU_SERVING_DENIED(
+        HttpStatus.FORBIDDEN,
+        "모델을 시작하거나 중지할 권한이 없습니다. CloudFormation 스택의 AccessLevel 이 full 인지 확인해 주세요.",
+    ),
+    GPU_CLUSTER_API_FAILED(HttpStatus.BAD_GATEWAY, "클러스터가 요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
     ;
 
     override val code: String

@@ -74,4 +74,35 @@ interface EksAccessGateway {
     fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup
 
     fun issueToken(target: AwsTarget, region: String, clusterName: String): String
+
+    /** 관리형 노드 그룹 전부. 읽기 권한(템플릿 v3)이 없으면 EksAccessDeniedException. */
+    fun listNodegroupStates(target: AwsTarget, region: String, clusterName: String): List<EksNodegroupState>
+
+    /** 노드 그룹 하나. 없으면 null. */
+    fun describeNodegroupState(target: AwsTarget, region: String, clusterName: String, nodegroupName: String): EksNodegroupState?
+
+    /**
+     * desired 만 바꾼다. 거부되면 GpuNodeControlDeniedException, 다른 변경이 진행 중이면 NodeGroupBusyException,
+     * 범위를 벗어나면 InvalidNodeCountException, 없으면 GpuNodeGroupNotFoundException.
+     */
+    fun updateNodegroupDesired(target: AwsTarget, region: String, clusterName: String, nodegroupName: String, desired: Int)
+
+    /** 그 namespace 에 ServedModel 이 하나라도 있는지 쿠버네티스 API 로 본다. */
+    fun hasServedModel(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, namespace: String): Boolean
+
+    /**
+     * 쿠버네티스 API 로 ServedModel 을 만든다. 404 는 GpuAddonNotInstalledException, 401·403 은 GpuServingDeniedException,
+     * 409 는 ServedModelExistsException, 그 밖의 실패는 GpuClusterApiFailedException.
+     */
+    fun createServedModel(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, manifest: ServedModelManifest)
+
+    /** 쿠버네티스 API 로 ServedModel 을 지운다. 404 는 ServedModelNotFoundException, 나머지는 createServedModel 과 같다. */
+    fun deleteServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    )
 }

@@ -1,7 +1,6 @@
 package com.duro.kukie.cluster.infrastructure
 
 import com.duro.kukie.cluster.application.HandleStackNoticeService
-import com.duro.kukie.cluster.application.port.`in`.StackNoticeCommand
 import com.duro.kukie.global.config.properties.AwsProperties
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
@@ -12,8 +11,6 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model.Message
 import software.amazon.awssdk.services.sqs.model.MessageSystemAttributeName
-import tools.jackson.databind.JsonNode
-import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 
 /**
@@ -30,7 +27,6 @@ class SqsStackNoticeListener(
 ) : SmartLifecycle {
 
     private val log = logger()
-    private val jsonMapper = JsonMapper.builder().build()
     private val sqsClient = SqsClient.builder()
         .region(Region.of(awsProperties.region))
         .overrideConfiguration { it.apiCallTimeout(API_CALL_TIMEOUT) }
@@ -77,32 +73,13 @@ class SqsStackNoticeListener(
     private fun handle(queueUrl: String, message: Message) {
         val done = try {
             val receiveCount = message.attributes()[MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT]?.toIntOrNull() ?: 1
-            parse(message.body())?.let { handleStackNoticeService(it, lastAttempt = receiveCount >= LAST_ATTEMPT) } ?: true
+            StackNoticeParser.parse(message.body())?.let { handleStackNoticeService(it, lastAttempt = receiveCount >= LAST_ATTEMPT) } ?: true
         } catch (exception: Exception) {
             log.warn("스택 알림을 처리하지 못했습니다: message={}", message.messageId(), exception)
             false
         }
         if (done) sqsClient.deleteMessage { it.queueUrl(queueUrl).receiptHandle(message.receiptHandle()) }
     }
-
-    /** CloudFormation 요청 모양이 아니면 null — 버린다. */
-    private fun parse(body: String): StackNoticeCommand? {
-        val root = runCatching { jsonMapper.readTree(body) }.getOrNull() ?: return null
-        val properties = root.path("ResourceProperties")
-        return StackNoticeCommand(
-            requestType = root.text("RequestType") ?: return null,
-            responseUrl = root.text("ResponseURL") ?: return null,
-            stackId = root.text("StackId") ?: return null,
-            requestId = root.text("RequestId") ?: return null,
-            logicalResourceId = root.text("LogicalResourceId") ?: return null,
-            physicalResourceId = root.text("PhysicalResourceId"),
-            externalId = properties.text("ExternalId"),
-            roleArn = properties.text("RoleArn"),
-            accessLevel = properties.text("AccessLevel"),
-        )
-    }
-
-    private fun JsonNode.text(field: String): String? = path(field).takeIf { it.isString }?.stringValue()
 
     companion object {
         private const val MAX_MESSAGES = 10

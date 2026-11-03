@@ -71,17 +71,33 @@ class AwsConnection(
     var accessLevel = AccessLevel.LIMITED
         protected set
 
+    /** 스택 알림이 알려 준 GpuNodeControl. 알림이 없었거나 v5 이하 스택이면 false. */
+    @Column(name = "gpu_node_control", nullable = false)
+    var gpuNodeControl = false
+        protected set
+
     val connected: Boolean
         get() = accountId != null
+
+    /** 템플릿이 AccessLevel full 일 때만 노드 수 변경 권한을 주므로 limited 면 값과 상관없이 끈다. */
+    val gpuNodeControlEnabled: Boolean
+        get() = gpuNodeControl && accessLevel == AccessLevel.FULL
 
     /** 연결된 계정과 다른 계정으로 EKS 를 찾거나 등록하지 못하게 한다. 아직 모르는 계정(v1 직접 입력)은 받는다. */
     fun requireAccount(accountId: String) {
         if (this.accountId != null && this.accountId != accountId) throw AwsAccountMismatchException()
     }
 
-    fun connect(accountId: String, at: LocalDateTime, stackId: String?, accessLevel: AccessLevel) {
+    fun connect(
+        accountId: String,
+        at: LocalDateTime,
+        stackId: String?,
+        accessLevel: AccessLevel,
+        gpuNodeControl: Boolean = false,
+    ) {
         this.accountId = accountId
         this.accessLevel = accessLevel
+        this.gpuNodeControl = gpuNodeControl
         this.connectedAt = at
         this.stackId = stackId
         this.lastAccountId = null

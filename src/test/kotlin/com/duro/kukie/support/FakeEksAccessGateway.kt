@@ -8,8 +8,10 @@ import com.duro.kukie.cluster.application.port.out.EksClusterInventory
 import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
+import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EksSubnet
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
+import com.duro.kukie.cluster.application.port.out.ServedModelManifest
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
 
@@ -62,6 +64,33 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     /** registerSelf·namespaceStatus·unregisterSelf 를 부른 순서대로. */
     val accessChanges = mutableListOf<Any>()
+
+    /** listNodegroupStates·describeNodegroupState 가 돌려줄 노드 그룹. */
+    var nodegroupStates: List<EksNodegroupState> = DEFAULT_NODEGROUP_STATES
+
+    /** 설정하면 노드 그룹을 읽는 호출이 이 예외로 실패한다. */
+    var nodegroupReadFailure: RuntimeException? = null
+
+    /** 설정하면 updateNodegroupDesired 가 이 예외로 실패한다. */
+    var nodegroupUpdateFailure: RuntimeException? = null
+
+    val nodegroupUpdates = mutableListOf<NodegroupUpdate>()
+
+    /** hasServedModel 이 돌려줄 값. */
+    var servedModelPresent: Boolean = false
+
+    /** 설정하면 ServedModel 을 다루는 쿠버네티스 호출이 이 예외로 실패한다. */
+    var servedModelFailure: RuntimeException? = null
+
+    /** 설정하면 createServedModel 만 이 예외로 실패한다. */
+    var servedModelCreateFailure: RuntimeException? = null
+
+    val servedModelCreations = mutableListOf<ServedModelManifest>()
+
+    val servedModelDeletions = mutableListOf<ServedModelDeletion>()
+
+    /** 노드 그룹·ServedModel 을 다루는 호출에 넘어온 API 서버. */
+    val servedModelEndpoints = mutableListOf<EksClusterEndpoint>()
 
     override fun verify(target: AwsTarget) {
         record(target)
@@ -146,6 +175,75 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         return tokenFor(clusterName)
     }
 
+    override fun listNodegroupStates(target: AwsTarget, region: String, clusterName: String): List<EksNodegroupState> {
+        record(target)
+        nodegroupReadFailure?.let { throw it }
+        return nodegroupStates
+    }
+
+    override fun describeNodegroupState(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        nodegroupName: String,
+    ): EksNodegroupState? {
+        record(target)
+        nodegroupReadFailure?.let { throw it }
+        return nodegroupStates.firstOrNull { it.name == nodegroupName }
+    }
+
+    override fun updateNodegroupDesired(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        nodegroupName: String,
+        desired: Int,
+    ) {
+        record(target)
+        nodegroupUpdateFailure?.let { throw it }
+        nodegroupUpdates += NodegroupUpdate(target, region, clusterName, nodegroupName, desired)
+    }
+
+    override fun hasServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+    ): Boolean {
+        record(target)
+        servedModelFailure?.let { throw it }
+        return servedModelPresent
+    }
+
+    override fun createServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        manifest: ServedModelManifest,
+    ) {
+        record(target)
+        servedModelFailure?.let { throw it }
+        servedModelCreateFailure?.let { throw it }
+        servedModelEndpoints += endpoint
+        servedModelCreations += manifest
+    }
+
+    override fun deleteServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    ) {
+        record(target)
+        servedModelFailure?.let { throw it }
+        servedModelEndpoints += endpoint
+        servedModelDeletions += ServedModelDeletion(namespace, name)
+    }
+
     private fun record(target: AwsTarget) {
         failure?.let { throw it }
         targets += target
@@ -171,7 +269,30 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         namespaceStatuses.clear()
         namespaceChecks.clear()
         accessChanges.clear()
+        nodegroupStates = DEFAULT_NODEGROUP_STATES
+        nodegroupReadFailure = null
+        nodegroupUpdateFailure = null
+        nodegroupUpdates.clear()
+        servedModelPresent = false
+        servedModelFailure = null
+        servedModelCreateFailure = null
+        servedModelCreations.clear()
+        servedModelDeletions.clear()
+        servedModelEndpoints.clear()
     }
+
+    data class NodegroupUpdate(
+        val target: AwsTarget,
+        val region: String,
+        val clusterName: String,
+        val nodegroupName: String,
+        val desired: Int,
+    )
+
+    data class ServedModelDeletion(
+        val namespace: String,
+        val name: String,
+    )
 
     data class NamespaceCheck(
         val namespace: String,
@@ -220,6 +341,11 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val DEFAULT_ENDPOINT = EksClusterEndpoint(
             endpoint = "https://ABCDEF0123456789.gr7.ap-northeast-2.eks.amazonaws.com",
             caData = "ZWtzLWNh",
+        )
+
+        val DEFAULT_NODEGROUP_STATES = listOf(
+            EksNodegroupState(name = "general", instanceTypes = listOf("t3.large"), status = "ACTIVE", desired = 2, min = 1, max = 3),
+            EksNodegroupState(name = "gpu", instanceTypes = listOf("g6e.xlarge"), status = "ACTIVE", desired = 0, min = 0, max = 2),
         )
 
         val DEFAULT_SETUP = EksClusterSetup(

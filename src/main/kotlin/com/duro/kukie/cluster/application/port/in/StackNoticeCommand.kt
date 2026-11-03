@@ -15,6 +15,8 @@ data class StackNoticeCommand(
     val roleArn: String?,
     /** 템플릿 v5 의 AccessLevel(full·limited). v1~v4 스택은 보내지 않는다. */
     val accessLevel: String?,
+    /** 템플릿 v6 의 GpuNodeControl(true·false). v5 이하 스택은 보내지 않는다. */
+    val gpuNodeControl: String? = null,
 ) {
     companion object {
         const val CREATE = "Create"

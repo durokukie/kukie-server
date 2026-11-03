@@ -168,6 +168,71 @@ class StackNoticeIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `v6 스택 알림의 GpuNodeControl 을 만들 때와 업데이트할 때 모두 저장한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id)).externalId
+
+        // when
+        handleStackNoticeService(notice(externalId, accessLevel = "full", gpuNodeControl = "true"))
+
+        // then
+        awsConnectionRepository.findByExternalId(externalId)!!.run {
+            gpuNodeControl shouldBe true
+            gpuNodeControlEnabled shouldBe true
+        }
+
+        // when
+        handleStackNoticeService(notice(externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full", gpuNodeControl = "false"))
+
+        // then
+        awsConnectionRepository.findByExternalId(externalId)!!.gpuNodeControlEnabled shouldBe false
+
+        // when
+        handleStackNoticeService(notice(externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full", gpuNodeControl = "true"))
+
+        // then
+        awsConnectionRepository.findByExternalId(externalId)!!.gpuNodeControlEnabled shouldBe true
+    }
+
+    @Test
+    fun `GpuNodeControl 이 true 여도 권한 레벨이 full 이 아니면 켜지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id)).externalId
+
+        // when
+        handleStackNoticeService(notice(externalId, accessLevel = "limited", gpuNodeControl = "true"))
+
+        // then
+        awsConnectionRepository.findByExternalId(externalId)!!.gpuNodeControlEnabled shouldBe false
+    }
+
+    @Test
+    fun `GpuNodeControl 값이 없거나 잘못되어도 알림은 성공하고 false 로 저장한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val connection = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id))
+
+        // when
+        handleStackNoticeService(notice(connection.externalId, accessLevel = "full", gpuNodeControl = "yes"))
+
+        // then
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.gpuNodeControl shouldBe false
+
+        // when — v6 에서 v5 로 되돌린 스택은 값을 보내지 않는다
+        handleStackNoticeService(notice(connection.externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full", gpuNodeControl = "true"))
+        handleStackNoticeService(notice(connection.externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full"))
+
+        // then
+        awsConnectionRepository.findByExternalId(connection.externalId)!!.gpuNodeControl shouldBe false
+        fakeStackNoticeResponder.responses.map { it.success } shouldBe listOf(true, true, true)
+    }
+
+    @Test
     fun `전체 권한으로 스택을 다시 만들면 등록해 둔 EKS 에 전체 권한으로 다시 붙인다`() {
         // given
         val admin = loggedInUser()
@@ -611,6 +676,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         responseUrl: String = RESPONSE_URL,
         physicalResourceId: String? = null,
         accessLevel: String? = null,
+        gpuNodeControl: String? = null,
     ) = StackNoticeCommand(
         requestType = requestType,
         responseUrl = responseUrl,
@@ -621,6 +687,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         externalId = externalId,
         roleArn = roleArn,
         accessLevel = accessLevel,
+        gpuNodeControl = gpuNodeControl,
     )
 
     private fun stackIdOf(externalId: String, accountId: String = ACCOUNT_ID) =
