@@ -12,6 +12,7 @@ import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.cluster.domain.GpuClusterPattern
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
@@ -82,6 +83,7 @@ class HandleStackNoticeService(
             StackConsoleUrl.stackIdOf(notice.stackId, accountId),
             accessLevel,
             gpuNodeControl = notice.gpuNodeControl == GPU_NODE_CONTROL_ON,
+            gpuClusterPattern = GpuClusterPattern.ofNotice(notice.gpuClusterPattern),
         )
         try {
             awsConnectionRepository.save(connection)

@@ -76,12 +76,17 @@ class AwsConnection(
     var gpuNodeControl = false
         protected set
 
+    /** 스택 알림이 알려 준 GpuClusterPattern. 없거나 잘못된 값이면 null 이고 어느 클러스터에도 맞지 않는다. */
+    @Column(name = "gpu_cluster_pattern", length = 100)
+    var gpuClusterPattern: String? = null
+        protected set
+
     val connected: Boolean
         get() = accountId != null
 
-    /** 템플릿이 AccessLevel full 일 때만 노드 수 변경 권한을 주므로 limited 면 값과 상관없이 끈다. */
-    val gpuNodeControlEnabled: Boolean
-        get() = gpuNodeControl && accessLevel == AccessLevel.FULL
+    /** 템플릿은 full 이고 GpuNodeControl 이 true 일 때, GpuClusterPattern 에 맞는 클러스터에만 노드 수 변경 권한을 준다. */
+    fun gpuControlOn(clusterName: String): Boolean =
+        gpuNodeControl && accessLevel == AccessLevel.FULL && gpuClusterPattern?.let { GpuClusterPattern.matches(it, clusterName) } == true
 
     /** 연결된 계정과 다른 계정으로 EKS 를 찾거나 등록하지 못하게 한다. 아직 모르는 계정(v1 직접 입력)은 받는다. */
     fun requireAccount(accountId: String) {
@@ -94,10 +99,12 @@ class AwsConnection(
         stackId: String?,
         accessLevel: AccessLevel,
         gpuNodeControl: Boolean = false,
+        gpuClusterPattern: String? = null,
     ) {
         this.accountId = accountId
         this.accessLevel = accessLevel
         this.gpuNodeControl = gpuNodeControl
+        this.gpuClusterPattern = gpuClusterPattern
         this.connectedAt = at
         this.stackId = stackId
         this.lastAccountId = null

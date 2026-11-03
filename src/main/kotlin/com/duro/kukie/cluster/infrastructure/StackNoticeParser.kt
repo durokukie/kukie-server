@@ -24,6 +24,7 @@ internal object StackNoticeParser {
             roleArn = properties.text("RoleArn"),
             accessLevel = properties.text("AccessLevel"),
             gpuNodeControl = properties.text("GpuNodeControl"),
+            gpuClusterPattern = properties.text("GpuClusterPattern"),
         )
     }
 

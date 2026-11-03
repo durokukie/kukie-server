@@ -175,25 +175,29 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         val externalId = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id)).externalId
 
         // when
-        handleStackNoticeService(notice(externalId, accessLevel = "full", gpuNodeControl = "true"))
+        handleStackNoticeService(notice(externalId, accessLevel = "full", gpuNodeControl = "true", gpuClusterPattern = "de*"))
 
         // then
         awsConnectionRepository.findByExternalId(externalId)!!.run {
             gpuNodeControl shouldBe true
-            gpuNodeControlEnabled shouldBe true
+            gpuClusterPattern shouldBe "de*"
+            gpuControlOn(DEFAULT_CLUSTER_NAME) shouldBe true
         }
 
         // when
-        handleStackNoticeService(notice(externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full", gpuNodeControl = "false"))
+        handleStackNoticeService(notice(externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full", gpuNodeControl = "false", gpuClusterPattern = "de*"))
 
         // then
-        awsConnectionRepository.findByExternalId(externalId)!!.gpuNodeControlEnabled shouldBe false
+        awsConnectionRepository.findByExternalId(externalId)!!.gpuControlOn(DEFAULT_CLUSTER_NAME) shouldBe false
 
         // when
-        handleStackNoticeService(notice(externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full", gpuNodeControl = "true"))
+        handleStackNoticeService(notice(externalId, requestType = "Update", physicalResourceId = "p", accessLevel = "full", gpuNodeControl = "true", gpuClusterPattern = "other-*"))
 
-        // then
-        awsConnectionRepository.findByExternalId(externalId)!!.gpuNodeControlEnabled shouldBe true
+        // then — 업데이트한 패턴을 쓴다
+        awsConnectionRepository.findByExternalId(externalId)!!.run {
+            gpuControlOn(DEFAULT_CLUSTER_NAME) shouldBe false
+            gpuControlOn("other-gpu") shouldBe true
+        }
     }
 
     @Test
@@ -204,10 +208,30 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         val externalId = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id)).externalId
 
         // when
-        handleStackNoticeService(notice(externalId, accessLevel = "limited", gpuNodeControl = "true"))
+        handleStackNoticeService(notice(externalId, accessLevel = "limited", gpuNodeControl = "true", gpuClusterPattern = "*"))
 
         // then
-        awsConnectionRepository.findByExternalId(externalId)!!.gpuNodeControlEnabled shouldBe false
+        awsConnectionRepository.findByExternalId(externalId)!!.gpuControlOn(DEFAULT_CLUSTER_NAME) shouldBe false
+    }
+
+    @Test
+    fun `GpuClusterPattern 이 없거나 잘못되면 알림은 성공하고 어느 클러스터에도 맞지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = awsConnectionRepository.save(AwsConnection(teamId = teamId, createdBy = admin.user.id)).externalId
+
+        listOf(null, "", "a/b", "*".repeat(101)).forEach { pattern ->
+            // when
+            handleStackNoticeService(notice(externalId, accessLevel = "full", gpuNodeControl = "true", gpuClusterPattern = pattern))
+
+            // then
+            awsConnectionRepository.findByExternalId(externalId)!!.run {
+                gpuClusterPattern.shouldBeNull()
+                gpuControlOn(DEFAULT_CLUSTER_NAME) shouldBe false
+            }
+        }
+        fakeStackNoticeResponder.responses.map { it.success } shouldBe listOf(true, true, true, true)
     }
 
     @Test
@@ -677,6 +701,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         physicalResourceId: String? = null,
         accessLevel: String? = null,
         gpuNodeControl: String? = null,
+        gpuClusterPattern: String? = null,
     ) = StackNoticeCommand(
         requestType = requestType,
         responseUrl = responseUrl,
@@ -688,6 +713,7 @@ class StackNoticeIntegrationTest : IntegrationTest() {
         roleArn = roleArn,
         accessLevel = accessLevel,
         gpuNodeControl = gpuNodeControl,
+        gpuClusterPattern = gpuClusterPattern,
     )
 
     private fun stackIdOf(externalId: String, accountId: String = ACCOUNT_ID) =

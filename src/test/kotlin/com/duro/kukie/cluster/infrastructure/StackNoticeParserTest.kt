@@ -10,7 +10,7 @@ class StackNoticeParserTest {
     @Test
     fun `CloudFormation 요청에서 스택 속성을 읽는다`() {
         // when
-        val notice = StackNoticeParser.parse(body(""""ExternalId":"kukie-1","RoleArn":"arn","AccessLevel":"full","GpuNodeControl":"true""""))
+        val notice = StackNoticeParser.parse(body(""""ExternalId":"kukie-1","RoleArn":"arn","AccessLevel":"full","GpuNodeControl":"true","GpuClusterPattern":"kukie-*""""))
 
         // then
         notice.shouldNotBeNull().run {
@@ -20,12 +20,16 @@ class StackNoticeParserTest {
             roleArn shouldBe "arn"
             accessLevel shouldBe "full"
             gpuNodeControl shouldBe "true"
+            gpuClusterPattern shouldBe "kukie-*"
         }
     }
 
     @Test
     fun `v5 이하 스택은 GpuNodeControl 이 없다`() {
-        StackNoticeParser.parse(body(""""ExternalId":"kukie-1"""")).shouldNotBeNull().gpuNodeControl.shouldBeNull()
+        StackNoticeParser.parse(body(""""ExternalId":"kukie-1"""")).shouldNotBeNull().run {
+            gpuNodeControl.shouldBeNull()
+            gpuClusterPattern.shouldBeNull()
+        }
     }
 
     @Test

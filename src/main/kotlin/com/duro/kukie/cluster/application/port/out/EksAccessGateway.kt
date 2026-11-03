@@ -82,10 +82,10 @@ interface EksAccessGateway {
     fun describeNodegroupState(target: AwsTarget, region: String, clusterName: String, nodegroupName: String): EksNodegroupState?
 
     /**
-     * desired 만 바꾼다. 거부되면 GpuNodeControlDeniedException, 다른 변경이 진행 중이면 NodeGroupBusyException,
+     * desired 를 바꾼다. min·max 는 current 의 값을 그대로 함께 보내 바꾸지 않는다. 거부되면 GpuNodeControlDeniedException, 다른 변경이 진행 중이면 NodeGroupBusyException,
      * 범위를 벗어나면 InvalidNodeCountException, 없으면 GpuNodeGroupNotFoundException.
      */
-    fun updateNodegroupDesired(target: AwsTarget, region: String, clusterName: String, nodegroupName: String, desired: Int)
+    fun updateNodegroupDesired(target: AwsTarget, region: String, clusterName: String, current: EksNodegroupState, desired: Int)
 
     /** 그 namespace 에 ServedModel 이 하나라도 있는지 쿠버네티스 API 로 본다. */
     fun hasServedModel(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, namespace: String): Boolean

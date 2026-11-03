@@ -22,7 +22,7 @@ class EksGpuAccess(
 
         val credential = EksCredential.from(credentialCipher.decrypt(cluster.credential))
         val connection = connectionOf(cluster, credential)
-        return GpuAccess(credential = credential, control = connection?.gpuNodeControlEnabled == true)
+        return GpuAccess(credential = credential, control = connection?.gpuControlOn(credential.clusterName) == true)
     }
 
     fun endpointOf(cluster: Cluster): EksClusterEndpoint =

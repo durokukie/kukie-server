@@ -12,6 +12,7 @@ import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.exception.ClusterErrorCode
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
 import com.duro.kukie.cluster.exception.GpuAddonNotInstalledException
+import com.duro.kukie.cluster.exception.GpuClusterApiFailedException
 import com.duro.kukie.cluster.exception.GpuNodeControlDeniedException
 import com.duro.kukie.cluster.exception.GpuServingDeniedException
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
@@ -28,6 +29,9 @@ import com.duro.kukie.user.UserFixture
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.NullSource
+import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActionsDsl
@@ -104,6 +108,78 @@ class GpuClusterIntegrationTest : IntegrationTest() {
 
         // when & then
         getControl(setup).andExpect { jsonPath("$.control") { value(false) } }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["demo", "de*", "d?mo", "*"])
+    fun `클러스터 이름이 GpuClusterPattern 에 맞으면 control 이 true 다`(pattern: String) {
+        // given
+        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL, gpuNodeControl = true, gpuClusterPattern = pattern)
+
+        // when & then
+        getControl(setup).andExpect { jsonPath("$.control") { value(true) } }
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = ["other", "de?", "Demo"])
+    fun `클러스터 이름이 GpuClusterPattern 밖이거나 패턴이 없으면 control 이 false 다`(pattern: String?) {
+        // given
+        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL, gpuNodeControl = true, gpuClusterPattern = pattern)
+
+        // when & then
+        getControl(setup).andExpect { jsonPath("$.control") { value(false) } }
+    }
+
+    @Test
+    fun `패턴 밖 클러스터면 AWS 를 부르지 않고 노드 수 변경을 거부한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true, gpuClusterPattern = "other-*")
+
+        // when & then
+        putDesired(setup, "gpu", 1).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_NODE_CONTROL_DENIED.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `패턴 밖 클러스터면 쿠버네티스를 부르지 않고 모델 시작과 중지를 거부한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true, gpuClusterPattern = "other-*")
+
+        // when & then
+        postModel(setup, "openai/gpt-oss-20b", 40).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        deleteModel(setup, "gpt-oss-20b").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `AWS 나 클러스터가 처리하지 못하면 GET·PUT·POST·DELETE 모두 502 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        fakeEksAccessGateway.nodegroupReadFailure = GpuClusterApiFailedException()
+        fakeEksAccessGateway.servedModelFailure = GpuClusterApiFailedException()
+
+        // when & then
+        listOf(
+            mockMvc.get("/clusters/${setup.clusterId}/gpu/node-groups") { authorization(setup.accessToken) },
+            putDesired(setup, "gpu", 1),
+            postModel(setup, "openai/gpt-oss-20b", 40),
+            deleteModel(setup, "gpt-oss-20b"),
+        ).forEach { result ->
+            result.andExpect {
+                status { isBadGateway() }
+                jsonPath("$.code") { value(ClusterErrorCode.GPU_CLUSTER_API_FAILED.code) }
+            }
+        }
     }
 
     @Test
@@ -191,7 +267,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.status") { value("UPDATING") }
         }
         fakeEksAccessGateway.nodegroupUpdates shouldBe listOf(
-            FakeEksAccessGateway.NodegroupUpdate(TARGET, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "gpu", 2),
+            FakeEksAccessGateway.NodegroupUpdate(TARGET, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "gpu", 2, min = 0, max = 2),
         )
     }
 
@@ -636,11 +712,16 @@ class GpuClusterIntegrationTest : IntegrationTest() {
         EksNodegroupState(name, instanceTypes.toList(), "ACTIVE", desired = 0, min = 0, max = 2)
 
     /** 스택 알림으로 연결을 마친 팀에 EKS 클러스터를 하나 등록해 둔다. */
-    private fun eksCluster(role: TeamRole, accessLevel: AccessLevel, gpuNodeControl: Boolean = false): Setup {
+    private fun eksCluster(
+        role: TeamRole,
+        accessLevel: AccessLevel,
+        gpuNodeControl: Boolean = false,
+        gpuClusterPattern: String? = "*",
+    ): Setup {
         val user = loggedInUser()
         val teamId = savedTeam(user.user.id to role)
         val connection = AwsConnection(teamId = teamId, createdBy = user.user.id, externalId = EXTERNAL_ID)
-        connection.connect(ACCOUNT_ID, LocalDateTime.now(), null, accessLevel, gpuNodeControl)
+        connection.connect(ACCOUNT_ID, LocalDateTime.now(), null, accessLevel, gpuNodeControl, gpuClusterPattern)
         awsConnectionRepository.save(connection)
         val credential = EksCredential(
             accountId = ACCOUNT_ID,

@@ -33,6 +33,7 @@ import org.springframework.stereotype.Component
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
@@ -54,6 +55,7 @@ import software.amazon.awssdk.services.sts.model.StsException
 import tools.jackson.databind.json.JsonMapper
 import java.io.IOException
 import java.net.URI
+import java.net.URISyntaxException
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -380,8 +382,10 @@ class AwsEksAccessGateway(
         tokenSigner.sign(assume(target), region, clusterName)
 
     override fun listNodegroupStates(target: AwsTarget, region: String, clusterName: String): List<EksNodegroupState> =
-        withSession(target) { credentials ->
-            eks(credentials, region).use { eks -> translate { nodegroupStatesOn(eks, clusterName) } }
+        gpuCall {
+            withSession(target) { credentials ->
+                eks(credentials, region).use { eks -> translate { nodegroupStatesOn(eks, clusterName) } }
+            }
         }
 
     internal fun nodegroupStatesOn(eks: EksClient, clusterName: String): List<EksNodegroupState> =
@@ -398,11 +402,13 @@ class AwsEksAccessGateway(
         region: String,
         clusterName: String,
         nodegroupName: String,
-    ): EksNodegroupState? = withSession(target) { credentials ->
-        eks(credentials, region).use { eks ->
-            translate {
-                ignoringNotFound { eks.describeNodegroup { it.clusterName(clusterName).nodegroupName(nodegroupName) }.nodegroup() }
-                    ?.let { stateOf(nodegroupName, it) }
+    ): EksNodegroupState? = gpuCall {
+        withSession(target) { credentials ->
+            eks(credentials, region).use { eks ->
+                translate {
+                    ignoringNotFound { eks.describeNodegroup { it.clusterName(clusterName).nodegroupName(nodegroupName) }.nodegroup() }
+                        ?.let { stateOf(nodegroupName, it) }
+                }
             }
         }
     }
@@ -423,18 +429,21 @@ class AwsEksAccessGateway(
         target: AwsTarget,
         region: String,
         clusterName: String,
-        nodegroupName: String,
+        current: EksNodegroupState,
         desired: Int,
     ) {
-        withSession(target) { credentials ->
-            eks(credentials, region).use { eks -> updateNodegroupDesiredOn(eks, clusterName, nodegroupName, desired) }
+        gpuCall {
+            withSession(target) { credentials ->
+                eks(credentials, region).use { eks -> updateNodegroupDesiredOn(eks, clusterName, current, desired) }
+            }
         }
     }
 
-    internal fun updateNodegroupDesiredOn(eks: EksClient, clusterName: String, nodegroupName: String, desired: Int) {
+    internal fun updateNodegroupDesiredOn(eks: EksClient, clusterName: String, current: EksNodegroupState, desired: Int) {
         try {
             eks.updateNodegroupConfig { request ->
-                request.clusterName(clusterName).nodegroupName(nodegroupName).scalingConfig { it.desiredSize(desired) }
+                request.clusterName(clusterName).nodegroupName(current.name)
+                    .scalingConfig { it.minSize(current.min).maxSize(current.max).desiredSize(desired) }
             }
         } catch (_: AccessDeniedException) {
             throw GpuNodeControlDeniedException()
@@ -518,29 +527,46 @@ class AwsEksAccessGateway(
         configure: HttpRequest.Builder.() -> HttpRequest.Builder,
     ): HttpResponse<T> {
         val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { throw GpuClusterApiFailedException() }
-        val token = issueToken(target, region, clusterName)
+        val token = gpuCall { issueToken(target, region, clusterName) }
         return HttpClient.newBuilder()
             .sslContext(sslContext)
             .connectTimeout(PROBE_TIMEOUT)
             .followRedirects(HttpClient.Redirect.NEVER)
             .build()
             .use { http ->
-                val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}$path"))
-                    .timeout(KUBERNETES_WRITE_TIMEOUT)
-                    .header("Authorization", "Bearer $token")
-                    .configure()
-                    .build()
                 try {
+                    val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}$path"))
+                        .timeout(KUBERNETES_WRITE_TIMEOUT)
+                        .header("Authorization", "Bearer $token")
+                        .configure()
+                        .build()
                     http.send(request, bodyHandler)
                 } catch (exception: IOException) {
-                    log.warn("쿠버네티스 API 를 부르지 못했습니다: cluster={} reason={}", clusterName, exception.javaClass.simpleName)
-                    throw GpuClusterApiFailedException()
+                    throw kubernetesCallFailed(clusterName, exception)
+                } catch (exception: URISyntaxException) {
+                    throw kubernetesCallFailed(clusterName, exception)
+                } catch (exception: IllegalArgumentException) {
+                    throw kubernetesCallFailed(clusterName, exception)
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                     throw GpuClusterApiFailedException()
                 }
             }
     }
+
+    private fun kubernetesCallFailed(clusterName: String, exception: Exception): GpuClusterApiFailedException {
+        log.warn("쿠버네티스 API 를 부르지 못했습니다: cluster={} reason={}", clusterName, exception.javaClass.simpleName)
+        return GpuClusterApiFailedException()
+    }
+
+    /** GPU API 에서 따로 처리하지 않은 AWS 오류(스로틀링, 403 이 아닌 STS 오류, 네트워크)를 500 대신 정해진 오류로 알린다. 메시지는 남기지 않는다. */
+    internal fun <T> gpuCall(block: () -> T): T =
+        try {
+            block()
+        } catch (exception: SdkException) {
+            log.warn("GPU 요청에서 AWS 를 부르지 못했습니다: reason={}", exception.javaClass.simpleName)
+            throw GpuClusterApiFailedException()
+        }
 
     private fun requireServingSuccess(status: Int, onNotFound: () -> Nothing) {
         when (status) {

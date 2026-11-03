@@ -40,7 +40,7 @@ class UpdateGpuNodeGroupService(
             credential.target,
             credential.region,
             credential.clusterName,
-            command.name,
+            current,
             command.desired,
         )
         return current.copy(desired = command.desired, status = EksNodegroupState.UPDATING)

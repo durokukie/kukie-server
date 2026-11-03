@@ -2,6 +2,7 @@ package com.duro.kukie.cluster.infrastructure
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
 import com.duro.kukie.cluster.domain.AccessLevel
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.eks.EksClient
 import software.amazon.awssdk.services.eks.model.AccessDeniedException
@@ -106,20 +108,20 @@ class AwsEksAccessGatewayTest {
     }
 
     @Test
-    fun `노드 수 변경은 desired 만 보낸다`() {
+    fun `노드 수를 바꿀 때 읽어 둔 min·max 를 desired 와 함께 보낸다`() {
         // given
         val eks = NodegroupEksClient()
 
         // when
-        gateway.updateNodegroupDesiredOn(eks, "demo", "gpu", 2)
+        gateway.updateNodegroupDesiredOn(eks, "demo", GPU_NODE_GROUP, 2)
 
         // then
         eks.updates.single().run {
             clusterName() shouldBe "demo"
             nodegroupName() shouldBe "gpu"
             scalingConfig().desiredSize() shouldBe 2
-            scalingConfig().minSize() shouldBe null
-            scalingConfig().maxSize() shouldBe null
+            scalingConfig().minSize() shouldBe 1
+            scalingConfig().maxSize() shouldBe 3
         }
     }
 
@@ -127,35 +129,123 @@ class AwsEksAccessGatewayTest {
     fun `AWS 가 노드 수 변경을 거부하면 권한 없음으로 바꾼다`() {
         val eks = NodegroupEksClient(updateFailure = AccessDeniedException.builder().statusCode(403).message("denied").build())
 
-        shouldThrow<GpuNodeControlDeniedException> { gateway.updateNodegroupDesiredOn(eks, "demo", "gpu", 2) }
+        shouldThrow<GpuNodeControlDeniedException> { gateway.updateNodegroupDesiredOn(eks, "demo", GPU_NODE_GROUP, 2) }
     }
 
     @Test
     fun `다른 변경이 진행 중이면 바쁘다고 바꾼다`() {
         val eks = NodegroupEksClient(updateFailure = ResourceInUseException.builder().statusCode(409).message("busy").build())
 
-        shouldThrow<NodeGroupBusyException> { gateway.updateNodegroupDesiredOn(eks, "demo", "gpu", 2) }
+        shouldThrow<NodeGroupBusyException> { gateway.updateNodegroupDesiredOn(eks, "demo", GPU_NODE_GROUP, 2) }
     }
 
     @Test
     fun `노드 그룹이 받을 수 없는 상태면 바쁘다고 바꾼다`() {
         val eks = NodegroupEksClient(updateFailure = InvalidRequestException.builder().statusCode(400).message("state").build())
 
-        shouldThrow<NodeGroupBusyException> { gateway.updateNodegroupDesiredOn(eks, "demo", "gpu", 2) }
+        shouldThrow<NodeGroupBusyException> { gateway.updateNodegroupDesiredOn(eks, "demo", GPU_NODE_GROUP, 2) }
     }
 
     @Test
     fun `AWS 가 범위를 벗어났다고 하면 잘못된 노드 수로 바꾼다`() {
         val eks = NodegroupEksClient(updateFailure = InvalidParameterException.builder().statusCode(400).message("range").build())
 
-        shouldThrow<InvalidNodeCountException> { gateway.updateNodegroupDesiredOn(eks, "demo", "gpu", 2) }
+        shouldThrow<InvalidNodeCountException> { gateway.updateNodegroupDesiredOn(eks, "demo", GPU_NODE_GROUP, 2) }
     }
 
     @Test
     fun `바꾸는 사이 노드 그룹이 사라지면 찾을 수 없다고 바꾼다`() {
         val eks = NodegroupEksClient(updateFailure = ResourceNotFoundException.builder().statusCode(404).message("gone").build())
 
-        shouldThrow<GpuNodeGroupNotFoundException> { gateway.updateNodegroupDesiredOn(eks, "demo", "gpu", 2) }
+        shouldThrow<GpuNodeGroupNotFoundException> { gateway.updateNodegroupDesiredOn(eks, "demo", GPU_NODE_GROUP, 2) }
+    }
+
+    @Test
+    fun `따로 처리하지 않은 EKS 오류면 클러스터 실패로 알린다`() {
+        // given
+        val eks = NodegroupEksClient(updateFailure = eksException(500, "ServerException", "server"))
+
+        // when & then
+        shouldThrow<GpuClusterApiFailedException> {
+            gateway.gpuCall { gateway.updateNodegroupDesiredOn(eks, "demo", GPU_NODE_GROUP, 2) }
+        }
+    }
+
+    @Test
+    fun `AWS 를 부르다 네트워크 오류가 나면 클러스터 실패로 알린다`() {
+        shouldThrow<GpuClusterApiFailedException> {
+            gateway.gpuCall { throw SdkClientException.create("timeout") }
+        }
+    }
+
+    @Test
+    fun `세션이 무효한 오류는 여전히 역할을 맡을 수 없다고 알린다`() {
+        shouldThrow<AwsRoleNotAssumableException> {
+            gateway.gpuCall {
+                gateway.withSession(target) { throw eksException(403, "UnrecognizedClientException", INVALID_TOKEN) }
+            }
+        }
+    }
+
+    @Test
+    fun `STS 가 스로틀링하면 노드 그룹 호출이 클러스터 실패로 알린다`() {
+        // given
+        sts.failure = stsException(400, "Throttling")
+
+        // when & then
+        shouldThrow<GpuClusterApiFailedException> { gateway.listNodegroupStates(target, "ap-northeast-2", "demo") }
+        shouldThrow<GpuClusterApiFailedException> { gateway.describeNodegroupState(target, "ap-northeast-2", "demo", "gpu") }
+        shouldThrow<GpuClusterApiFailedException> { gateway.updateNodegroupDesired(target, "ap-northeast-2", "demo", GPU_NODE_GROUP, 2) }
+    }
+
+    @Test
+    fun `STS 가 거부하면 노드 그룹 호출이 역할을 맡을 수 없다고 알린다`() {
+        // given
+        sts.failure = stsException(403, "AccessDenied")
+
+        // when & then
+        shouldThrow<AwsRoleNotAssumableException> { gateway.listNodegroupStates(target, "ap-northeast-2", "demo") }
+    }
+
+    @Test
+    fun `토큰을 만들다 STS 오류가 나면 쿠버네티스 호출이 클러스터 실패로 알린다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(201, calls = calls)
+        sts.failure = stsException(500, "ServiceUnavailable")
+
+        // when & then
+        shouldThrow<GpuClusterApiFailedException> { gateway.hasServedModel(target, "ap-northeast-2", "demo", endpoint, "llm") }
+        shouldThrow<GpuClusterApiFailedException> { gateway.createServedModel(target, "ap-northeast-2", "demo", endpoint, MANIFEST) }
+        shouldThrow<GpuClusterApiFailedException> { gateway.deleteServedModel(target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b") }
+        calls.shouldBeEmpty()
+    }
+
+    @Test
+    fun `토큰을 만들다 네트워크 오류가 나면 쿠버네티스 호출이 클러스터 실패로 알린다`() {
+        // given
+        val endpoint = kubernetesAnswering(201)
+        sts.failure = SdkClientException.create("timeout")
+
+        // when & then
+        shouldThrow<GpuClusterApiFailedException> { gateway.createServedModel(target, "ap-northeast-2", "demo", endpoint, MANIFEST) }
+    }
+
+    @Test
+    fun `토큰을 만들 때 STS 가 거부하면 역할을 맡을 수 없다고 알린다`() {
+        // given
+        val endpoint = kubernetesAnswering(201)
+        sts.failure = stsException(403, "AccessDenied")
+
+        // when & then
+        shouldThrow<AwsRoleNotAssumableException> { gateway.createServedModel(target, "ap-northeast-2", "demo", endpoint, MANIFEST) }
+    }
+
+    @Test
+    fun `API 서버 주소가 잘못되면 클러스터 실패로 알린다`() {
+        val endpoint = EksClusterEndpoint(endpoint = "not a url", caData = "")
+
+        shouldThrow<GpuClusterApiFailedException> { gateway.createServedModel(target, "ap-northeast-2", "demo", endpoint, MANIFEST) }
     }
 
     @Test
@@ -944,6 +1034,7 @@ class AwsEksAccessGatewayTest {
         AccessScope.builder().type(AccessScopeType.NAMESPACE).namespaces(*namespaces).build()
 
     companion object {
+        private val GPU_NODE_GROUP = EksNodegroupState("gpu", listOf("g6e.xlarge"), "ACTIVE", desired = 1, min = 1, max = 3)
         private val MANIFEST = ServedModelManifest(
             namespace = "llm",
             name = "gpt-oss-20b",
@@ -1109,7 +1200,7 @@ class AwsEksAccessGatewayTest {
 
     private class FakeStsClient : StsClient {
         var calls = 0
-        var failure: StsException? = null
+        var failure: RuntimeException? = null
 
         override fun assumeRole(request: AssumeRoleRequest): AssumeRoleResponse {
             calls++

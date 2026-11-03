@@ -53,7 +53,7 @@ enum class ClusterErrorCode(
     GPU_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "AWS 역할로 연결한 EKS 클러스터에서만 할 수 있는 작업입니다."),
     GPU_NODE_CONTROL_DENIED(
         HttpStatus.FORBIDDEN,
-        "GPU 노드 수를 바꿀 권한이 없습니다. CloudFormation 스택의 AccessLevel 을 full, GpuNodeControl 을 true 로 바꿔 주세요.",
+        "GPU 노드 수를 바꿀 권한이 없습니다. CloudFormation 스택의 AccessLevel 이 full, GpuNodeControl 이 true 이고 GpuClusterPattern 이 이 클러스터에 맞는지 확인해 주세요.",
     ),
     GPU_NODE_GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "이 클러스터에서 그 GPU 노드 그룹을 찾을 수 없습니다."),
     NODE_GROUP_BUSY(HttpStatus.CONFLICT, "노드 그룹이 다른 변경을 처리하고 있습니다. 잠시 뒤 다시 시도해 주세요."),
@@ -63,9 +63,9 @@ enum class ClusterErrorCode(
     GPU_ADDON_NOT_INSTALLED(HttpStatus.CONFLICT, "클러스터에 GPU 애드온이 없습니다. 애드온과 llm namespace 를 설치했는지 확인해 주세요."),
     GPU_SERVING_DENIED(
         HttpStatus.FORBIDDEN,
-        "모델을 시작하거나 중지할 권한이 없습니다. CloudFormation 스택의 AccessLevel 을 full, GpuNodeControl 을 true 로 바꿔 주세요.",
+        "모델을 시작하거나 중지할 권한이 없습니다. CloudFormation 스택의 AccessLevel 이 full, GpuNodeControl 이 true 이고 GpuClusterPattern 이 이 클러스터에 맞는지 확인해 주세요.",
     ),
-    GPU_CLUSTER_API_FAILED(HttpStatus.BAD_GATEWAY, "클러스터가 요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
+    GPU_CLUSTER_API_FAILED(HttpStatus.BAD_GATEWAY, "AWS 나 클러스터가 요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
     ;
 
     override val code: String

@@ -196,12 +196,12 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         target: AwsTarget,
         region: String,
         clusterName: String,
-        nodegroupName: String,
+        current: EksNodegroupState,
         desired: Int,
     ) {
         record(target)
         nodegroupUpdateFailure?.let { throw it }
-        nodegroupUpdates += NodegroupUpdate(target, region, clusterName, nodegroupName, desired)
+        nodegroupUpdates += NodegroupUpdate(target, region, clusterName, current.name, desired, current.min, current.max)
     }
 
     override fun hasServedModel(
@@ -287,6 +287,8 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val clusterName: String,
         val nodegroupName: String,
         val desired: Int,
+        val min: Int,
+        val max: Int,
     )
 
     data class ServedModelDeletion(
