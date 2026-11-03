@@ -121,7 +121,7 @@ class RestHuggingFaceClient internal constructor(
         // usedStorage 는 hf download 가 받는 레포 전체 크기다. 목록 API 는 이 값을 받지 않고 400 을 준다
         private val MODEL_EXPAND = LIST_EXPAND + "usedStorage"
         private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
-        private val READ_TIMEOUT: Duration = Duration.ofSeconds(30)
+        private val READ_TIMEOUT: Duration = Duration.ofSeconds(15)
 
         private fun timedRequestFactory() =
             JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build())

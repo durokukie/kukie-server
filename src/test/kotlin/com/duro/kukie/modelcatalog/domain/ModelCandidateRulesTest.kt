@@ -127,6 +127,15 @@ class ModelCandidateRulesTest {
     }
 
     @Test
+    fun `같은 모델이 두 번 오면 한 번만 남긴다`() {
+        // when
+        val selection = ModelCandidateRules.select(listOf(model("openai/m"), model("openai/m")))
+
+        // then
+        selection.kept.map { it.id }.shouldContainExactly("openai/m")
+    }
+
+    @Test
     fun `계정 없는 모델 id 는 버린다`() {
         // when
         val selection = ModelCandidateRules.select(listOf(model("google"), model("gpt2")))

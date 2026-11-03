@@ -14,9 +14,7 @@ import com.duro.kukie.modelcatalog.domain.VerifiedModels
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshFailedException
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshTooSoonException
 import com.duro.kukie.modelcatalog.presentation.dto.response.ModelCandidatesResponse
-import com.duro.kukie.team.domain.TeamMembershipRepository
-import com.duro.kukie.team.domain.TeamRole
-import com.duro.kukie.team.exception.NotTeamAdminException
+import com.duro.kukie.team.application.TeamPermission
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
@@ -27,7 +25,7 @@ class RefreshModelCandidatesService(
     private val huggingFaceClient: HuggingFaceClient,
     private val modelCandidateRepository: ModelCandidateRepository,
     private val modelCandidateRefreshLock: ModelCandidateRefreshLock,
-    private val teamMembershipRepository: TeamMembershipRepository,
+    private val teamPermission: TeamPermission,
     private val huggingFaceProperties: HuggingFaceProperties,
     private val transactionTemplate: TransactionTemplate,
 ) {
@@ -35,18 +33,26 @@ class RefreshModelCandidatesService(
     private val log = logger()
 
     operator fun invoke(userId: UUID): ModelCandidatesResponse {
-        if (!teamMembershipRepository.existsByUserIdAndRole(userId, TeamRole.ADMIN)) throw NotTeamAdminException()
-        if (!modelCandidateRefreshLock.tryAcquire(huggingFaceProperties.refreshCooldown)) {
-            throw ModelCandidateRefreshTooSoonException()
-        }
+        teamPermission.requireAnyTeamAdmin(userId)
+        val lockToken = modelCandidateRefreshLock.tryAcquire(huggingFaceProperties.refreshCooldown)
+            ?: throw ModelCandidateRefreshTooSoonException()
 
         return try {
             val collected = collect()
             val collectedAt = utcNow()
             requireNotNull(transactionTemplate.execute { replaceAll(collected, collectedAt) })
         } catch (exception: Exception) {
-            modelCandidateRefreshLock.release()
+            releaseQuietly(lockToken)
             throw exception
+        }
+    }
+
+    /** 잠금을 못 풀어도 시간이 지나면 풀린다. 원래 실패가 가려지지 않게 삼킨다. */
+    private fun releaseQuietly(lockToken: String) {
+        try {
+            modelCandidateRefreshLock.release(lockToken)
+        } catch (exception: Exception) {
+            log.warn("모델 후보 갱신 잠금을 풀지 못했습니다", exception)
         }
     }
 

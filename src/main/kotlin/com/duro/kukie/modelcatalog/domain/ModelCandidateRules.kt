@@ -54,7 +54,7 @@ object ModelCandidateRules {
     fun select(models: List<HuggingFaceModel>): ModelSelection {
         val kept = mutableListOf<CollectedModel>()
         val dropped = linkedMapOf<String, String>()
-        models.forEach { model ->
+        models.distinctBy { it.id }.forEach { model ->
             val reason = rejection(model)
             if (reason == null) kept += collected(model) else dropped[model.id] = reason
         }

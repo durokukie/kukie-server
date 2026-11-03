@@ -138,6 +138,28 @@ class RestHuggingFaceClientTest {
     }
 
     @Test
+    fun `칸의 타입이 다르거나 id 가 없으면 갱신 실패로 알린다`() {
+        listOf("""[{"id": "openai/m", "likes": "많음"}]""", """[{"likes": 1}]""").forEach { body ->
+            // given
+            server.reset()
+            server.expect(requestTo(startsWith("$API/models?"))).andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
+
+            // when & then
+            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchTrending(50) }
+        }
+    }
+
+    @Test
+    fun `슬래시 없는 id 도 예외 없이 부른다`() {
+        // given
+        server.expect(requestTo(startsWith("$API/models/gpt2/?")))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND))
+
+        // when & then
+        shouldThrow<ModelCandidateRefreshFailedException> { client().fetchModel("gpt2") }
+    }
+
+    @Test
     fun `네트워크 오류면 갱신 실패로 알린다`() {
         // given
         server.expect(ExpectedCount.once(), requestTo(startsWith("$API/models/openai/m?")))
