@@ -56,6 +56,7 @@ hugging-face:
   api-url: https://huggingface.co/api
   token: ${HF_TOKEN:}
   refresh-cooldown: PT1M
+  refresh-lock-timeout: PT5M
 
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}

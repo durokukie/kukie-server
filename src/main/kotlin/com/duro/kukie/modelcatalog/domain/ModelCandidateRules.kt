@@ -85,8 +85,14 @@ object ModelCandidateRules {
         if (paramsB !in MIN_PARAMS_B..MAX_PARAMS_B) return "크기 ${oneDecimal(paramsB)}B (범위 밖)"
         val license = licenseName(model)
         if (license != null && NON_COMMERCIAL.any { it.containsMatchIn(license) }) return "비상업 라이선스 ($license)"
+        if (exceedsColumns(model, license)) return "저장할 수 없는 긴 값"
         return null
     }
+
+    private fun exceedsColumns(model: HuggingFaceModel, license: String?): Boolean =
+        model.id.length > ModelCandidate.MAX_MODEL_ID_LENGTH ||
+            (model.architectures.firstOrNull()?.length ?: 0) > ModelCandidate.MAX_ARCHITECTURE_LENGTH ||
+            (license?.length ?: 0) > ModelCandidate.MAX_LICENSE_LENGTH
 
     private fun collected(model: HuggingFaceModel): CollectedModel {
         val paramsB = requireNotNull(model.totalParams) / PARAMS_PER_B

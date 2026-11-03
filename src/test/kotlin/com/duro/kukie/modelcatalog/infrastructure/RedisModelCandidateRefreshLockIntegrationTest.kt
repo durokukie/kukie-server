@@ -2,16 +2,22 @@ package com.duro.kukie.modelcatalog.infrastructure
 
 import com.duro.kukie.modelcatalog.domain.ModelCandidateRefreshLock
 import com.duro.kukie.support.IntegrationTest
+import io.kotest.matchers.longs.shouldBeGreaterThan
+import io.kotest.matchers.longs.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.data.redis.core.StringRedisTemplate
 import java.time.Duration
 
 class RedisModelCandidateRefreshLockIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var lock: ModelCandidateRefreshLock
+
+    @Autowired
+    private lateinit var redisTemplate: StringRedisTemplate
 
     @Test
     fun `잠금을 잡은 쪽의 토큰으로만 풀 수 있다`() {
@@ -33,6 +39,24 @@ class RedisModelCandidateRefreshLockIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `잠금을 잡은 쪽만 남은 시간을 바꿀 수 있다`() {
+        // given
+        val token = lock.tryAcquire(TTL).shouldNotBeNull()
+
+        // when
+        lock.holdFor("다른-토큰", Duration.ofSeconds(5))
+
+        // then
+        remainingSeconds() shouldBeGreaterThan 5
+
+        // when
+        lock.holdFor(token, Duration.ofSeconds(5))
+
+        // then
+        remainingSeconds() shouldBeLessThanOrEqual 5
+    }
+
+    @Test
     fun `만료 뒤 늦게 실패한 요청은 새로 잡은 잠금을 풀지 못한다`() {
         // given
         val expired = lock.tryAcquire(Duration.ofMillis(50)).shouldNotBeNull()
@@ -45,6 +69,8 @@ class RedisModelCandidateRefreshLockIntegrationTest : IntegrationTest() {
         // then
         lock.tryAcquire(TTL).shouldBeNull()
     }
+
+    private fun remainingSeconds(): Long = redisTemplate.getExpire("model-candidate:refresh-lock")
 
     companion object {
         private val TTL: Duration = Duration.ofMinutes(1)

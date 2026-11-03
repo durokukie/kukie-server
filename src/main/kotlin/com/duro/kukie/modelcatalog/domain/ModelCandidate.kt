@@ -27,7 +27,7 @@ class ModelCandidate(
     var id: UUID = UuidCreator.getTimeOrderedEpoch()
         protected set
 
-    @Column(name = "model_id", nullable = false, length = 200)
+    @Column(name = "model_id", nullable = false, length = MAX_MODEL_ID_LENGTH)
     var modelId = modelId
         protected set
 
@@ -43,11 +43,11 @@ class ModelCandidate(
     var weightGb = collected.weightGb
         protected set
 
-    @Column(nullable = false, length = 200)
+    @Column(nullable = false, length = MAX_ARCHITECTURE_LENGTH)
     var architecture = collected.architecture
         protected set
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, length = MAX_LICENSE_LENGTH)
     var license = collected.license
         protected set
 
@@ -105,5 +105,11 @@ class ModelCandidate(
         this.displayOrder = displayOrder
         previousCollectedAt = this.collectedAt
         this.collectedAt = collectedAt
+    }
+
+    companion object {
+        const val MAX_MODEL_ID_LENGTH = 200
+        const val MAX_ARCHITECTURE_LENGTH = 200
+        const val MAX_LICENSE_LENGTH = 100
     }
 }

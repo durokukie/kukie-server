@@ -153,6 +153,32 @@ class RestHuggingFaceClientTest {
     }
 
     @Test
+    fun `가중치를 consolidated 와 model 두 벌로 올린 레포는 한 벌만 더한다`() {
+        // given
+        server.expect(requestTo(startsWith("$API/models/mistralai/Mistral-Small?")))
+            .andRespond(withSuccess(siblings("consolidated.safetensors" to 48, "model-00001-of-00002.safetensors" to 24, "model-00002-of-00002.safetensors" to 24), MediaType.APPLICATION_JSON))
+
+        // when
+        val model = client().fetchModel("mistralai/Mistral-Small")
+
+        // then
+        model.weightBytes shouldBe 48_000_000_000
+    }
+
+    @Test
+    fun `consolidated 만 있거나 이름이 다른 조각이면 그대로 더한다`() {
+        // given
+        server.expect(requestTo(startsWith("$API/models/mistralai/Large?")))
+            .andRespond(withSuccess(siblings("consolidated-00001-of-00002.safetensors" to 5, "consolidated-00002-of-00002.safetensors" to 5), MediaType.APPLICATION_JSON))
+        server.expect(requestTo(startsWith("$API/models/Qwen/Layers?")))
+            .andRespond(withSuccess(siblings("layers-0.safetensors" to 10, "layers-1.safetensors" to 20), MediaType.APPLICATION_JSON))
+
+        // when & then
+        client().fetchModel("mistralai/Large").weightBytes shouldBe 10_000_000_000
+        client().fetchModel("Qwen/Layers").weightBytes shouldBe 30_000_000_000
+    }
+
+    @Test
     fun `칸의 타입이 다르거나 id 가 없으면 갱신 실패로 알린다`() {
         listOf("""[{"id": "openai/m", "likes": "많음"}]""", """[{"likes": 1}]""").forEach { body ->
             // given
@@ -182,6 +208,11 @@ class RestHuggingFaceClientTest {
 
         // when & then
         shouldThrow<ModelCandidateRefreshFailedException> { client().fetchModel("openai/m") }
+    }
+
+    private fun siblings(vararg files: Pair<String, Int>): String {
+        val entries = files.joinToString(",") { (name, gb) -> """{"rfilename": "$name", "size": ${gb}000000000}""" }
+        return """{"id": "m/m", "siblings": [$entries]}"""
     }
 
     private fun listing() = """

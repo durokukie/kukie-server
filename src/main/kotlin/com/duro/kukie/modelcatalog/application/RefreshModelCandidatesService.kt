@@ -34,16 +34,28 @@ class RefreshModelCandidatesService(
 
     operator fun invoke(userId: UUID): ModelCandidatesResponse {
         teamPermission.requireAnyTeamAdmin(userId)
-        val lockToken = modelCandidateRefreshLock.tryAcquire(huggingFaceProperties.refreshCooldown)
+        val lockToken = modelCandidateRefreshLock.tryAcquire(huggingFaceProperties.refreshLockTimeout)
             ?: throw ModelCandidateRefreshTooSoonException()
 
-        return try {
+        val response = try {
             val collected = collect()
             val collectedAt = utcNow()
             requireNotNull(transactionTemplate.execute { replaceAll(collected, collectedAt) })
         } catch (exception: Exception) {
             releaseQuietly(lockToken)
             throw exception
+        }
+        startCooldown(lockToken)
+
+        return response
+    }
+
+    /** 이미 저장한 뒤라 실패로 돌리지 않는다. 그러면 잠금이 refreshLockTimeout 까지 남는다. */
+    private fun startCooldown(lockToken: String) {
+        try {
+            modelCandidateRefreshLock.holdFor(lockToken, huggingFaceProperties.refreshCooldown)
+        } catch (exception: Exception) {
+            log.warn("모델 후보 갱신 대기 시간을 정하지 못했습니다", exception)
         }
     }
 

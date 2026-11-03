@@ -13,6 +13,8 @@ import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.user.UserFixture
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.longs.shouldBeGreaterThan
+import io.kotest.matchers.longs.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -285,6 +287,31 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         refresh(user.accessToken).andExpect {
             status { isOk() }
             jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
+        }
+    }
+
+    @Test
+    fun `갱신이 도는 동안에는 잠금을 쥐고 성공한 뒤부터 60초를 센다`() {
+        // given
+        val user = teamAdmin()
+        var remainingDuringCall = 0L
+        var secondRefreshStatus = 0
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.onCall = {
+            fakeHuggingFaceClient.onCall = {}
+            remainingDuringCall = redisTemplate.getExpire(REFRESH_LOCK_KEY)
+            secondRefreshStatus = refresh(user.accessToken).andReturn().response.status
+        }
+
+        // when
+        refresh(user.accessToken).andExpect { status { isOk() } }
+
+        // then
+        secondRefreshStatus shouldBe 429
+        remainingDuringCall shouldBeGreaterThan 60
+        redisTemplate.getExpire(REFRESH_LOCK_KEY).let {
+            it shouldBeGreaterThan 0
+            it shouldBeLessThanOrEqual 60
         }
     }
 

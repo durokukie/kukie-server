@@ -150,6 +150,24 @@ class ModelCandidateRulesTest {
     }
 
     @Test
+    fun `칸보다 긴 값이 있는 모델은 버려 갱신이 실패하지 않게 한다`() {
+        // given
+        val models = listOf(
+            model("openai/long-license", license = "x".repeat(ModelCandidate.MAX_LICENSE_LENGTH + 1)),
+            model("openai/long-architecture", architecture = "x".repeat(ModelCandidate.MAX_ARCHITECTURE_LENGTH + 1)),
+            model("openai/" + "x".repeat(ModelCandidate.MAX_MODEL_ID_LENGTH)),
+            model("openai/ok"),
+        )
+
+        // when
+        val selection = ModelCandidateRules.select(models)
+
+        // then
+        selection.kept.map { it.id }.shouldContainExactly("openai/ok")
+        selection.dropped.values.toSet() shouldBe setOf("저장할 수 없는 긴 값")
+    }
+
+    @Test
     fun `같은 모델이 두 번 오면 한 번만 남긴다`() {
         // when
         val selection = ModelCandidateRules.select(listOf(model("openai/m"), model("openai/m")))

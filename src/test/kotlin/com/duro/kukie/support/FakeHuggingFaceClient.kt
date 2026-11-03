@@ -16,12 +16,16 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
 
     var failing = false
 
+    /** 허깅페이스를 부르는 순간에 할 일. 호출 중인 상태를 볼 때 쓴다. */
+    var onCall: () -> Unit = {}
+
     /** 허깅페이스를 부른 횟수. 읽기가 허깅페이스를 부르지 않는지 본다. */
     var calls = 0
         private set
 
     override fun fetchTrending(limit: Int): List<HuggingFaceModel> {
         calls++
+        onCall()
         if (failing) throw ModelCandidateRefreshFailedException()
         return trending
     }
@@ -37,6 +41,7 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
         models.clear()
         missing.clear()
         failing = false
+        onCall = {}
         calls = 0
     }
 }

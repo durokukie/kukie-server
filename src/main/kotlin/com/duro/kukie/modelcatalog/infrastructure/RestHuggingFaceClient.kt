@@ -97,11 +97,7 @@ class RestHuggingFaceClient internal constructor(
             id = id,
             totalParams = safetensors?.total,
             usedStorageBytes = usedStorage,
-            weightBytes = siblings
-                ?.filter { it.rfilename.endsWith(".safetensors") && "/" !in it.rfilename }
-                ?.mapNotNull { it.size }
-                ?.takeIf { it.isNotEmpty() }
-                ?.sum(),
+            weightBytes = weightBytes(),
             architectures = config?.architectures.orEmpty(),
             tags = tags.orEmpty(),
             gated = when (gated) {
@@ -112,14 +108,20 @@ class RestHuggingFaceClient internal constructor(
             likes = likes ?: 0,
             createdAt = createdAt,
         )
+
+        // Mistral 레포는 같은 가중치를 consolidated 와 model 두 벌로 올린다. 둘 다 더하면 두 배가 된다
+        private fun weightBytes(): Long? {
+            val root = siblings.orEmpty().filter { it.rfilename.endsWith(".safetensors") && "/" !in it.rfilename }
+            val weights = root.filterNot { it.rfilename.startsWith("consolidated") }.ifEmpty { root }
+            return weights.mapNotNull { it.size }.takeIf { it.isNotEmpty() }?.sum()
+        }
     }
 
     private class SafetensorsEntry(
         val total: Long?,
     )
 
-    private class SiblingEntry(
-        val rfilename: String,
+    private class SiblingEntry(        val rfilename: String,
         val size: Long?,
     )
 
