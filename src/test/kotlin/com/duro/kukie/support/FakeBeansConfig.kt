@@ -34,4 +34,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeStackNoticeResponder(): FakeStackNoticeResponder = FakeStackNoticeResponder()
+
+    @Bean
+    @Primary
+    fun fakeHuggingFaceClient(): FakeHuggingFaceClient = FakeHuggingFaceClient()
 }

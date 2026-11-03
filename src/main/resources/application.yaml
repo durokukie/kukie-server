@@ -51,6 +51,13 @@ github-app:
   client-id: ${GITHUB_APP_CLIENT_ID:}
   client-secret: ${GITHUB_APP_CLIENT_SECRET:}
 
+# GPU 화면의 모델 후보를 받아 오는 허깅페이스 API. 토큰이 없으면 익명으로 부른다
+hugging-face:
+  api-url: https://huggingface.co/api
+  token: ${HF_TOKEN:}
+  refresh-cooldown: PT1M
+  refresh-lock-timeout: PT5M
+
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}
   allow-local: ${KUKIE_ALLOW_LOCAL_CLUSTER:false}

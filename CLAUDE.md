@@ -33,6 +33,7 @@ Package layout is **feature-first** with a shared `global` package:
 - `cluster` — Team-owned Kubernetes clusters (uploaded kubeconfigs and customer AWS EKS via STS AssumeRole/CloudFormation) and AES-256-GCM encrypted credentials (`Cluster`, `AwsConnection`).
 - `chat` — Cluster-bound conversation sessions (`ChatSession`, exposed at `/conversations`) and agent execution runs (`ChatRun`).
 - `actionplan` — Guardrail state machine (`ActionPlan`) for mutating agent tool calls: dry-run, approval/rejection, and execution results.
+- `modelcatalog` — Hugging Face model candidates for the GPU view (`ModelCandidate`, a shared table with no team). A refresh button calls the Hugging Face API, applies `ModelCandidateRules`, and overwrites the table; reads never call Hugging Face. Only `VerifiedModels` makes a model verified.
 - `gitops` — GitHub App installs bound to teams (`GitHubInstallation`, one team per installation), cluster ↔ manifest repo links (`ManifestRepo`, normalized lowercase `owner/repo`), and repo-scoped installation tokens for the agent. The App private key is used only in `GitHubAppCredentials` (App JWT signing + token cache).
 
 ### Layers
