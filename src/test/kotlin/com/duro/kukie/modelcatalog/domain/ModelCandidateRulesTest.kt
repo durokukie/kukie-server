@@ -60,7 +60,7 @@ class ModelCandidateRulesTest {
     }
 
     @Test
-    fun `후보에 파라미터 수와 라이선스와 vLLM 지원과 들어가는 GPU 를 담는다`() {
+    fun `후보에 파라미터 수와 라이선스와 vLLM 지원을 담는다`() {
         // given
         val listing = trendingFixture()
 
@@ -75,23 +75,31 @@ class ModelCandidateRulesTest {
         candidate.licenseNote shouldBe null
         candidate.vllmSupport shouldBe VllmSupport.UPSTREAM
         candidate.gated shouldBe GatedAccess.NONE
-        candidate.fitsGpus.shouldContainExactly("pro6000")
         candidate.registeredOn shouldBe LocalDate.of(2025, 8, 4)
     }
 
     @Test
-    fun `레포 크기를 GB 로 담는다`() {
+    fun `파일 크기로 내려받을 크기와 가중치 크기를 채운다`() {
+        // given
+        val candidate = keptOne(model("openai/gpt-oss-20b"))
+
         // when
-        val candidate = keptOne(model("openai/gpt-oss-20b", usedStorageGb = 41.44))
+        val filled = ModelCandidateRules.withRepoFiles(candidate, model("openai/gpt-oss-20b", usedStorageGb = 41.44, weightGb = 13.84))
 
         // then
-        candidate.sizeGb shouldBe 41.4
+        filled.sizeGb shouldBe 41.4
+        filled.weightGb shouldBe 13.8
     }
 
     @Test
-    fun `크기 상한으로 들어가는 GPU 를 정한다`() {
+    fun `가중치 크기로 들어가는 GPU 를 정한다`() {
+        // given
+        val candidate = keptOne(model("openai/m"))
+
         // when
-        val fits = listOf(20.0, 35.0, 35.1, 130.0).map { keptOne(model("openai/m", paramsB = it)).fitsGpus }
+        val fits = listOf(13.8, 35.0, 35.1, 66.2, 73.0, 79.6).map {
+            ModelCandidateRules.withRepoFiles(candidate, model("openai/m", weightGb = it)).fitsGpus
+        }
 
         // then
         fits.shouldContainExactly(
@@ -99,7 +107,22 @@ class ModelCandidateRulesTest {
             listOf("l40s", "pro6000"),
             listOf("pro6000"),
             listOf("pro6000"),
+            listOf("pro6000"),
+            emptyList(),
         )
+    }
+
+    @Test
+    fun `가중치 크기를 모르면 들어가는 GPU 가 없다`() {
+        // given
+        val candidate = keptOne(model("openai/m"))
+
+        // when
+        val filled = ModelCandidateRules.withRepoFiles(candidate, model("openai/m", weightGb = null))
+
+        // then
+        filled.fitsGpus.shouldBeEmpty()
+        filled.weightGb shouldBe null
     }
 
     @Test

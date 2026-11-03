@@ -53,6 +53,7 @@ class RestHuggingFaceClient internal constructor(
             restClient.get()
                 .uri {
                     it.path("/models/{author}/{name}")
+                        .queryParam("blobs", true)
                         .queryParam("expand[]", *MODEL_EXPAND)
                         .build(modelId.substringBefore("/"), modelId.substringAfter("/", ""))
                 }
@@ -90,11 +91,17 @@ class RestHuggingFaceClient internal constructor(
         val usedStorage: Long?,
         val safetensors: SafetensorsEntry?,
         val config: ConfigEntry?,
+        val siblings: List<SiblingEntry>?,
     ) {
         fun toModel() = HuggingFaceModel(
             id = id,
             totalParams = safetensors?.total,
             usedStorageBytes = usedStorage,
+            weightBytes = siblings
+                ?.filter { it.rfilename.endsWith(".safetensors") && "/" !in it.rfilename }
+                ?.mapNotNull { it.size }
+                ?.takeIf { it.isNotEmpty() }
+                ?.sum(),
             architectures = config?.architectures.orEmpty(),
             tags = tags.orEmpty(),
             gated = when (gated) {
@@ -111,6 +118,11 @@ class RestHuggingFaceClient internal constructor(
         val total: Long?,
     )
 
+    private class SiblingEntry(
+        val rfilename: String,
+        val size: Long?,
+    )
+
     private class ConfigEntry(
         val architectures: List<String>?,
     )
@@ -118,8 +130,8 @@ class RestHuggingFaceClient internal constructor(
     companion object {
         private val LIST_EXPAND = arrayOf<Any>("safetensors", "config", "gated", "createdAt", "likes", "tags")
 
-        // usedStorage 는 hf download 가 받는 레포 전체 크기다. 목록 API 는 이 값을 받지 않고 400 을 준다
-        private val MODEL_EXPAND = LIST_EXPAND + "usedStorage"
+        // usedStorage 는 hf download 가 받는 레포 전체 크기고 목록 API 는 이 값을 400 으로 거부한다. 파일 크기는 blobs 로 받는다
+        private val MODEL_EXPAND = arrayOf<Any>(*LIST_EXPAND, "usedStorage", "siblings")
         private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
         private val READ_TIMEOUT: Duration = Duration.ofSeconds(15)
 

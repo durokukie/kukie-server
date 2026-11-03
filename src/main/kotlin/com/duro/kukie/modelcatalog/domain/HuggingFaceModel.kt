@@ -5,6 +5,8 @@ data class HuggingFaceModel(
     val id: String,
     val totalParams: Long?,
     val usedStorageBytes: Long?,
+    /** 레포 루트의 safetensors 파일 크기 합. 파일 정보를 받지 않았거나 파일이 없으면 null. */
+    val weightBytes: Long?,
     val architectures: List<String>,
     val tags: List<String>,
     val gated: GatedAccess,

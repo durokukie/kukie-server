@@ -9,6 +9,7 @@ object ModelCatalogFixture {
         id: String,
         paramsB: Double? = 21.0,
         usedStorageGb: Double? = null,
+        weightGb: Double? = null,
         license: String? = "apache-2.0",
         architecture: String? = "LlamaForCausalLM",
         gated: GatedAccess = GatedAccess.NONE,
@@ -16,6 +17,7 @@ object ModelCatalogFixture {
         id = id,
         totalParams = paramsB?.let { (it * 1e9).toLong() },
         usedStorageBytes = usedStorageGb?.let { (it * 1e9).toLong() },
+        weightBytes = weightGb?.let { (it * 1e9).toLong() },
         architectures = listOfNotNull(architecture),
         tags = listOfNotNull(license?.let { "license:$it" }, "transformers"),
         gated = gated,
@@ -27,6 +29,7 @@ object ModelCatalogFixture {
         id = "openai/gpt-oss-20b",
         paramsB = 20.914757184,
         usedStorageGb = 41.4,
+        weightGb = 13.8,
         architecture = "GptOssForCausalLM",
     )
 }

@@ -39,6 +39,10 @@ class ModelCandidate(
     var sizeGb = collected.sizeGb
         protected set
 
+    @Column(name = "weight_gb")
+    var weightGb = collected.weightGb
+        protected set
+
     @Column(nullable = false, length = 200)
     var architecture = collected.architecture
         protected set
@@ -89,6 +93,7 @@ class ModelCandidate(
     fun refresh(collected: CollectedModel, displayOrder: Int, collectedAt: LocalDateTime) {
         paramsB = collected.paramsB
         sizeGb = collected.sizeGb
+        weightGb = collected.weightGb
         architecture = collected.architecture
         license = collected.license
         licenseNote = collected.licenseNote

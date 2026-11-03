@@ -6,13 +6,14 @@ import java.time.format.DateTimeParseException
 data class CollectedModel(
     val id: String,
     val paramsB: Double,
-    val sizeGb: Double?,
+    val sizeGb: Double? = null,
+    val weightGb: Double? = null,
     val architecture: String,
     val license: String,
     val licenseNote: String?,
     val vllmSupport: VllmSupport,
     val gated: GatedAccess,
-    val fitsGpus: List<String>,
+    val fitsGpus: List<String> = emptyList(),
     val likes: Int,
     val registeredOn: LocalDate?,
 )
@@ -23,14 +24,17 @@ data class ModelSelection(
     val dropped: Map<String, String>,
 )
 
-/** 허깅페이스 트렌딩 목록에서 GPU 1장에 올릴 수 있고 라이선스가 걸리지 않는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
+/** 허깅페이스 트렌딩 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
 object ModelCandidateRules {
 
     const val MIN_PARAMS_B = 20.0
     const val MAX_PARAMS_B = 130.0
 
-    /** GPU 1장에 들어가는 파라미터 수 상한. L40S 는 FP8 실측, RTX PRO 6000 은 4bit 어림이다. */
-    val GPU_MAX_PARAMS_B: Map<String, Double> = linkedMapOf("l40s" to 35.0, "pro6000" to MAX_PARAMS_B)
+    /**
+     * GPU 1장에 올릴 수 있는 가중치 크기. 나머지 메모리는 KV 캐시 자리다.
+     * L40S 46GB 는 2026-10-25 에 31GB 모델이 뜨고 KV 자리가 남은 실측에서 잡았고, RTX PRO 6000 96GB 는 같은 비율로 어림했다.
+     */
+    val GPU_MAX_WEIGHT_GB: Map<String, Double> = linkedMapOf("l40s" to 35.0, "pro6000" to 73.0)
 
     val AUTHORS: Set<String> = listOf(
         "Qwen", "deepseek-ai", "zai-org", "KRAFTON", "openai", "google", "mistralai", "meta-llama",
@@ -61,8 +65,15 @@ object ModelCandidateRules {
         return ModelSelection(kept, dropped)
     }
 
-    fun sizeGb(model: HuggingFaceModel): Double? =
-        model.usedStorageBytes?.takeIf { it > 0 }?.let { oneDecimal(it / BYTES_PER_GB) }
+    /** 모델별로 받은 파일 크기로 내려받을 크기와 들어가는 GPU 를 채운다. 가중치 크기를 모르면 들어가는 GPU 가 없다고 본다. */
+    fun withRepoFiles(model: CollectedModel, details: HuggingFaceModel): CollectedModel {
+        val weightGb = details.weightBytes?.takeIf { it > 0 }?.let { it / BYTES_PER_GB }
+        return model.copy(
+            sizeGb = details.usedStorageBytes?.takeIf { it > 0 }?.let { oneDecimal(it / BYTES_PER_GB) },
+            weightGb = weightGb?.let(::oneDecimal),
+            fitsGpus = if (weightGb == null) emptyList() else GPU_MAX_WEIGHT_GB.filterValues { weightGb <= it }.keys.toList(),
+        )
+    }
 
     private fun rejection(model: HuggingFaceModel): String? {
         val author = model.id.substringBefore("/")
@@ -83,13 +94,11 @@ object ModelCandidateRules {
         return CollectedModel(
             id = model.id,
             paramsB = oneDecimal(paramsB),
-            sizeGb = sizeGb(model),
             architecture = model.architectures.firstOrNull() ?: "?",
             license = license ?: "?",
             licenseNote = licenseNote(license),
             vllmSupport = vllmSupport(model.architectures.firstOrNull()),
             gated = model.gated,
-            fitsGpus = GPU_MAX_PARAMS_B.filterValues { paramsB <= it }.keys.toList(),
             likes = model.likes,
             registeredOn = registeredOn(model.createdAt),
         )

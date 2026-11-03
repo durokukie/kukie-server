@@ -14,8 +14,9 @@ interface ModelCandidateControllerDocs {
     @Operation(
         summary = "모델 후보 목록",
         description = "GPU 화면에서 고를 허깅페이스 모델 후보를 DB 에서 읽어 줍니다. 허깅페이스를 부르지 않습니다. " +
-            "실측한 모델만 verified 가 true 이고 먼저 옵니다. gpus 는 크기로 어림한 값이라 실측이 아니며, " +
-            "maxConcurrency 는 measuredGpu 에서 잰 값입니다. sizeGb 는 hf download 가 받는 레포 전체 크기입니다. 아직 갱신한 적이 없으면 generatedAt 이 null 이고 목록이 비어 있습니다.",
+            "실측한 모델만 verified 가 true 이고 먼저 옵니다. gpus 는 가중치 크기로 어림한 값이라 실측이 아니고 비어 있으면 " +
+            "어느 GPU 에도 안 들어가거나 크기를 모른다는 뜻입니다. maxConcurrency 는 measuredGpu 에서 잰 값입니다. " +
+            "sizeGb 는 hf download 가 받는 레포 전체 크기, weightGb 는 GPU 에 올라가는 가중치 파일 크기입니다. 아직 갱신한 적이 없으면 generatedAt 이 null 이고 목록이 비어 있습니다.",
     )
     fun getModelCandidates(): ResponseEntity<ModelCandidatesResponse>
 

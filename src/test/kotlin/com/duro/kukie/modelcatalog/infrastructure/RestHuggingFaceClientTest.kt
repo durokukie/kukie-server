@@ -96,13 +96,27 @@ class RestHuggingFaceClientTest {
     }
 
     @Test
-    fun `모델 하나를 id 로 받을 때는 레포 크기까지 받는다`() {
+    fun `모델 하나를 id 로 받을 때는 레포 크기와 루트의 가중치 파일 크기까지 받는다`() {
         // given
         server.expect(requestTo(startsWith("$API/models/openai/gpt-oss-20b?")))
             .andExpect(requestTo(containsString("usedStorage")))
+            .andExpect(requestTo(containsString("siblings")))
+            .andExpect(queryParam("blobs", "true"))
             .andRespond(
                 withSuccess(
-                    """{"id": "openai/gpt-oss-20b", "gated": false, "usedStorage": 41400000000}""",
+                    """
+                    {
+                      "id": "openai/gpt-oss-20b",
+                      "gated": false,
+                      "usedStorage": 41400000000,
+                      "siblings": [
+                        {"rfilename": "model-00001.safetensors", "size": 9000000000},
+                        {"rfilename": "model-00002.safetensors", "size": 4800000000},
+                        {"rfilename": "original/model.safetensors", "size": 13800000000},
+                        {"rfilename": "config.json", "size": 1000}
+                      ]
+                    }
+                    """.trimIndent(),
                     MediaType.APPLICATION_JSON,
                 ),
             )
@@ -113,6 +127,7 @@ class RestHuggingFaceClientTest {
         // then
         model.id shouldBe "openai/gpt-oss-20b"
         model.usedStorageBytes shouldBe 41_400_000_000
+        model.weightBytes shouldBe 13_800_000_000
         server.verify()
     }
 

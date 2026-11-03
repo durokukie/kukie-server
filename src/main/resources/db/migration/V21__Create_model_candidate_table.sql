@@ -4,6 +4,7 @@ create table tbl_model_candidate(
     model_id varchar(200) not null,
     params_b double precision not null,
     size_gb double precision,
+    weight_gb double precision,
     architecture varchar(200) not null,
     license varchar(100) not null,
     license_note varchar(50),
