@@ -14,29 +14,40 @@ import com.duro.kukie.modelcatalog.domain.VerifiedModels
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshFailedException
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshTooSoonException
 import com.duro.kukie.modelcatalog.presentation.dto.response.ModelCandidatesResponse
+import com.duro.kukie.team.domain.TeamMembershipRepository
+import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.team.exception.NotTeamAdminException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
+import java.util.UUID
 
 @Service
 class RefreshModelCandidatesService(
     private val huggingFaceClient: HuggingFaceClient,
     private val modelCandidateRepository: ModelCandidateRepository,
     private val modelCandidateRefreshLock: ModelCandidateRefreshLock,
+    private val teamMembershipRepository: TeamMembershipRepository,
     private val huggingFaceProperties: HuggingFaceProperties,
     private val transactionTemplate: TransactionTemplate,
 ) {
 
     private val log = logger()
 
-    operator fun invoke(): ModelCandidatesResponse {
+    operator fun invoke(userId: UUID): ModelCandidatesResponse {
+        if (!teamMembershipRepository.existsByUserIdAndRole(userId, TeamRole.ADMIN)) throw NotTeamAdminException()
         if (!modelCandidateRefreshLock.tryAcquire(huggingFaceProperties.refreshCooldown)) {
             throw ModelCandidateRefreshTooSoonException()
         }
-        val collected = collect()
-        val collectedAt = utcNow()
 
-        return requireNotNull(transactionTemplate.execute { replaceAll(collected, collectedAt) })
+        return try {
+            val collected = collect()
+            val collectedAt = utcNow()
+            requireNotNull(transactionTemplate.execute { replaceAll(collected, collectedAt) })
+        } catch (exception: Exception) {
+            modelCandidateRefreshLock.release()
+            throw exception
+        }
     }
 
     private fun collect(): List<CollectedModel> {

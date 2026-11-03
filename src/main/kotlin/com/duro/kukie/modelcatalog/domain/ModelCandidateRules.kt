@@ -67,7 +67,7 @@ object ModelCandidateRules {
     private fun rejection(model: HuggingFaceModel): String? {
         val author = model.id.substringBefore("/")
         val name = model.id.substringAfter("/", "")
-        if (author.lowercase() !in AUTHORS) return "원작자 아님 ($author)"
+        if (author.lowercase() !in AUTHORS || name.isEmpty()) return "원작자 아님 ($author)"
         VARIANT_PATTERNS.firstOrNull { name.contains(it, ignoreCase = true) }?.let { return "변형 이름 ($it)" }
         val total = model.totalParams?.takeIf { it > 0 } ?: return "파라미터 수 없음 (safetensors 아님)"
         val paramsB = total / PARAMS_PER_B

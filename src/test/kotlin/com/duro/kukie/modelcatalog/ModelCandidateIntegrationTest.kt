@@ -8,6 +8,10 @@ import com.duro.kukie.modelcatalog.domain.ModelCandidateRepository
 import com.duro.kukie.modelcatalog.exception.ModelCatalogErrorCode
 import com.duro.kukie.support.FakeHuggingFaceClient
 import com.duro.kukie.support.IntegrationTest
+import com.duro.kukie.support.LoggedInUser
+import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.team.exception.TeamErrorCode
+import com.duro.kukie.user.UserFixture
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -33,7 +37,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `갱신하면 허깅페이스 후보를 거르고 저장해 약속한 형태로 준다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(
             model("OBLITERATUS/gpt-oss-20b-obliterated"),
             model("Qwen/Qwen3-32B", paramsB = 32.8, usedStorageGb = 66.0, license = "llama3.1"),
@@ -76,7 +80,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `저장된 목록을 읽을 때는 허깅페이스를 부르지 않는다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
         refresh(user.accessToken)
         val calls = fakeHuggingFaceClient.calls
@@ -113,7 +117,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `트렌딩에서 빠진 검증 모델은 따로 받아 후보에 남긴다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(model("Qwen/Qwen3-32B"))
         fakeHuggingFaceClient.models["openai/gpt-oss-20b"] = gptOss20b()
 
@@ -129,7 +133,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `다시 갱신하면 덮어쓰고 빠진 모델을 지우며 이전 수집 시각을 남긴다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
         refresh(user.accessToken)
         val firstCollectedAt = saved("openai/gpt-oss-20b").collectedAt
@@ -152,7 +156,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `크기를 읽지 못한 후보가 있으면 저장하지 않는다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
         fakeHuggingFaceClient.missing += "Qwen/Qwen3-32B"
 
@@ -164,7 +168,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `허깅페이스를 읽지 못하면 502 를 주고 저장된 목록을 그대로 둔다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(gptOss20b())
         refresh(user.accessToken)
         val collectedAt = saved("openai/gpt-oss-20b").collectedAt
@@ -174,7 +178,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         // when & then
         refresh(user.accessToken).andExpect {
             status { isBadGateway() }
-            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATE_REFRESH_FAILED.code) }
+            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATES_REFRESH_FAILED.code) }
         }
         saved("openai/gpt-oss-20b").collectedAt shouldBe collectedAt
     }
@@ -182,7 +186,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `빈 목록이 오면 저장된 목록을 지우지 않는다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(gptOss20b())
         refresh(user.accessToken)
         fakeHuggingFaceClient.trending = emptyList()
@@ -196,13 +200,13 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `검증된 모델이 규칙에 걸리면 갱신하지 않는다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(model("openai/gpt-oss-20b", license = "cc-by-nc-4.0"))
 
         // when & then
         refresh(user.accessToken).andExpect {
             status { isBadGateway() }
-            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATE_REFRESH_FAILED.code) }
+            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATES_REFRESH_FAILED.code) }
         }
         modelCandidateRepository.count() shouldBe 0
     }
@@ -210,7 +214,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `이름이 바뀐 검증 모델은 갱신하지 않는다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(model("Qwen/Qwen3-32B"))
         fakeHuggingFaceClient.models["openai/gpt-oss-20b"] = model("openai/renamed")
 
@@ -222,7 +226,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Test
     fun `방금 갱신했으면 허깅페이스를 다시 부르지 않고 429 를 준다`() {
         // given
-        val user = loggedInUser()
+        val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(gptOss20b())
         refresh(user.accessToken)
         val calls = fakeHuggingFaceClient.calls
@@ -230,9 +234,42 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         // when & then
         refresh(user.accessToken).andExpect {
             status { isTooManyRequests() }
-            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATE_REFRESH_TOO_SOON.code) }
+            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATES_REFRESH_TOO_SOON.code) }
         }
         fakeHuggingFaceClient.calls shouldBe calls
+    }
+
+    @Test
+    fun `팀 관리자가 아니면 허깅페이스를 부르지 않고 갱신을 거부한다`() {
+        // given
+        val member = loggedInUser()
+        savedTeam(member.user.id to TeamRole.MEMBER)
+        val noTeam = loggedInUser(UserFixture.user(email = "no-team@example.com"))
+
+        listOf(member, noTeam).forEach { user ->
+            // when & then
+            refresh(user.accessToken).andExpect {
+                status { isForbidden() }
+                jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+            }
+        }
+        fakeHuggingFaceClient.calls shouldBe 0
+    }
+
+    @Test
+    fun `갱신에 실패하면 바로 다시 시도할 수 있다`() {
+        // given
+        val user = teamAdmin()
+        fakeHuggingFaceClient.failing = true
+        refresh(user.accessToken).andExpect { status { isBadGateway() } }
+        fakeHuggingFaceClient.failing = false
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
+        }
     }
 
     @Test
@@ -242,6 +279,8 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         mockMvc.post("/gpu/model-candidates/refresh").andExpect { status { isUnauthorized() } }
         fakeHuggingFaceClient.calls shouldBe 0
     }
+
+    private fun teamAdmin(): LoggedInUser = loggedInUser().also { savedTeam(it.user.id to TeamRole.ADMIN) }
 
     private fun refresh(accessToken: String): ResultActionsDsl =
         mockMvc.post("/gpu/model-candidates/refresh") { authorization(accessToken) }

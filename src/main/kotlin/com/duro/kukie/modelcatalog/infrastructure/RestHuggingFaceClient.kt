@@ -49,13 +49,12 @@ class RestHuggingFaceClient internal constructor(
     }
 
     override fun fetchModel(modelId: String): HuggingFaceModel {
-        val (author, name) = modelId.split("/", limit = 2)
         val model = call {
             restClient.get()
                 .uri {
                     it.path("/models/{author}/{name}")
                         .queryParam("expand[]", *MODEL_EXPAND)
-                        .build(author, name)
+                        .build(modelId.substringBefore("/"), modelId.substringAfter("/", ""))
                 }
                 .headers(::authorize)
                 .retrieve()

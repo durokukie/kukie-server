@@ -17,6 +17,8 @@ interface TeamMembershipRepository : JpaRepository<TeamMembership, UUID> {
 
     fun existsByTeamIdAndUserId(teamId: UUID, userId: UUID): Boolean
 
+    fun existsByUserIdAndRole(userId: UUID, role: TeamRole): Boolean
+
     /** 그 역할의 멤버십을 잠그고 읽는다. `order by m.id` 로 잠금 순서를 맞춰 교착을 피한다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from TeamMembership m where m.teamId = :teamId and m.role = :role order by m.id")

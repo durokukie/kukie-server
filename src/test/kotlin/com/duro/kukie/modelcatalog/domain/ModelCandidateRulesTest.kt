@@ -127,6 +127,16 @@ class ModelCandidateRulesTest {
     }
 
     @Test
+    fun `계정 없는 모델 id 는 버린다`() {
+        // when
+        val selection = ModelCandidateRules.select(listOf(model("google"), model("gpt2")))
+
+        // then
+        selection.kept.shouldBeEmpty()
+        selection.dropped.getValue("google") shouldStartWith "원작자 아님"
+    }
+
+    @Test
     fun `원작자가 올린 FP8 은 남긴다`() {
         // when
         val candidate = keptOne(model("Qwen/Qwen3.8-27B-FP8", architecture = "Qwen3_5ForConditionalGeneration"))

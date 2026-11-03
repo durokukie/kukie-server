@@ -1,5 +1,6 @@
 package com.duro.kukie.modelcatalog.presentation
 
+import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
 import com.duro.kukie.modelcatalog.application.GetModelCandidatesService
 import com.duro.kukie.modelcatalog.application.RefreshModelCandidatesService
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.util.UUID
 
 @Authenticated
 @RestController
@@ -24,7 +26,9 @@ class ModelCandidateController(
     }
 
     @PostMapping("/refresh")
-    override fun refreshModelCandidates(): ResponseEntity<ModelCandidatesResponse> {
-        return ResponseEntity.ok(refreshModelCandidatesService())
+    override fun refreshModelCandidates(
+        @AuthUser userId: UUID,
+    ): ResponseEntity<ModelCandidatesResponse> {
+        return ResponseEntity.ok(refreshModelCandidatesService(userId))
     }
 }

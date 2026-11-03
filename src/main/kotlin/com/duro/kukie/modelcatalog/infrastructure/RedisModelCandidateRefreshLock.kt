@@ -13,6 +13,10 @@ class RedisModelCandidateRefreshLock(
     override fun tryAcquire(ttl: Duration): Boolean =
         redisTemplate.opsForValue().setIfAbsent(KEY, "1", ttl) == true
 
+    override fun release() {
+        redisTemplate.delete(KEY)
+    }
+
     companion object {
         private const val KEY = "model-candidate:refresh-lock"
     }
