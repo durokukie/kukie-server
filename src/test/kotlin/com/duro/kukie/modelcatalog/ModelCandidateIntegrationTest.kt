@@ -1,0 +1,255 @@
+package com.duro.kukie.modelcatalog
+
+import com.duro.kukie.modelcatalog.ModelCatalogFixture.gptOss20b
+import com.duro.kukie.modelcatalog.ModelCatalogFixture.model
+import com.duro.kukie.modelcatalog.domain.GatedAccess
+import com.duro.kukie.modelcatalog.domain.ModelCandidate
+import com.duro.kukie.modelcatalog.domain.ModelCandidateRepository
+import com.duro.kukie.modelcatalog.exception.ModelCatalogErrorCode
+import com.duro.kukie.support.FakeHuggingFaceClient
+import com.duro.kukie.support.IntegrationTest
+import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
+
+class ModelCandidateIntegrationTest : IntegrationTest() {
+
+    @Autowired
+    private lateinit var fakeHuggingFaceClient: FakeHuggingFaceClient
+
+    @Autowired
+    private lateinit var modelCandidateRepository: ModelCandidateRepository
+
+    @Autowired
+    private lateinit var redisTemplate: StringRedisTemplate
+
+    @Test
+    fun `갱신하면 허깅페이스 후보를 거르고 저장해 약속한 형태로 준다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(
+            model("OBLITERATUS/gpt-oss-20b-obliterated"),
+            model("Qwen/Qwen3-32B", paramsB = 32.8, usedStorageGb = 66.0, license = "llama3.1"),
+            model("KRAFTON/Raon-1-mini-preview", paramsB = 28.8, architecture = "Raon1MiniForCausalLM", gated = GatedAccess.AUTO),
+            model("openai/gpt-oss-120b", paramsB = 116.8),
+            gptOss20b(),
+        )
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.generatedAt") { exists() }
+            jsonPath("$.candidates.length()") { value(4) }
+            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
+            jsonPath("$.candidates[0].paramsB") { value(20.9) }
+            jsonPath("$.candidates[0].sizeGb") { value(41.4) }
+            jsonPath("$.candidates[0].license") { value("apache-2.0") }
+            jsonPath("$.candidates[0].gated") { value(false) }
+            jsonPath("$.candidates[0].vllmNative") { value(true) }
+            jsonPath("$.candidates[0].gpus[0]") { value("l40s") }
+            jsonPath("$.candidates[0].gpus[1]") { value("pro6000") }
+            jsonPath("$.candidates[0].verified") { value(true) }
+            jsonPath("$.candidates[0].maxConcurrency") { value(32) }
+            jsonPath("$.candidates[0].measuredGpu") { value("l40s") }
+            jsonPath("$.candidates[1].id") { value("Qwen/Qwen3-32B") }
+            jsonPath("$.candidates[1].licenseNote") { value("조건 있음") }
+            jsonPath("$.candidates[1].verified") { value(false) }
+            jsonPath("$.candidates[1].maxConcurrency") { value(null) }
+            jsonPath("$.candidates[1].measuredGpu") { value(null) }
+            jsonPath("$.candidates[2].id") { value("KRAFTON/Raon-1-mini-preview") }
+            jsonPath("$.candidates[2].gated") { value(true) }
+            jsonPath("$.candidates[2].vllmNative") { value(false) }
+            jsonPath("$.candidates[2].sizeGb") { value(null) }
+            jsonPath("$.candidates[3].id") { value("openai/gpt-oss-120b") }
+            jsonPath("$.candidates[3].gpus.length()") { value(1) }
+            jsonPath("$.candidates[3].gpus[0]") { value("pro6000") }
+        }
+    }
+
+    @Test
+    fun `저장된 목록을 읽을 때는 허깅페이스를 부르지 않는다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
+        refresh(user.accessToken)
+        val calls = fakeHuggingFaceClient.calls
+
+        // when & then
+        mockMvc.get("/gpu/model-candidates") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.generatedAt") { exists() }
+            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
+            jsonPath("$.candidates[0].verified") { value(true) }
+            jsonPath("$.candidates[1].verified") { value(false) }
+        }
+        fakeHuggingFaceClient.calls shouldBe calls
+    }
+
+    @Test
+    fun `아직 갱신한 적이 없으면 빈 목록을 준다`() {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        mockMvc.get("/gpu/model-candidates") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.generatedAt") { value(null) }
+            jsonPath("$.candidates") { isEmpty() }
+        }
+        fakeHuggingFaceClient.calls shouldBe 0
+    }
+
+    @Test
+    fun `트렌딩에서 빠진 검증 모델은 따로 받아 후보에 남긴다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.models["openai/gpt-oss-20b"] = gptOss20b()
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
+            jsonPath("$.candidates[0].verified") { value(true) }
+            jsonPath("$.candidates[1].id") { value("Qwen/Qwen3-32B") }
+        }
+    }
+
+    @Test
+    fun `다시 갱신하면 덮어쓰고 빠진 모델을 지우며 이전 수집 시각을 남긴다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
+        refresh(user.accessToken)
+        val firstCollectedAt = saved("openai/gpt-oss-20b").collectedAt
+        fakeHuggingFaceClient.trending = listOf(model("google/g-30B", paramsB = 30.0), gptOss20b())
+        redisTemplate.delete(REFRESH_LOCK_KEY)
+
+        // when
+        refresh(user.accessToken).andExpect { status { isOk() } }
+
+        // then
+        modelCandidateRepository.findAllByOrderByDisplayOrder().map { it.modelId }
+            .shouldContainExactly("google/g-30B", "openai/gpt-oss-20b")
+        saved("openai/gpt-oss-20b").run {
+            previousCollectedAt shouldBe firstCollectedAt
+            collectedAt.isAfter(firstCollectedAt) shouldBe true
+        }
+        saved("google/g-30B").previousCollectedAt.shouldBeNull()
+    }
+
+    @Test
+    fun `크기를 읽지 못한 후보가 있으면 저장하지 않는다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.missing += "Qwen/Qwen3-32B"
+
+        // when & then
+        refresh(user.accessToken).andExpect { status { isBadGateway() } }
+        modelCandidateRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `허깅페이스를 읽지 못하면 502 를 주고 저장된 목록을 그대로 둔다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        refresh(user.accessToken)
+        val collectedAt = saved("openai/gpt-oss-20b").collectedAt
+        fakeHuggingFaceClient.failing = true
+        redisTemplate.delete(REFRESH_LOCK_KEY)
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isBadGateway() }
+            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATE_REFRESH_FAILED.code) }
+        }
+        saved("openai/gpt-oss-20b").collectedAt shouldBe collectedAt
+    }
+
+    @Test
+    fun `빈 목록이 오면 저장된 목록을 지우지 않는다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        refresh(user.accessToken)
+        fakeHuggingFaceClient.trending = emptyList()
+        redisTemplate.delete(REFRESH_LOCK_KEY)
+
+        // when & then
+        refresh(user.accessToken).andExpect { status { isBadGateway() } }
+        saved("openai/gpt-oss-20b").shouldNotBeNull()
+    }
+
+    @Test
+    fun `검증된 모델이 규칙에 걸리면 갱신하지 않는다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(model("openai/gpt-oss-20b", license = "cc-by-nc-4.0"))
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isBadGateway() }
+            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATE_REFRESH_FAILED.code) }
+        }
+        modelCandidateRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `이름이 바뀐 검증 모델은 갱신하지 않는다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.models["openai/gpt-oss-20b"] = model("openai/renamed")
+
+        // when & then
+        refresh(user.accessToken).andExpect { status { isBadGateway() } }
+        modelCandidateRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `방금 갱신했으면 허깅페이스를 다시 부르지 않고 429 를 준다`() {
+        // given
+        val user = loggedInUser()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        refresh(user.accessToken)
+        val calls = fakeHuggingFaceClient.calls
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isTooManyRequests() }
+            jsonPath("$.code") { value(ModelCatalogErrorCode.MODEL_CANDIDATE_REFRESH_TOO_SOON.code) }
+        }
+        fakeHuggingFaceClient.calls shouldBe calls
+    }
+
+    @Test
+    fun `로그인하지 않으면 조회도 갱신도 할 수 없다`() {
+        // when & then
+        mockMvc.get("/gpu/model-candidates").andExpect { status { isUnauthorized() } }
+        mockMvc.post("/gpu/model-candidates/refresh").andExpect { status { isUnauthorized() } }
+        fakeHuggingFaceClient.calls shouldBe 0
+    }
+
+    private fun refresh(accessToken: String): ResultActionsDsl =
+        mockMvc.post("/gpu/model-candidates/refresh") { authorization(accessToken) }
+
+    private fun saved(modelId: String): ModelCandidate =
+        modelCandidateRepository.findAll().single { it.modelId == modelId }
+
+    companion object {
+        private const val REFRESH_LOCK_KEY = "model-candidate:refresh-lock"
+    }
+}
