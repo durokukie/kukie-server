@@ -14,6 +14,8 @@ object GpuClusterPattern {
 
     /** 정규식으로 바꾸면 * 가 많은 패턴에서 되돌아가기가 터지므로 직접 맞춘다. */
     fun matches(pattern: String, clusterName: String): Boolean {
+        if (pattern.isEmpty()) return false
+
         var patternAt = 0
         var nameAt = 0
         var lastAny = -1

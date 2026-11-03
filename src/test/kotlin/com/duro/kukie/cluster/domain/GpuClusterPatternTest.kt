@@ -5,6 +5,8 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Test
 import java.time.Duration
+import java.time.LocalDateTime
+import java.util.UUID
 
 class GpuClusterPatternTest {
 
@@ -47,6 +49,22 @@ class GpuClusterPatternTest {
     @Test
     fun `IAM 처럼 대소문자를 가린다`() {
         GpuClusterPattern.matches("Kukie-*", "kukie-gpu") shouldBe false
+    }
+
+    @Test
+    fun `빈 패턴은 어느 이름에도 맞지 않는다`() {
+        GpuClusterPattern.matches("", "kukie-gpu") shouldBe false
+        GpuClusterPattern.matches("", "") shouldBe false
+    }
+
+    @Test
+    fun `GpuNodeControl 이 false 면 패턴이 맞아도 control 이 아니다`() {
+        // given
+        val connection = AwsConnection(teamId = UUID.randomUUID(), createdBy = UUID.randomUUID())
+        connection.connect("123456789012", LocalDateTime.now(), null, AccessLevel.FULL, gpuNodeControl = false, gpuClusterPattern = "*")
+
+        // when & then
+        connection.gpuControlOn("kukie-gpu") shouldBe false
     }
 
     @Test
