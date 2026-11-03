@@ -8,20 +8,32 @@ import com.duro.kukie.cluster.application.port.out.EksClusterInventory
 import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
+import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EksSubnet
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
+import com.duro.kukie.cluster.application.port.out.ServedModelManifest
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
 import com.duro.kukie.cluster.exception.EksAccessEntryDisabledException
 import com.duro.kukie.cluster.exception.EksClusterNotFoundException
 import com.duro.kukie.cluster.exception.EksClusterNotReadyException
+import com.duro.kukie.cluster.exception.GpuAddonNotInstalledException
+import com.duro.kukie.cluster.exception.GpuClusterApiFailedException
+import com.duro.kukie.cluster.exception.GpuNodeControlDeniedException
+import com.duro.kukie.cluster.exception.GpuNodeGroupNotFoundException
+import com.duro.kukie.cluster.exception.GpuServingDeniedException
+import com.duro.kukie.cluster.exception.InvalidNodeCountException
+import com.duro.kukie.cluster.exception.NodeGroupBusyException
+import com.duro.kukie.cluster.exception.ServedModelExistsException
+import com.duro.kukie.cluster.exception.ServedModelNotFoundException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
 import org.springframework.stereotype.Component
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
@@ -33,12 +45,17 @@ import software.amazon.awssdk.services.eks.model.AccessScope
 import software.amazon.awssdk.services.eks.model.AccessScopeType
 import software.amazon.awssdk.services.eks.model.AssociatedAccessPolicy
 import software.amazon.awssdk.services.eks.model.AuthenticationMode
+import software.amazon.awssdk.services.eks.model.InvalidParameterException
+import software.amazon.awssdk.services.eks.model.InvalidRequestException
+import software.amazon.awssdk.services.eks.model.Nodegroup
 import software.amazon.awssdk.services.eks.model.ResourceInUseException
 import software.amazon.awssdk.services.eks.model.ResourceNotFoundException
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.StsException
+import tools.jackson.databind.json.JsonMapper
 import java.io.IOException
 import java.net.URI
+import java.net.URISyntaxException
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -62,6 +79,7 @@ class AwsEksAccessGateway(
     private val tokenSigner = EksTokenSigner(clock)
     private val sessions = ConcurrentHashMap<AwsTarget, AwsSessionCredentials>()
     private val log = logger()
+    private val jsonMapper = JsonMapper.builder().build()
 
     /** 스택 알림 때 부른다. 역할을 다시 만들었을 수 있어 캐시된 세션을 버리고 새로 맡은 세션으로 바꿔 둔다. */
     override fun verify(target: AwsTarget) {
@@ -363,6 +381,205 @@ class AwsEksAccessGateway(
     override fun issueToken(target: AwsTarget, region: String, clusterName: String): String =
         tokenSigner.sign(assume(target), region, clusterName)
 
+    override fun listNodegroupStates(target: AwsTarget, region: String, clusterName: String): List<EksNodegroupState> =
+        gpuCall {
+            withSession(target) { credentials ->
+                eks(credentials, region).use { eks -> translate { nodegroupStatesOn(eks, clusterName) } }
+            }
+        }
+
+    internal fun nodegroupStatesOn(eks: EksClient, clusterName: String): List<EksNodegroupState> =
+        eks.listNodegroupsPaginator { it.clusterName(clusterName) }.nodegroups()
+            .mapNotNull { name ->
+                // 목록과 상세 조회 사이에 지워진 노드 그룹은 건너뛴다
+                ignoringNotFound { eks.describeNodegroup { it.clusterName(clusterName).nodegroupName(name) }.nodegroup() }
+                    ?.let { stateOf(name, it) }
+            }
+            .sortedBy { it.name }
+
+    override fun describeNodegroupState(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        nodegroupName: String,
+    ): EksNodegroupState? = gpuCall {
+        withSession(target) { credentials ->
+            eks(credentials, region).use { eks ->
+                translate {
+                    ignoringNotFound { eks.describeNodegroup { it.clusterName(clusterName).nodegroupName(nodegroupName) }.nodegroup() }
+                        ?.let { stateOf(nodegroupName, it) }
+                }
+            }
+        }
+    }
+
+    private fun stateOf(name: String, nodegroup: Nodegroup): EksNodegroupState {
+        val scaling = nodegroup.scalingConfig()
+        return EksNodegroupState(
+            name = name,
+            instanceTypes = nodegroup.instanceTypes().orEmpty(),
+            status = nodegroup.statusAsString(),
+            desired = scaling?.desiredSize() ?: 0,
+            min = scaling?.minSize() ?: 0,
+            max = scaling?.maxSize() ?: 0,
+        )
+    }
+
+    override fun updateNodegroupDesired(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        current: EksNodegroupState,
+        desired: Int,
+    ) {
+        gpuCall {
+            withSession(target) { credentials ->
+                eks(credentials, region).use { eks -> updateNodegroupDesiredOn(eks, clusterName, current, desired) }
+            }
+        }
+    }
+
+    internal fun updateNodegroupDesiredOn(eks: EksClient, clusterName: String, current: EksNodegroupState, desired: Int) {
+        try {
+            eks.updateNodegroupConfig { request ->
+                request.clusterName(clusterName).nodegroupName(current.name)
+                    .scalingConfig { it.minSize(current.min).maxSize(current.max).desiredSize(desired) }
+            }
+        } catch (_: AccessDeniedException) {
+            throw GpuNodeControlDeniedException()
+        } catch (_: ResourceInUseException) {
+            throw NodeGroupBusyException()
+        } catch (_: InvalidRequestException) {
+            // 노드 그룹이 지금 상태에서 받을 수 없는 요청이다(만드는 중·지우는 중 등)
+            throw NodeGroupBusyException()
+        } catch (_: InvalidParameterException) {
+            // 읽은 뒤 min·max 가 바뀌었다
+            throw InvalidNodeCountException()
+        } catch (_: ResourceNotFoundException) {
+            throw GpuNodeGroupNotFoundException()
+        }
+    }
+
+    override fun hasServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+    ): Boolean {
+        val response = sendToKubernetes(target, region, clusterName, endpoint, "${servedModelsPath(namespace)}?limit=1", HttpResponse.BodyHandlers.ofString()) { GET() }
+        requireServingSuccess(response.statusCode()) { throw GpuAddonNotInstalledException() }
+        val items = runCatching { jsonMapper.readTree(response.body()).path("items") }.getOrElse { throw GpuClusterApiFailedException() }
+        if (!items.isArray) throw GpuClusterApiFailedException()
+        return !items.isEmpty
+    }
+
+    override fun createServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        manifest: ServedModelManifest,
+    ) {
+        val body = jsonMapper.writeValueAsString(servedModelBody(manifest))
+        val response = sendToKubernetes(target, region, clusterName, endpoint, servedModelsPath(manifest.namespace), HttpResponse.BodyHandlers.discarding()) {
+            header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
+        }
+        if (response.statusCode() == CONFLICT) throw ServedModelExistsException()
+        requireServingSuccess(response.statusCode()) { throw GpuAddonNotInstalledException() }
+    }
+
+    override fun deleteServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    ) {
+        val path = "${servedModelsPath(namespace)}/$name"
+        val response = sendToKubernetes(target, region, clusterName, endpoint, path, HttpResponse.BodyHandlers.discarding()) { DELETE() }
+        requireServingSuccess(response.statusCode()) { throw ServedModelNotFoundException() }
+    }
+
+    private fun servedModelsPath(namespace: String): String =
+        "/apis/$SERVED_MODEL_API_VERSION/namespaces/$namespace/servedmodels"
+
+    private fun servedModelBody(manifest: ServedModelManifest): Map<String, Any> = mapOf(
+        "apiVersion" to SERVED_MODEL_API_VERSION,
+        "kind" to "ServedModel",
+        "metadata" to mapOf("name" to manifest.name, "namespace" to manifest.namespace),
+        "spec" to mapOf(
+            "source" to mapOf("huggingface" to manifest.model),
+            "engine" to mapOf("image" to manifest.engineImage, "args" to manifest.engineArgs, "gpus" to manifest.gpus),
+            "storage" to mapOf("size" to "${manifest.storageGi}Gi", "retainOnDelete" to manifest.retainOnDelete),
+        ),
+    )
+
+    /** 토큰을 담아 부른다. 토큰과 응답 본문은 로그에 넣지 않는다. */
+    private fun <T> sendToKubernetes(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        path: String,
+        bodyHandler: HttpResponse.BodyHandler<T>,
+        configure: HttpRequest.Builder.() -> HttpRequest.Builder,
+    ): HttpResponse<T> {
+        val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { throw GpuClusterApiFailedException() }
+        val token = gpuCall { issueToken(target, region, clusterName) }
+        return HttpClient.newBuilder()
+            .sslContext(sslContext)
+            .connectTimeout(PROBE_TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build()
+            .use { http ->
+                try {
+                    val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}$path"))
+                        .timeout(KUBERNETES_WRITE_TIMEOUT)
+                        .header("Authorization", "Bearer $token")
+                        .configure()
+                        .build()
+                    http.send(request, bodyHandler)
+                } catch (exception: IOException) {
+                    throw kubernetesCallFailed(clusterName, exception)
+                } catch (exception: URISyntaxException) {
+                    throw kubernetesCallFailed(clusterName, exception)
+                } catch (exception: IllegalArgumentException) {
+                    throw kubernetesCallFailed(clusterName, exception)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw GpuClusterApiFailedException()
+                }
+            }
+    }
+
+    private fun kubernetesCallFailed(clusterName: String, exception: Exception): GpuClusterApiFailedException {
+        log.warn("쿠버네티스 API 를 부르지 못했습니다: cluster={} reason={}", clusterName, exception.javaClass.simpleName)
+        return GpuClusterApiFailedException()
+    }
+
+    /** GPU API 에서 따로 처리하지 않은 AWS 오류(스로틀링, 403 이 아닌 STS 오류, 네트워크)를 500 대신 정해진 오류로 알린다. 메시지는 남기지 않는다. */
+    internal fun <T> gpuCall(block: () -> T): T =
+        try {
+            block()
+        } catch (exception: SdkException) {
+            log.warn("GPU 요청에서 AWS 를 부르지 못했습니다: reason={}", exception.javaClass.simpleName)
+            throw GpuClusterApiFailedException()
+        }
+
+    private fun requireServingSuccess(status: Int, onNotFound: () -> Nothing) {
+        when (status) {
+            in SUCCESS -> return
+            UNAUTHORIZED, FORBIDDEN -> throw GpuServingDeniedException()
+            NOT_FOUND -> onNotFound()
+            else -> {
+                log.warn("쿠버네티스 API 가 요청을 처리하지 못했습니다: status={}", status)
+                throw GpuClusterApiFailedException()
+            }
+        }
+    }
+
     /**
      * 캐시된 세션으로 AWS 를 부른다. 고객이 스택을 지우고 다시 만들면 같은 이름의 새 역할이 생겨 옛 세션이 거부되므로
      * (만료도 마찬가지), 세션이 무효라는 오류면 캐시를 버리고 새로 맡아 한 번만 다시 부른다. 그래도 무효면
@@ -574,6 +791,9 @@ class AwsEksAccessGateway(
         private const val UNAUTHORIZED = 401
         private const val FORBIDDEN = 403
         private const val NOT_FOUND = 404
+        private const val CONFLICT = 409
+        private val SUCCESS = 200..299
+        private const val SERVED_MODEL_API_VERSION = "serving.kukie.io/v1alpha1"
         private val INVALID_SESSION_CODES = setOf(
             "UnrecognizedClientException",
             "InvalidClientTokenId",
@@ -597,6 +817,7 @@ class AwsEksAccessGateway(
 
         /** 연결마다 부르는 확인이라 응답하지 않는 API 서버가 kubectl 실행을 오래 붙잡지 않게 짧게 둔다. */
         private val PROBE_TIMEOUT: Duration = Duration.ofSeconds(3)
+        private val KUBERNETES_WRITE_TIMEOUT: Duration = Duration.ofSeconds(10)
 
         /** 재사용한 세션으로 만든 토큰도 kubectl 이 끝날 때까지는 살아 있어야 한다. */
         private val REUSE_MARGIN: Duration = Duration.ofMinutes(5)

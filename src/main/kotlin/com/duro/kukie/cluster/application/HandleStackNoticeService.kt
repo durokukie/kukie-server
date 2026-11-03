@@ -12,6 +12,7 @@ import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.cluster.domain.GpuClusterPattern
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.global.config.properties.ClusterAwsProperties
 import com.duro.kukie.global.util.logger
@@ -76,7 +77,14 @@ class HandleStackNoticeService(
             return false
         }
 
-        connection.connect(accountId, LocalDateTime.now(clock), StackConsoleUrl.stackIdOf(notice.stackId, accountId), accessLevel)
+        connection.connect(
+            accountId,
+            LocalDateTime.now(clock),
+            StackConsoleUrl.stackIdOf(notice.stackId, accountId),
+            accessLevel,
+            gpuNodeControl = notice.gpuNodeControl == GPU_NODE_CONTROL_ON,
+            gpuClusterPattern = GpuClusterPattern.ofNotice(notice.gpuClusterPattern),
+        )
         try {
             awsConnectionRepository.save(connection)
         } catch (_: DataIntegrityViolationException) {
@@ -198,6 +206,7 @@ class HandleStackNoticeService(
 
     companion object {
         private val ROLE_ARN = Regex("arn:aws:iam::(\\d{12}):role/([\\w+=,.@-]+)")
+        private const val GPU_NODE_CONTROL_ON = "true"
         // 고객이 AWS 콘솔의 스택 이벤트에서 읽는다. CloudFormation 이 ASCII 밖의 글자를 ?로 바꿔 보여 줘서 영어로 쓴다
         private const val NOT_ASSUMABLE =
             "Kukie could not assume the KukieAccess role. Recreate the stack from the Kukie link without editing the template."
