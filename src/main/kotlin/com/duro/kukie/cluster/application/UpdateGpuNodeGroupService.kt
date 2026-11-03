@@ -26,7 +26,7 @@ class UpdateGpuNodeGroupService(
 
         val action = "scale-node-group name=${command.name} desired=${command.desired}"
         return gpuAuditLog.record(command.userId, command.clusterId, action) {
-            if (!access.nodeControl) throw GpuNodeControlDeniedException()
+            if (!access.control) throw GpuNodeControlDeniedException()
             GpuNodeGroupResponse.from(update(access.credential, command))
         }
     }

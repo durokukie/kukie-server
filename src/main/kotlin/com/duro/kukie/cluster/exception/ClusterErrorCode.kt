@@ -63,7 +63,7 @@ enum class ClusterErrorCode(
     GPU_ADDON_NOT_INSTALLED(HttpStatus.CONFLICT, "클러스터에 GPU 애드온이 없습니다. 애드온과 llm namespace 를 설치했는지 확인해 주세요."),
     GPU_SERVING_DENIED(
         HttpStatus.FORBIDDEN,
-        "모델을 시작하거나 중지할 권한이 없습니다. CloudFormation 스택의 AccessLevel 이 full 인지 확인해 주세요.",
+        "모델을 시작하거나 중지할 권한이 없습니다. CloudFormation 스택의 AccessLevel 을 full, GpuNodeControl 을 true 로 바꿔 주세요.",
     ),
     GPU_CLUSTER_API_FAILED(HttpStatus.BAD_GATEWAY, "클러스터가 요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
     ;

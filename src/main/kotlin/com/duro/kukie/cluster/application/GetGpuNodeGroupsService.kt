@@ -24,6 +24,6 @@ class GetGpuNodeGroupsService(
         val nodeGroups = eksAccessGateway.listNodegroupStates(credential.target, credential.region, credential.clusterName)
             .filter { it.gpu }
             .map(GpuNodeGroupResponse::from)
-        return GpuNodeGroupsResponse(supported = true, control = access.nodeControl, nodeGroups = nodeGroups)
+        return GpuNodeGroupsResponse(supported = true, control = access.control, nodeGroups = nodeGroups)
     }
 }

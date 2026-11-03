@@ -2,7 +2,6 @@ package com.duro.kukie.cluster.application
 
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
-import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.AwsConnection
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.Cluster
@@ -23,11 +22,7 @@ class EksGpuAccess(
 
         val credential = EksCredential.from(credentialCipher.decrypt(cluster.credential))
         val connection = connectionOf(cluster, credential)
-        return GpuAccess(
-            credential = credential,
-            nodeControl = connection?.gpuNodeControlEnabled == true,
-            serving = connection?.accessLevel == AccessLevel.FULL,
-        )
+        return GpuAccess(credential = credential, control = connection?.gpuNodeControlEnabled == true)
     }
 
     fun endpointOf(cluster: Cluster): EksClusterEndpoint =
@@ -40,6 +35,6 @@ class EksGpuAccess(
 
 data class GpuAccess(
     val credential: EksCredential,
-    val nodeControl: Boolean,
-    val serving: Boolean,
+    /** 스택이 화면 조작을 허용했는지. v5 이하 스택은 "변경은 승인 카드로만"을 약속했으므로 노드 수·모델 모두 막는다. */
+    val control: Boolean,
 )

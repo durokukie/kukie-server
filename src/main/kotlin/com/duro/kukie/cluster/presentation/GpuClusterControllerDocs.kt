@@ -66,7 +66,7 @@ interface GpuClusterControllerDocs {
 
     @Operation(
         summary = "모델 시작",
-        description = "llm namespace 에 ServedModel 을 만들어 모델을 내려받고 서빙을 시작합니다. 팀 관리자만 할 수 있고 스택의 AccessLevel 이 full 이어야 합니다. " +
+        description = "llm namespace 에 ServedModel 을 만들어 모델을 내려받고 서빙을 시작합니다. 팀 관리자만 할 수 있고 스택의 AccessLevel 이 full, GpuNodeControl 이 true 여야 합니다. " +
             "GPU 한 장에 모델 하나이므로 그 namespace 에 ServedModel 이 이미 있으면 SERVED_MODEL_EXISTS 입니다.",
     )
     @ApiResponse(responseCode = "201", description = "Created")
@@ -84,7 +84,7 @@ interface GpuClusterControllerDocs {
 
     @Operation(
         summary = "모델 중지",
-        description = "llm namespace 의 ServedModel 을 지웁니다. 팀 관리자만 할 수 있고 스택의 AccessLevel 이 full 이어야 합니다. 내려받은 모델 파일은 남습니다.",
+        description = "llm namespace 의 ServedModel 을 지웁니다. 팀 관리자만 할 수 있고 스택의 AccessLevel 이 full, GpuNodeControl 이 true 여야 합니다. 내려받은 모델 파일은 남습니다.",
     )
     @ApiResponse(responseCode = "204", description = "No Content")
     @ApiErrorResponses(
