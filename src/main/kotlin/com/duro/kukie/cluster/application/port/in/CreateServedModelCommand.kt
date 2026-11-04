@@ -7,4 +7,5 @@ data class CreateServedModelCommand(
     val userId: UUID,
     val model: String,
     val storageGi: Int,
+    val gpus: Int,
 )

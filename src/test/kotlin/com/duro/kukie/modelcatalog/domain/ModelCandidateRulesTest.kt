@@ -1,6 +1,7 @@
 package com.duro.kukie.modelcatalog.domain
 
 import com.duro.kukie.global.config.properties.HuggingFaceProperties
+import com.duro.kukie.modelcatalog.ModelCatalogFixture.gptOss120b
 import com.duro.kukie.modelcatalog.ModelCatalogFixture.model
 import com.duro.kukie.modelcatalog.infrastructure.RestHuggingFaceClient
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -253,13 +254,39 @@ class ModelCandidateRulesTest {
     }
 
     @Test
-    fun `처음 검증된 모델은 L40S 에서 동시 32 인 gpt-oss-20b 다`() {
+    fun `검증된 모델은 L40S 1장 동시 32 인 gpt-oss-20b 와 4장 동시 8 인 gpt-oss-120b 다`() {
         // when
         val verified = VerifiedModels.MODELS
 
         // then
-        verified.keys.shouldContainExactly("openai/gpt-oss-20b")
-        verified.getValue("openai/gpt-oss-20b").run { gpu to maxConcurrency } shouldBe ("l40s" to 32)
+        verified.keys.toList().shouldContainExactly("openai/gpt-oss-20b", "openai/gpt-oss-120b")
+        verified.getValue("openai/gpt-oss-20b").run { Triple(gpu, gpus, maxConcurrency) } shouldBe Triple("l40s", 1, 32)
+        verified.getValue("openai/gpt-oss-120b").run { Triple(gpu, gpus, maxConcurrency) } shouldBe Triple("l40s", 4, 8)
+    }
+
+    @Test
+    fun `실측한 장수에 들어가는지는 GPU 1장 크기에 장수를 곱해 본다`() {
+        // given
+        val verified = VerifiedModel(gpu = "l40s", maxConcurrency = 8, measuredOn = "2026-11-04", gpus = 4)
+        val candidate = keptOne(model("openai/gpt-oss-120b", paramsB = 116.8))
+
+        // when & then
+        ModelCandidateRules.fitsMeasured(candidate.copy(weightGb = 140.0), verified) shouldBe true
+        ModelCandidateRules.fitsMeasured(candidate.copy(weightGb = 140.1), verified) shouldBe false
+        ModelCandidateRules.fitsMeasured(candidate.copy(weightGb = null), verified) shouldBe false
+        ModelCandidateRules.fitsMeasured(candidate.copy(weightGb = 10.0), verified.copy(gpu = "unknown")) shouldBe false
+    }
+
+    @Test
+    fun `fitsGpus 는 여러 장 모델에도 1장 기준 그대로다`() {
+        // given
+        val candidate = keptOne(model("openai/gpt-oss-120b", paramsB = 116.8))
+
+        // when
+        val filled = ModelCandidateRules.withRepoFiles(candidate, gptOss120b())
+
+        // then
+        filled.fitsGpus.shouldContainExactly("pro6000")
     }
 
     private fun keptOne(model: HuggingFaceModel): CollectedModel = ModelCandidateRules.select(listOf(model)).kept.single()

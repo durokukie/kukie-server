@@ -75,6 +75,13 @@ object ModelCandidateRules {
         )
     }
 
+    /** fitsGpus 는 1장 기준이라 여러 장에서 잰 모델은 실측한 장수로 따로 본다. */
+    fun fitsMeasured(model: CollectedModel, verified: VerifiedModel): Boolean {
+        val weightGb = model.weightGb ?: return false
+        val maxWeightGb = GPU_MAX_WEIGHT_GB[verified.gpu] ?: return false
+        return weightGb <= maxWeightGb * verified.gpus
+    }
+
     private fun rejection(model: HuggingFaceModel): String? {
         val author = model.id.substringBefore("/")
         val name = model.id.substringAfter("/", "")

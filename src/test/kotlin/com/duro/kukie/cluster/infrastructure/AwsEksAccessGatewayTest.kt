@@ -3,6 +3,7 @@ package com.duro.kukie.cluster.infrastructure
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
 import com.duro.kukie.cluster.application.port.out.EksNodegroupState
+import com.duro.kukie.cluster.application.port.out.EngineResources
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
 import com.duro.kukie.cluster.application.port.out.ServedModelState
@@ -462,6 +463,51 @@ class AwsEksAccessGatewayTest {
                 "storage" to mapOf("size" to "40Gi", "retainOnDelete" to true),
             ),
         )
+    }
+
+    @Test
+    fun `GPU 1장이면 ServedModel 본문에 자원을 넣지 않아 오븐 기본값을 쓴다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(201, calls = calls)
+
+        // when
+        gateway.createServedModel(target, "ap-northeast-2", "demo", endpoint, MANIFEST)
+
+        // then
+        calls.single().body shouldBe
+            """{"apiVersion":"serving.kukie.io/v1alpha1","kind":"ServedModel",""" +
+            """"metadata":{"name":"gpt-oss-20b","namespace":"llm"},""" +
+            """"spec":{"source":{"huggingface":"openai/gpt-oss-20b"},""" +
+            """"engine":{"image":"engine@sha256:abc","args":["--max-model-len","16384"],"gpus":1},""" +
+            """"storage":{"size":"40Gi","retainOnDelete":true}}}"""
+    }
+
+    @Test
+    fun `GPU 여러 장이면 오븐 CRD 의 ResourceRequirements 모양으로 자원을 보낸다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(201, calls = calls)
+        val manifest = MANIFEST.copy(
+            gpus = 4,
+            engineResources = EngineResources(cpuRequest = 16, memoryRequestGi = 128, memoryLimitGi = 256),
+        )
+
+        // when
+        gateway.createServedModel(target, "ap-northeast-2", "demo", endpoint, manifest)
+
+        // then
+        val spec = JsonMapper.builder().build().readValue(calls.single().body, Map::class.java)["spec"] as Map<*, *>
+        val engine = spec["engine"] as Map<*, *>
+        engine["gpus"] shouldBe 4
+        engine["resources"] shouldBe mapOf(
+            "requests" to mapOf("cpu" to "16", "memory" to "128Gi"),
+            "limits" to mapOf("memory" to "256Gi"),
+        )
+        val resources = engine["resources"] as Map<*, *>
+        resources.values.flatMap { (it as Map<*, *>).values }.forEach { quantity ->
+            CRD_QUANTITY.matches(quantity as String) shouldBe true
+        }
     }
 
     @Test
@@ -1227,9 +1273,14 @@ class AwsEksAccessGatewayTest {
             engineImage = "engine@sha256:abc",
             engineArgs = listOf("--max-model-len", "16384"),
             gpus = 1,
+            engineResources = null,
             storageGi = 40,
             retainOnDelete = true,
         )
+
+        /** 오븐 CRD 의 engine.resources.requests·limits 값 패턴. */
+        private val CRD_QUANTITY =
+            Regex("""^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$""")
         private const val EDIT_POLICY = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
         private const val CLUSTER_ADMIN_POLICY = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
         private const val INVALID_TOKEN = "The security token included in the request is invalid."

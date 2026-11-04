@@ -2,6 +2,7 @@ package com.duro.kukie.cluster.application
 
 import com.duro.kukie.cluster.application.port.`in`.CreateServedModelCommand
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
+import com.duro.kukie.cluster.application.port.out.EngineResources
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
 import com.duro.kukie.cluster.exception.GpuServingDeniedException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
@@ -24,12 +25,12 @@ class CreateServedModelService(
         val access = eksGpuAccess.of(cluster)
         val name = ServedModelName.of(command.model)
 
-        val action = "start-model namespace=$SERVING_NAMESPACE name=$name model=${command.model} storageGi=${command.storageGi}"
+        val action = "start-model namespace=$SERVING_NAMESPACE name=$name model=${command.model} storageGi=${command.storageGi} gpus=${command.gpus}"
         gpuAuditLog.record(command.userId, command.clusterId, action) {
             if (!access.serving) throw GpuServingDeniedException()
             val endpoint = eksGpuAccess.endpointOf(cluster)
             val credential = access.credential
-            // 이름이 달라도 GPU 한 장에 모델 하나다. 동시에 시작하면 둘 다 지나갈 수 있어 화면의 확인 창에 기댄다
+            // 이름이 달라도 클러스터에 모델 하나다. 동시에 시작하면 둘 다 지나갈 수 있어 화면의 확인 창에 기댄다
             if (eksAccessGateway.hasServedModel(credential.target, credential.region, credential.clusterName, endpoint, SERVING_NAMESPACE)) {
                 throw ServedModelExistsException()
             }
@@ -44,7 +45,8 @@ class CreateServedModelService(
                     model = command.model,
                     engineImage = clusterGpuProperties.engineImage,
                     engineArgs = clusterGpuProperties.engineArgs,
-                    gpus = ENGINE_GPUS,
+                    gpus = command.gpus,
+                    engineResources = engineResources(command.gpus),
                     storageGi = command.storageGi,
                     retainOnDelete = true,
                 ),
@@ -53,8 +55,23 @@ class CreateServedModelService(
         return ServedModelResponse(namespace = SERVING_NAMESPACE, name = name, model = command.model)
     }
 
+    private fun engineResources(gpus: Int): EngineResources? =
+        if (gpus < 2) {
+            null
+        } else {
+            EngineResources(
+                cpuRequest = CPU_REQUEST_PER_GPU * gpus,
+                memoryRequestGi = MEMORY_REQUEST_GI_PER_GPU * gpus,
+                memoryLimitGi = MEMORY_LIMIT_GI_PER_GPU * gpus,
+            )
+        }
+
     companion object {
         internal const val SERVING_NAMESPACE = "llm"
-        private const val ENGINE_GPUS = 1
+
+        // 장당 값은 g6e.12xlarge 4장에서 gpt-oss-120b 를 띄운 실측 값을 나눈 것이다
+        private const val CPU_REQUEST_PER_GPU = 4
+        private const val MEMORY_REQUEST_GI_PER_GPU = 32
+        private const val MEMORY_LIMIT_GI_PER_GPU = 64
     }
 }
