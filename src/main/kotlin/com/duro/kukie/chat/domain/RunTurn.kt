@@ -10,6 +10,7 @@ data class RunTurn(
     val mode: String,
     val status: RunStatus,
     val inputText: String?,
+    val requestedBy: UUID?,
     val responsePayload: Map<String, Any?>?,
     val startedAt: LocalDateTime,
     val finishedAt: LocalDateTime?,

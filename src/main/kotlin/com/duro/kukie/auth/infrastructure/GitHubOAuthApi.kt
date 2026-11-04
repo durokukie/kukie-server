@@ -23,7 +23,7 @@ class GitHubOAuthApi(
         val user = fetchUser(accessToken)
         val email = fetchVerifiedEmail(accessToken)
 
-        return OAuthProfile(email = email, name = user.name ?: user.login)
+        return OAuthProfile(email = email, name = user.name ?: user.login, avatarUrl = user.avatarUrl)
     }
 
     private fun exchangeCode(code: String, redirectUri: String, codeVerifier: String?): String {
@@ -83,6 +83,8 @@ class GitHubOAuthApi(
     private data class GitHubUserResponse(
         val login: String,
         val name: String?,
+        @JsonProperty("avatar_url")
+        val avatarUrl: String?,
     )
 
     private data class GitHubEmailResponse(

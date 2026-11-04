@@ -35,12 +35,16 @@ class OAuthLogInService(
 
     private fun findOrCreateUser(profile: OAuthProfile): User {
         val email = Email(profile.email)
-        userRepository.findByEmail(email)?.let { return it }
+        userRepository.findByEmail(email)?.let { user ->
+            val before = user.avatarUrl
+            user.changeAvatar(profile.avatarUrl)
+            return if (user.avatarUrl == before) user else userRepository.save(user)
+        }
 
         val user = User(
             name = profile.name.take(NAME_MAX_LENGTH),
             email = email,
-        )
+        ).apply { changeAvatar(profile.avatarUrl) }
 
         return try {
             userRepository.saveAndFlush(user)

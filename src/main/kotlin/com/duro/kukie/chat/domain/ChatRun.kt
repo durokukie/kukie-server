@@ -22,6 +22,7 @@ class ChatRun(
     kind: RunKind,
     mode: String,
     inputText: String?,
+    requestedBy: UUID?,
 ) : BaseTimeEntity() {
 
     @Id
@@ -46,6 +47,10 @@ class ChatRun(
 
     @Column(nullable = false, length = 20)
     var mode = mode
+        protected set
+
+    @Column(name = "requested_by")
+    var requestedBy = requestedBy
         protected set
 
     @Column(nullable = false, length = 20)

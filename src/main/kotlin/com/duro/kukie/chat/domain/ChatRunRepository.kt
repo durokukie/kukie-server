@@ -31,7 +31,8 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
     @Query(
         """
         select new com.duro.kukie.chat.domain.RunTurn(
-            r.id, r.turnNo, r.kind, r.mode, r.status, r.inputText, r.responsePayload, r.startedAt, r.finishedAt)
+            r.id, r.turnNo, r.kind, r.mode, r.status, r.inputText, r.requestedBy,
+            r.responsePayload, r.startedAt, r.finishedAt)
         from ChatRun r where r.sessionId = :sessionId order by r.turnNo
         """,
     )
