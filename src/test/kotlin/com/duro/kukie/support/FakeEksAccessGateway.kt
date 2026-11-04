@@ -105,6 +105,14 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     /** keepServedModelUntil 이 이 횟수만큼 충돌(false)을 돌려준다. */
     var keepUntilConflicts: Int = 0
 
+    val measureWrites = mutableListOf<MeasureWrite>()
+
+    /** requestServedModelMeasure 가 이 횟수만큼 충돌(false)을 돌려준다. */
+    var measureConflicts: Int = 0
+
+    /** 설정하면 측정 요청이 충돌할 때 ServedModel 이 이 값으로 바뀐다. 다시 읽는지 볼 때 쓴다. */
+    var servedModelStateAfterMeasureConflict: ServedModelState? = null
+
     /** 설정하면 대화 관련 호출을 실제 구현과 로컬 가짜 API 서버로 넘긴다. */
     var servingBackend: EksAccessGateway? = null
     var servingBackendEndpoint: EksClusterEndpoint? = null
@@ -295,6 +303,27 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         return true
     }
 
+    override fun requestServedModelMeasure(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        request: String,
+        resourceVersion: String,
+    ): Boolean {
+        record(target)
+        servedModelFailure?.let { throw it }
+        if (measureConflicts > 0) {
+            measureConflicts--
+            servedModelStateAfterMeasureConflict?.let { servedModelState = it }
+            return false
+        }
+        measureWrites += MeasureWrite(namespace, name, request, resourceVersion)
+        return true
+    }
+
     override fun openModelChat(
         target: AwsTarget,
         region: String,
@@ -347,6 +376,9 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         servedModelState = READY_MODEL
         keepUntilWrites.clear()
         keepUntilConflicts = 0
+        measureWrites.clear()
+        measureConflicts = 0
+        servedModelStateAfterMeasureConflict = null
         servingBackend = null
         servingBackendEndpoint = null
     }
@@ -355,6 +387,13 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val namespace: String,
         val name: String,
         val keepUntil: Instant,
+        val resourceVersion: String,
+    )
+
+    data class MeasureWrite(
+        val namespace: String,
+        val name: String,
+        val request: String,
         val resourceVersion: String,
     )
 

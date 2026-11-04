@@ -1086,6 +1086,164 @@ class GpuClusterIntegrationTest : IntegrationTest() {
         }
     }
 
+    @Test
+    fun `측정을 요청하면 m-epoch초 값을 annotation 에 읽은 버전과 함께 쓴다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val before = Instant.now().epochSecond
+
+        // when
+        val response = postMeasure(setup, "gpt-oss-20b").andExpect { status { isOk() } }.andReturn().response.contentAsString
+
+        // then
+        val after = Instant.now().epochSecond
+        val write = fakeEksAccessGateway.measureWrites.single()
+        write.namespace shouldBe "llm"
+        write.name shouldBe "gpt-oss-20b"
+        write.resourceVersion shouldBe "7"
+        write.request.startsWith("m-") shouldBe true
+        (write.request.removePrefix("m-").toLong() in before..after) shouldBe true
+        response shouldBe """{"request":"${write.request}"}"""
+    }
+
+    @Test
+    fun `측정 요청을 감사 로그에 남긴다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val logger = LoggerFactory.getLogger(GpuAuditLog::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+
+        // when
+        try {
+            postMeasure(setup, "gpt-oss-20b").andExpect { status { isOk() } }
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        // then
+        appender.list.map { it.formattedMessage.substringAfter("action=") } shouldBe listOf(
+            "measure-model namespace=llm name=gpt-oss-20b",
+        )
+    }
+
+    @Test
+    fun `측정 요청을 쓰는 사이 ServedModel 이 바뀌면 다시 읽어 새 버전으로 쓴다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.measureConflicts = 2
+        fakeEksAccessGateway.servedModelStateAfterMeasureConflict = FakeEksAccessGateway.READY_MODEL.copy(resourceVersion = "8")
+
+        // when & then
+        postMeasure(setup, "gpt-oss-20b").andExpect { status { isOk() } }
+        fakeEksAccessGateway.measureWrites.single().resourceVersion shouldBe "8"
+    }
+
+    @Test
+    fun `측정 요청이 충돌한 사이 측정이 시작됐으면 쓰지 않고 거절한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.measureConflicts = 1
+        fakeEksAccessGateway.servedModelStateAfterMeasureConflict = FakeEksAccessGateway.READY_MODEL.copy(phase = "Measuring")
+
+        // when & then
+        postMeasure(setup, "gpt-oss-20b").andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.MODEL_NOT_READY.code) }
+        }
+        fakeEksAccessGateway.measureWrites.shouldBeEmpty()
+    }
+
+    @Test
+    fun `측정 요청이 계속 충돌하면 실패로 알린다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.measureConflicts = 3
+
+        // when & then
+        postMeasure(setup, "gpt-oss-20b").andExpect {
+            status { isBadGateway() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_CLUSTER_API_FAILED.code) }
+        }
+        fakeEksAccessGateway.measureWrites.shouldBeEmpty()
+    }
+
+    @Test
+    fun `Ready 가 아니거나 지우는 중인 모델은 측정하지 않는다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        listOf(
+            FakeEksAccessGateway.READY_MODEL.copy(phase = "Measuring"),
+            FakeEksAccessGateway.READY_MODEL.copy(phase = "Loading"),
+            FakeEksAccessGateway.READY_MODEL.copy(phase = "Stopped"),
+            FakeEksAccessGateway.READY_MODEL.copy(phase = "ready"),
+            FakeEksAccessGateway.READY_MODEL.copy(phase = null),
+            FakeEksAccessGateway.READY_MODEL.copy(deleting = true),
+        ).forEach { state ->
+            fakeEksAccessGateway.servedModelState = state
+
+            // when & then
+            postMeasure(setup, "gpt-oss-20b").andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value(ClusterErrorCode.MODEL_NOT_READY.code) }
+            }
+        }
+        fakeEksAccessGateway.measureWrites.shouldBeEmpty()
+    }
+
+    @Test
+    fun `팀 Admin 이 아니면 쿠버네티스를 부르지 않고 측정을 거부한다`() {
+        // given
+        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL)
+
+        // when & then
+        postMeasure(setup, "gpt-oss-20b").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `limited 면 쿠버네티스를 부르지 않고 측정을 거부한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.LIMITED)
+
+        // when & then
+        postMeasure(setup, "gpt-oss-20b").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `쿠버네티스 이름이 아니면 쿠버네티스를 부르지 않고 측정이 404 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when & then
+        postMeasure(setup, "Bad_Name").andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.SERVED_MODEL_NOT_FOUND.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `없는 모델을 측정하면 404 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.servedModelState = null
+
+        // when & then
+        postMeasure(setup, "gpt-oss-20b").andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.SERVED_MODEL_NOT_FOUND.code) }
+        }
+    }
+
     private fun postChat(setup: Setup, name: String, body: String = CHAT_BODY): ResultActionsDsl =
         mockMvc.post("/clusters/${setup.clusterId}/gpu/served-models/$name/chat") {
             authorization(setup.accessToken)
@@ -1098,6 +1256,11 @@ class GpuClusterIntegrationTest : IntegrationTest() {
             authorization(setup.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = """{"hours":$hours}"""
+        }
+
+    private fun postMeasure(setup: Setup, name: String): ResultActionsDsl =
+        mockMvc.post("/clusters/${setup.clusterId}/gpu/served-models/$name/measure") {
+            authorization(setup.accessToken)
         }
 
     private fun getControl(setup: Setup): ResultActionsDsl =

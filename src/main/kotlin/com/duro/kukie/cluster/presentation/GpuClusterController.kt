@@ -5,6 +5,7 @@ import com.duro.kukie.cluster.application.CreateServedModelService
 import com.duro.kukie.cluster.application.DeleteServedModelService
 import com.duro.kukie.cluster.application.ExtendServedModelService
 import com.duro.kukie.cluster.application.GetGpuNodeGroupsService
+import com.duro.kukie.cluster.application.MeasureServedModelService
 import com.duro.kukie.cluster.application.UpdateGpuNodeGroupService
 import com.duro.kukie.cluster.presentation.dto.request.CreateServedModelRequest
 import com.duro.kukie.cluster.presentation.dto.request.ExtendServedModelRequest
@@ -13,6 +14,7 @@ import com.duro.kukie.cluster.presentation.dto.request.UpdateGpuNodeGroupRequest
 import com.duro.kukie.cluster.presentation.dto.response.ExtendServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupsResponse
+import com.duro.kukie.cluster.presentation.dto.response.MeasureServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.ServedModelResponse
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
@@ -41,6 +43,7 @@ class GpuClusterController(
     private val deleteServedModelService: DeleteServedModelService,
     private val chatWithServedModelService: ChatWithServedModelService,
     private val extendServedModelService: ExtendServedModelService,
+    private val measureServedModelService: MeasureServedModelService,
 ) : GpuClusterControllerDocs {
 
     @GetMapping("/node-groups")
@@ -103,5 +106,14 @@ class GpuClusterController(
         @RequestBody @Valid request: ExtendServedModelRequest,
     ): ResponseEntity<ExtendServedModelResponse> {
         return ResponseEntity.ok(extendServedModelService(request.toCommand(clusterId, userId, name)))
+    }
+
+    @PostMapping("/served-models/{name}/measure")
+    override fun measureServedModel(
+        @PathVariable clusterId: UUID,
+        @PathVariable name: String,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<MeasureServedModelResponse> {
+        return ResponseEntity.ok(measureServedModelService(clusterId, userId, name))
     }
 }

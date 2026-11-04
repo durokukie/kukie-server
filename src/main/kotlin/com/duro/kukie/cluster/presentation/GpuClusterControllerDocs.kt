@@ -22,6 +22,7 @@ import com.duro.kukie.cluster.presentation.dto.request.ExtendServedModelRequest
 import com.duro.kukie.cluster.presentation.dto.request.ModelChatRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateGpuNodeGroupRequest
 import com.duro.kukie.cluster.presentation.dto.response.ExtendServedModelResponse
+import com.duro.kukie.cluster.presentation.dto.response.MeasureServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupsResponse
 import com.duro.kukie.cluster.presentation.dto.response.ServedModelResponse
@@ -152,4 +153,22 @@ interface GpuClusterControllerDocs {
         AwsRoleNotAssumableException::class,
     )
     fun extendServedModel(clusterId: UUID, name: String, userId: UUID, request: ExtendServedModelRequest): ResponseEntity<ExtendServedModelResponse>
+
+    @Operation(
+        summary = "모델 성능 측정 요청",
+        description = "오븐에 측정을 요청하고 요청 값(request, m-<epoch 초>)을 돌려줍니다. 측정은 클러스터에서 따로 돌고, 끝나면 status.measureRequest 에 " +
+            "이 값이 적힙니다. 팀 관리자만 할 수 있고 스택의 AccessLevel 이 full 이어야 합니다. " +
+            "phase 가 Ready 일 때만 받습니다. 이미 측정 중이거나(Measuring) 뜨는 중, 멈춤, 지우는 중이면 MODEL_NOT_READY 입니다.",
+    )
+    @ApiErrorResponses(
+        GpuNotSupportedException::class,
+        GpuServingDeniedException::class,
+        NotTeamAdminException::class,
+        ClusterNotFoundException::class,
+        ServedModelNotFoundException::class,
+        ModelNotReadyException::class,
+        GpuClusterApiFailedException::class,
+        AwsRoleNotAssumableException::class,
+    )
+    fun measureServedModel(clusterId: UUID, name: String, userId: UUID): ResponseEntity<MeasureServedModelResponse>
 }
