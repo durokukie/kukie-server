@@ -2,6 +2,7 @@ package com.duro.kukie.global.security
 
 import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.exception.UnauthorizedException
+import jakarta.servlet.DispatcherType
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpHeaders
@@ -21,6 +22,10 @@ class AuthenticationInterceptor(
         handler: Any,
     ): Boolean {
         if (handler !is HandlerMethod || handler.requiresAuthentication().not()) {
+            return true
+        }
+        // 스트림이 끝나면 같은 요청이 인터셉터를 한 번 더 지난다. 그사이 만료된 토큰으로 이미 보낸 응답을 401 로 망치지 않게 입구에서만 본다
+        if (request.dispatcherType == DispatcherType.ASYNC) {
             return true
         }
 

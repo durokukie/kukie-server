@@ -2,6 +2,10 @@ package com.duro.kukie.cluster.application
 
 object ServedModelName {
 
+    /** ServedModel CRD 의 spec.source.huggingface 와 같은 규칙이다. */
+    const val MODEL_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
+    private val MODEL = Regex(MODEL_PATTERN)
+
     // 오퍼레이터가 "<이름>-download-<8자>" Job 을 만든다. Job 이름이 63자를 넘으면 만들지 못한다
     private const val MAX_LENGTH = 45
     private val NOT_ALLOWED = Regex("[^a-z0-9]+")
@@ -15,4 +19,6 @@ object ServedModelName {
     }
 
     fun valid(name: String): Boolean = KUBERNETES_NAME.matches(name)
+
+    fun validModel(model: String): Boolean = MODEL.matches(model)
 }

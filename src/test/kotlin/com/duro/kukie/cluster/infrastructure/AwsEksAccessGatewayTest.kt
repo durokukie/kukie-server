@@ -5,6 +5,7 @@ import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
 import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
+import com.duro.kukie.cluster.application.port.out.ServedModelState
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.GpuAddonNotInstalledException
@@ -13,6 +14,9 @@ import com.duro.kukie.cluster.exception.GpuNodeControlDeniedException
 import com.duro.kukie.cluster.exception.GpuNodeGroupNotFoundException
 import com.duro.kukie.cluster.exception.GpuServingDeniedException
 import com.duro.kukie.cluster.exception.InvalidNodeCountException
+import com.duro.kukie.cluster.exception.ModelChatBusyException
+import com.duro.kukie.cluster.exception.ModelChatRejectedException
+import com.duro.kukie.cluster.exception.ModelNotReadyException
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.exception.ServedModelNotFoundException
@@ -206,6 +210,187 @@ class AwsEksAccessGatewayTest {
         // when & then
         shouldThrow<AwsRoleNotAssumableException> { gateway.listNodegroupStates(target, "ap-northeast-2", "demo") }
     }
+
+    @Test
+    fun `ServedModel 의 모델과 상태와 멈추는 시각을 읽는다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(
+            200,
+            """
+            {"metadata":{"resourceVersion":"42","annotations":{"serving.kukie.io/keep-until":"2026-11-05T00:00:00+09:00"}},
+             "spec":{"source":{"huggingface":"openai/gpt-oss-20b"}},
+             "status":{"phase":"Ready","stopsAt":"2026-11-04T12:00:00Z"}}
+            """.trimIndent(),
+            calls,
+        )
+
+        // when
+        val state = gateway.getServedModel(target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b")
+
+        // then
+        calls.single().run {
+            method shouldBe "GET"
+            path shouldBe "/apis/serving.kukie.io/v1alpha1/namespaces/llm/servedmodels/gpt-oss-20b"
+        }
+        state shouldBe ServedModelState(
+            model = "openai/gpt-oss-20b",
+            phase = "Ready",
+            deleting = false,
+            resourceVersion = "42",
+            keepUntil = Instant.parse("2026-11-04T15:00:00Z"),
+            stopsAt = Instant.parse("2026-11-04T12:00:00Z"),
+        )
+    }
+
+    @Test
+    fun `지우는 중인 표시를 읽고 읽지 못하는 시각과 없는 값은 null 이다`() {
+        // given
+        val endpoint = kubernetesAnswering(
+            200,
+            """{"metadata":{"deletionTimestamp":"2026-11-04T12:00:00Z","annotations":{"serving.kukie.io/keep-until":"tomorrow"}}}""",
+        )
+
+        // when
+        val state = gateway.getServedModel(target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b")
+
+        // then
+        state shouldBe ServedModelState(null, null, true, null, null, null)
+    }
+
+    @Test
+    fun `ServedModel 을 읽을 때 쿠버네티스 응답을 오류로 옮긴다`() {
+        // when & then
+        shouldThrow<ServedModelNotFoundException> { readServedModel(kubernetesAnswering(404)) }
+        kubernetes?.stop(0)
+        shouldThrow<GpuServingDeniedException> { readServedModel(kubernetesAnswering(403)) }
+        kubernetes?.stop(0)
+        shouldThrow<GpuClusterApiFailedException> { readServedModel(kubernetesAnswering(500)) }
+        kubernetes?.stop(0)
+        shouldThrow<GpuClusterApiFailedException> { readServedModel(kubernetesAnswering(200, "not json")) }
+    }
+
+    @Test
+    fun `keep-until 을 읽은 버전과 함께 merge patch 로 쓴다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(200, calls = calls)
+
+        // when
+        val written = gateway.keepServedModelUntil(
+            target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b", Instant.parse("2026-11-04T15:00:00Z"), "42",
+        )
+
+        // then
+        written shouldBe true
+        calls.single().run {
+            method shouldBe "PATCH"
+            path shouldBe "/apis/serving.kukie.io/v1alpha1/namespaces/llm/servedmodels/gpt-oss-20b"
+            contentType shouldBe "application/merge-patch+json"
+            body shouldBe """{"metadata":{"resourceVersion":"42","annotations":{"serving.kukie.io/keep-until":"2026-11-04T15:00:00Z"}}}"""
+        }
+    }
+
+    @Test
+    fun `쓰는 사이 ServedModel 이 바뀌었으면 false 다`() {
+        // given
+        val endpoint = kubernetesAnswering(409)
+
+        // when
+        val written = gateway.keepServedModelUntil(
+            target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b", Instant.parse("2026-11-04T15:00:00Z"), "42",
+        )
+
+        // then
+        written shouldBe false
+    }
+
+    @Test
+    fun `모델 대화를 Service 프록시로 보내고 응답을 줄 단위로 읽는다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(200, "data: 첫 줄\r\n\ndata: [DONE]", calls)
+
+        // when
+        val lines = openChat(endpoint).use { stream -> generateSequence { stream.readLine() }.toList() }
+
+        // then
+        lines shouldBe listOf("data: 첫 줄", "", "data: [DONE]")
+        calls.single().run {
+            method shouldBe "POST"
+            path shouldBe "/api/v1/namespaces/llm/services/gpt-oss-20b:http/proxy/v1/chat/completions"
+            authorization!!.startsWith("Bearer k8s-aws-v1.") shouldBe true
+            contentType shouldBe "application/json"
+            body shouldBe """{"model":"m"}"""
+        }
+    }
+
+    @Test
+    fun `모델 대화의 실패 응답을 오류로 옮기고 본문을 싣지 않는다`() {
+        // given
+        val cases = mapOf<Int, Class<out RuntimeException>>(
+            401 to GpuServingDeniedException::class.java,
+            403 to GpuServingDeniedException::class.java,
+            404 to ModelNotReadyException::class.java,
+            503 to ModelNotReadyException::class.java,
+            400 to ModelChatRejectedException::class.java,
+            413 to ModelChatRejectedException::class.java,
+            422 to ModelChatRejectedException::class.java,
+            429 to ModelChatBusyException::class.java,
+            500 to GpuClusterApiFailedException::class.java,
+        )
+
+        cases.forEach { (status, expected) ->
+            val endpoint = kubernetesAnswering(status, "사용자 메시지 원문")
+
+            // when
+            val failure = runCatching { openChat(endpoint) }.exceptionOrNull()!!
+
+            // then
+            failure.javaClass shouldBe expected
+            failure.message!!.contains("사용자 메시지 원문") shouldBe false
+            kubernetes?.stop(0)
+        }
+    }
+
+    @Test
+    fun `모델 대화에서 토큰을 만들지 못하면 쿠버네티스를 부르지 않는다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(200, calls = calls)
+        sts.failure = stsException(500, "ServiceUnavailable")
+
+        // when & then
+        shouldThrow<GpuClusterApiFailedException> { openChat(endpoint) }
+        calls.shouldBeEmpty()
+    }
+
+    @Test
+    fun `모델 응답의 한 줄이 상한을 넘으면 메모리에 쌓지 않고 끊는다`() {
+        // given
+        val endpoint = kubernetesAnswering(200, "x".repeat(1024 * 1024 + 1))
+
+        // when & then
+        openChat(endpoint).use { stream -> shouldThrow<GpuClusterApiFailedException> { stream.readLine() } }
+    }
+
+    @Test
+    fun `모델 응답을 기다리다 인터럽트되면 실패로 끝나고 인터럽트 표시를 남긴다`() {
+        // given
+        val endpoint = kubernetesAnswering(200, "늦은 응답")
+        Thread.currentThread().interrupt()
+
+        // when & then
+        shouldThrow<GpuClusterApiFailedException> { openChat(endpoint) }
+        Thread.interrupted() shouldBe true
+    }
+
+    private fun readServedModel(endpoint: EksClusterEndpoint) =
+        gateway.getServedModel(target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b")
+
+    private fun openChat(endpoint: EksClusterEndpoint) = gateway.openModelChat(
+        target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b", """{"model":"m"}""".toByteArray(), Duration.ofSeconds(5),
+    )
 
     @Test
     fun `토큰을 만들다 STS 오류가 나면 쿠버네티스 호출이 클러스터 실패로 알린다`() {

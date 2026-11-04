@@ -10,8 +10,10 @@ import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
 import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EksSubnet
+import com.duro.kukie.cluster.application.port.out.ModelChatStream
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
+import com.duro.kukie.cluster.application.port.out.ServedModelState
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
@@ -24,6 +26,9 @@ import com.duro.kukie.cluster.exception.GpuNodeControlDeniedException
 import com.duro.kukie.cluster.exception.GpuNodeGroupNotFoundException
 import com.duro.kukie.cluster.exception.GpuServingDeniedException
 import com.duro.kukie.cluster.exception.InvalidNodeCountException
+import com.duro.kukie.cluster.exception.ModelChatBusyException
+import com.duro.kukie.cluster.exception.ModelChatRejectedException
+import com.duro.kukie.cluster.exception.ModelNotReadyException
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.exception.ServedModelNotFoundException
@@ -52,8 +57,13 @@ import software.amazon.awssdk.services.eks.model.ResourceInUseException
 import software.amazon.awssdk.services.eks.model.ResourceNotFoundException
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.StsException
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.http.HttpClient
@@ -64,8 +74,11 @@ import java.security.cert.CertificateFactory
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 
@@ -80,6 +93,7 @@ class AwsEksAccessGateway(
     private val sessions = ConcurrentHashMap<AwsTarget, AwsSessionCredentials>()
     private val log = logger()
     private val jsonMapper = JsonMapper.builder().build()
+    private val streamExecutor = Executors.newVirtualThreadPerTaskExecutor()
 
     /** 스택 알림 때 부른다. 역할을 다시 만들었을 수 있어 캐시된 세션을 버리고 새로 맡은 세션으로 바꿔 둔다. */
     override fun verify(target: AwsTarget) {
@@ -502,6 +516,171 @@ class AwsEksAccessGateway(
         requireServingSuccess(response.statusCode()) { throw ServedModelNotFoundException() }
     }
 
+    override fun getServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    ): ServedModelState {
+        val path = "${servedModelsPath(namespace)}/$name"
+        val response = sendToKubernetes(target, region, clusterName, endpoint, path, HttpResponse.BodyHandlers.ofString()) { GET() }
+        requireServingSuccess(response.statusCode()) { throw ServedModelNotFoundException() }
+        val root = try {
+            jsonMapper.readTree(response.body())
+        } catch (_: JacksonException) {
+            throw GpuClusterApiFailedException()
+        }
+        val metadata = root.path("metadata")
+        return ServedModelState(
+            model = root.path("spec").path("source").path("huggingface").textOrNull(),
+            phase = root.path("status").path("phase").textOrNull(),
+            deleting = metadata.path("deletionTimestamp").textOrNull() != null,
+            resourceVersion = metadata.path("resourceVersion").textOrNull(),
+            keepUntil = metadata.path("annotations").path(KEEP_UNTIL_ANNOTATION).instantOrNull(),
+            stopsAt = root.path("status").path("stopsAt").instantOrNull(),
+        )
+    }
+
+    override fun keepServedModelUntil(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        keepUntil: Instant,
+        resourceVersion: String,
+    ): Boolean {
+        val body = jsonMapper.writeValueAsString(
+            mapOf(
+                "metadata" to mapOf(
+                    "resourceVersion" to resourceVersion,
+                    "annotations" to mapOf(KEEP_UNTIL_ANNOTATION to keepUntil.toString()),
+                ),
+            ),
+        )
+        val path = "${servedModelsPath(namespace)}/$name"
+        val response = sendToKubernetes(target, region, clusterName, endpoint, path, HttpResponse.BodyHandlers.discarding()) {
+            header("Content-Type", "application/merge-patch+json").method("PATCH", HttpRequest.BodyPublishers.ofString(body))
+        }
+        if (response.statusCode() == CONFLICT) return false
+        requireServingSuccess(response.statusCode()) { throw ServedModelNotFoundException() }
+        return true
+    }
+
+    override fun openModelChat(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        body: ByteArray,
+        timeout: Duration,
+    ): ModelChatStream {
+        val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { throw GpuClusterApiFailedException() }
+        val token = gpuCall { issueToken(target, region, clusterName) }
+        val http = HttpClient.newBuilder()
+            .sslContext(sslContext)
+            .connectTimeout(PROBE_TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .executor(streamExecutor)
+            .build()
+        try {
+            val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}/api/v1/namespaces/$namespace/services/$name:$SERVING_PORT_NAME/proxy/v1/chat/completions"))
+                .timeout(timeout)
+                .header("Authorization", "Bearer $token")
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build()
+            val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
+            val stream = KubernetesModelChatStream(response.body(), http)
+            val status = response.statusCode()
+            if (status !in SUCCESS) {
+                stream.close()
+                throw modelChatRefused(status)
+            }
+            return stream
+        } catch (exception: IOException) {
+            http.shutdownNow()
+            throw kubernetesCallFailed(clusterName, exception)
+        } catch (exception: URISyntaxException) {
+            http.shutdownNow()
+            throw kubernetesCallFailed(clusterName, exception)
+        } catch (exception: IllegalArgumentException) {
+            http.shutdownNow()
+            throw kubernetesCallFailed(clusterName, exception)
+        } catch (_: InterruptedException) {
+            http.shutdownNow()
+            Thread.currentThread().interrupt()
+            throw GpuClusterApiFailedException()
+        }
+    }
+
+    private fun modelChatRefused(status: Int): RuntimeException = when (status) {
+        UNAUTHORIZED, FORBIDDEN -> GpuServingDeniedException()
+        // 없는 Service, 준비된 파드가 없는 Service, 엔진이 아직 뜨는 중
+        NOT_FOUND, SERVICE_UNAVAILABLE -> ModelNotReadyException()
+        BAD_REQUEST, CONTENT_TOO_LARGE, UNPROCESSABLE -> ModelChatRejectedException()
+        TOO_MANY_REQUESTS -> ModelChatBusyException()
+        else -> {
+            log.warn("쿠버네티스 API 가 모델 대화를 처리하지 못했습니다: status={}", status)
+            GpuClusterApiFailedException()
+        }
+    }
+
+    /** 상위가 보내는 대로 메모리에 쌓지 않게 줄과 전체 크기를 제한한다. 내용이 지나가므로 예외에 원문을 싣지 않는다. */
+    private inner class KubernetesModelChatStream(
+        private val body: InputStream,
+        private val http: HttpClient,
+    ) : ModelChatStream {
+
+        private val input = BufferedInputStream(body)
+        private val line = ByteArrayOutputStream()
+        private var total = 0L
+
+        override fun readLine(): String? {
+            line.reset()
+            try {
+                while (true) {
+                    val byte = input.read()
+                    if (byte < 0) return if (line.size() == 0) null else lineText()
+                    if (++total > MODEL_CHAT_MAX_BYTES || line.size() >= MODEL_CHAT_MAX_LINE_BYTES) throw GpuClusterApiFailedException()
+                    if (byte == LINE_FEED) return lineText()
+                    line.write(byte)
+                }
+            } catch (exception: IOException) {
+                // 인터럽트는 브라우저가 끊었거나 시간이 다 된 것이다. 쿠버네티스 쪽 문제가 아니다
+                if (!Thread.currentThread().isInterrupted) {
+                    log.warn("모델 응답을 끝까지 읽지 못했습니다: reason={}", exception.javaClass.simpleName)
+                }
+                throw GpuClusterApiFailedException()
+            }
+        }
+
+        private fun lineText(): String = line.toString(Charsets.UTF_8).removeSuffix("\r")
+
+        override fun close() {
+            runCatching { body.close() }
+            // close() 는 진행 중인 요청이 끝나기를 기다린다. 끊으려는 것이므로 기다리지 않는다
+            http.shutdownNow()
+        }
+    }
+
+    private fun JsonNode.textOrNull(): String? = takeIf { it.isString }?.asString()
+
+    /** 오븐과 같이 RFC3339 만 읽고, 읽지 못하는 값은 없는 것으로 본다. */
+    private fun JsonNode.instantOrNull(): Instant? = textOrNull()?.let {
+        try {
+            OffsetDateTime.parse(it).toInstant()
+        } catch (_: DateTimeParseException) {
+            null
+        }
+    }
+
     private fun servedModelsPath(namespace: String): String =
         "/apis/$SERVED_MODEL_API_VERSION/namespaces/$namespace/servedmodels"
 
@@ -788,12 +967,22 @@ class AwsEksAccessGateway(
         private const val CLUSTER_ADMIN_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
         internal const val GPU_READ_GROUP = "kukie-gpu-reader"
         private const val OK = 200
+        private const val BAD_REQUEST = 400
         private const val UNAUTHORIZED = 401
         private const val FORBIDDEN = 403
         private const val NOT_FOUND = 404
         private const val CONFLICT = 409
+        private const val CONTENT_TOO_LARGE = 413
+        private const val UNPROCESSABLE = 422
+        private const val TOO_MANY_REQUESTS = 429
+        private const val SERVICE_UNAVAILABLE = 503
         private val SUCCESS = 200..299
         private const val SERVED_MODEL_API_VERSION = "serving.kukie.io/v1alpha1"
+        private const val KEEP_UNTIL_ANNOTATION = "serving.kukie.io/keep-until"
+        private const val SERVING_PORT_NAME = "http"
+        private const val LINE_FEED = 10
+        private const val MODEL_CHAT_MAX_LINE_BYTES = 1024 * 1024
+        private const val MODEL_CHAT_MAX_BYTES = 64L * 1024 * 1024
         private val INVALID_SESSION_CODES = setOf(
             "UnrecognizedClientException",
             "InvalidClientTokenId",

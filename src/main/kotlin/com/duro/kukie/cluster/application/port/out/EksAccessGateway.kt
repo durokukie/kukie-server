@@ -1,6 +1,8 @@
 package com.duro.kukie.cluster.application.port.out
 
 import com.duro.kukie.cluster.domain.AccessLevel
+import java.time.Duration
+import java.time.Instant
 
 interface EksAccessGateway {
 
@@ -105,4 +107,45 @@ interface EksAccessGateway {
         namespace: String,
         name: String,
     )
+
+    /** 쿠버네티스 API 로 ServedModel 을 읽는다. 404 는 ServedModelNotFoundException, 401·403 은 GpuServingDeniedException, 그 밖의 실패는 GpuClusterApiFailedException. */
+    fun getServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    ): ServedModelState
+
+    /**
+     * annotation serving.kukie.io/keep-until 을 쓴다. resourceVersion 이 그사이 바뀌었으면 쓰지 않고 false — 다른 사람의 더 긴 연장을 덮어
+     * 줄이지 않게 하려는 것이다. 다른 실패는 getServedModel 과 같다.
+     */
+    fun keepServedModelUntil(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        keepUntil: Instant,
+        resourceVersion: String,
+    ): Boolean
+
+    /**
+     * API 서버의 Service 프록시로 그 모델에 /v1/chat/completions 를 보낸다. timeout 은 응답 헤더까지의 시간이다. 호출한 스레드를 인터럽트하면 멈춘다.
+     * 401·403 은 GpuServingDeniedException, 404·503 은 ModelNotReadyException, 400·413·422 는 ModelChatRejectedException,
+     * 429 는 ModelChatBusyException, 그 밖의 실패는 GpuClusterApiFailedException. 응답 본문은 읽지 않는다.
+     */
+    fun openModelChat(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        body: ByteArray,
+        timeout: Duration,
+    ): ModelChatStream
 }
