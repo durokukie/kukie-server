@@ -22,18 +22,18 @@ import com.duro.kukie.cluster.presentation.dto.request.ExtendServedModelRequest
 import com.duro.kukie.cluster.presentation.dto.request.ModelChatRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateGpuNodeGroupRequest
 import com.duro.kukie.cluster.presentation.dto.response.ExtendServedModelResponse
-import com.duro.kukie.cluster.presentation.dto.response.MeasureServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupsResponse
+import com.duro.kukie.cluster.presentation.dto.response.MeasureServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.ServedModelResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.team.exception.NotTeamAdminException
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.responses.ApiResponse
+import java.util.UUID
 import org.springframework.http.ResponseEntity
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import java.util.UUID
 
 interface GpuClusterControllerDocs {
 
