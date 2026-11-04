@@ -49,7 +49,13 @@ class ModelChatRelay(
             throw ModelChatBusyException()
         }
         val emitter = SseEmitter((properties.chatTimeout + EMITTER_MARGIN).toMillis())
-        Run(target, body, lease, emitter).start()
+        val run = Run(target, body, lease, emitter)
+        try {
+            run.start()
+        } catch (failure: Throwable) {
+            run.release()
+            throw failure
+        }
         return emitter
     }
 
@@ -83,7 +89,6 @@ class ModelChatRelay(
                 emitter.complete()
             }
             pumpThread.start()
-            heartThread.start()
         }
 
         private fun stopForGoneClient() {
@@ -94,6 +99,7 @@ class ModelChatRelay(
         private fun pump() {
             var outcome = "done"
             try {
+                heartThread.start()
                 // CloudFront 는 첫 바이트도 60초 안에 받아야 한다. 받는 쪽도 연결이 열린 것을 바로 안다
                 sendKeepAlive()
                 relay()
@@ -224,7 +230,7 @@ class ModelChatRelay(
             }
         }
 
-        private fun release() {
+        fun release() {
             slots.release()
             try {
                 modelChatLock.release(target.userId, lease)
