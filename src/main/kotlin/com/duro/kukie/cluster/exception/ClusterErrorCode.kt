@@ -63,9 +63,14 @@ enum class ClusterErrorCode(
     GPU_ADDON_NOT_INSTALLED(HttpStatus.CONFLICT, "클러스터에 GPU 애드온이 없습니다. 애드온과 llm namespace 를 설치했는지 확인해 주세요."),
     GPU_SERVING_DENIED(
         HttpStatus.FORBIDDEN,
-        "모델을 시작하거나 중지할 권한이 없습니다. AWS 연결이 유지되어 있고 CloudFormation 스택의 AccessLevel 이 full 인지 확인해 주세요.",
+        "모델을 다룰 권한이 없습니다. AWS 연결이 유지되어 있고 CloudFormation 스택의 AccessLevel 이 full 인지 확인해 주세요.",
     ),
     GPU_CLUSTER_API_FAILED(HttpStatus.BAD_GATEWAY, "AWS 나 클러스터가 요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
+    MODEL_NOT_READY(HttpStatus.CONFLICT, "모델이 실행 중이 아닙니다. GPU 화면에서 상태를 확인해 주세요."),
+    MODEL_CHAT_BUSY(HttpStatus.TOO_MANY_REQUESTS, "진행 중인 대화가 있거나 모델이 요청을 더 받을 수 없습니다. 잠시 뒤 다시 시도해 주세요."),
+    MODEL_CHAT_REJECTED(HttpStatus.BAD_REQUEST, "모델이 이 요청을 받지 않았습니다. 대화가 너무 길면 지우고 다시 시도해 주세요."),
+    MODEL_CHAT_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "대화가 너무 깁니다. 대화를 지우거나 줄여 주세요."),
+    MODEL_CHAT_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "응답 시간 상한이 지나 끊었습니다. 최대 토큰을 줄여 다시 시도해 주세요."),
     ;
 
     override val code: String

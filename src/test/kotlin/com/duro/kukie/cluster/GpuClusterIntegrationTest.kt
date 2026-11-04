@@ -18,6 +18,7 @@ import com.duro.kukie.cluster.exception.GpuServingDeniedException
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.exception.ServedModelNotFoundException
+import com.duro.kukie.cluster.presentation.ModelChatBodyLimit
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeEksAccessGateway
 import com.duro.kukie.support.FakeEksAccessGateway.Companion.DEFAULT_CLUSTER_NAME
@@ -39,7 +40,9 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 class GpuClusterIntegrationTest : IntegrationTest() {
@@ -723,6 +726,293 @@ class GpuClusterIntegrationTest : IntegrationTest() {
         fakeEksAccessGateway.targets.shouldBeEmpty()
     }
 
+    @Test
+    fun `모델이 Ready 가 아니거나 지우는 중이면 대화를 시작하지 않고 MODEL_NOT_READY 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        listOf(
+            FakeEksAccessGateway.READY_MODEL.copy(phase = "Loading"),
+            FakeEksAccessGateway.READY_MODEL.copy(phase = "Stopped"),
+            FakeEksAccessGateway.READY_MODEL.copy(phase = null),
+            FakeEksAccessGateway.READY_MODEL.copy(deleting = true),
+        ).forEach { state ->
+            fakeEksAccessGateway.servedModelState = state
+
+            // when & then
+            postChat(setup, "gpt-oss-20b").andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value(ClusterErrorCode.MODEL_NOT_READY.code) }
+            }
+        }
+    }
+
+    @Test
+    fun `스트림을 기다리는 요청의 거절도 JSON 본문으로 받는다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.LIMITED)
+
+        // when & then
+        mockMvc.post("/clusters/${setup.clusterId}/gpu/served-models/gpt-oss-20b/chat") {
+            authorization(setup.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            accept = MediaType.TEXT_EVENT_STREAM
+            content = CHAT_BODY
+        }.andExpect {
+            status { isForbidden() }
+            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+    }
+
+    @Test
+    fun `없는 모델과 대화하면 404 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.servedModelState = null
+
+        // when & then
+        postChat(setup, "gpt-oss-20b").andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.SERVED_MODEL_NOT_FOUND.code) }
+        }
+    }
+
+    @Test
+    fun `쿠버네티스 이름이 아니면 쿠버네티스를 부르지 않고 대화와 연장이 404 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when & then
+        postChat(setup, "Bad_Name").andExpect { status { isNotFound() } }
+        postExtend(setup, "Bad_Name", 1).andExpect { status { isNotFound() } }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `ServedModel 의 모델 이름이 규칙에 맞지 않으면 그 값을 쓰지 않고 실패로 알린다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.servedModelState = FakeEksAccessGateway.READY_MODEL.copy(model = "bad model\nforged=log")
+
+        // when & then
+        postChat(setup, "gpt-oss-20b").andExpect {
+            status { isBadGateway() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_CLUSTER_API_FAILED.code) }
+        }
+    }
+
+    @Test
+    fun `팀 Admin 이 아니면 대화하거나 연장할 수 없다`() {
+        // given
+        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL)
+
+        // when & then
+        postChat(setup, "gpt-oss-20b").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        postExtend(setup, "gpt-oss-20b", 1).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `limited 면 쿠버네티스를 부르지 않고 대화와 연장을 거부한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.LIMITED)
+
+        // when & then
+        postChat(setup, "gpt-oss-20b").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        postExtend(setup, "gpt-oss-20b", 1).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+        strings = [
+            """{"messages":[]}""",
+            """{}""",
+            """{"messages":[null]}""",
+            """{"messages":[{"role":"tool","content":"x"}]}""",
+            """{"messages":[{"role":"user"}]}""",
+            """{"messages":[{"content":"x"}]}""",
+            """{"messages":[{"role":"user","content":"x"}],"maxTokens":0}""",
+            """{"messages":[{"role":"user","content":"x"}],"maxTokens":2049}""",
+            """{"messages":[{"role":"user","content":"x"}],"temperature":-0.1}""",
+            """{"messages":[{"role":"user","content":"x"}],"temperature":2.1}""",
+        ],
+    )
+    fun `대화 요청 형식이 틀리면 쿠버네티스를 부르지 않고 400 이다`(body: String) {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when & then
+        postChat(setup, "gpt-oss-20b", body).andExpect { status { isBadRequest() } }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `대화 요청이 크기 상한을 넘으면 413 이다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val huge = "가".repeat(ModelChatBodyLimit.MAX_BYTES / 3 + 1)
+
+        // when & then
+        postChat(setup, "gpt-oss-20b", """{"messages":[{"role":"user","content":"$huge"}]}""").andExpect {
+            status { isEqualTo(413) }
+            jsonPath("$.code") { value(ClusterErrorCode.MODEL_CHAT_TOO_LARGE.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `연장하면 지금부터 그 시간 뒤를 annotation 에 읽은 버전과 함께 쓴다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val before = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+
+        // when
+        val response = postExtend(setup, "gpt-oss-20b", 2).andExpect { status { isOk() } }.andReturn().response.contentAsString
+
+        // then
+        val after = Instant.now()
+        val write = fakeEksAccessGateway.keepUntilWrites.single()
+        write.namespace shouldBe "llm"
+        write.name shouldBe "gpt-oss-20b"
+        write.resourceVersion shouldBe "7"
+        (write.keepUntil >= before.plus(2, ChronoUnit.HOURS)) shouldBe true
+        (write.keepUntil <= after.plus(2, ChronoUnit.HOURS)) shouldBe true
+        response shouldBe """{"keepUntil":"${write.keepUntil}"}"""
+    }
+
+    @Test
+    fun `이미 더 늦게 멈출 예정이면 연장해도 그 시각을 줄이지 않는다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val later = Instant.now().plus(3, ChronoUnit.HOURS).truncatedTo(ChronoUnit.SECONDS)
+        val laterStill = later.plus(30, ChronoUnit.MINUTES)
+
+        listOf(
+            FakeEksAccessGateway.READY_MODEL.copy(stopsAt = later),
+            FakeEksAccessGateway.READY_MODEL.copy(keepUntil = laterStill, stopsAt = later),
+        ).zip(listOf(later, laterStill)).forEach { (state, expected) ->
+            fakeEksAccessGateway.servedModelState = state
+
+            // when & then
+            postExtend(setup, "gpt-oss-20b", 1).andExpect {
+                status { isOk() }
+                jsonPath("$.keepUntil") { value(expected.toString()) }
+            }
+            fakeEksAccessGateway.keepUntilWrites.last().keepUntil shouldBe expected
+        }
+    }
+
+    @Test
+    fun `쓰는 사이 ServedModel 이 바뀌면 다시 읽고 쓴다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.keepUntilConflicts = 2
+
+        // when & then
+        postExtend(setup, "gpt-oss-20b", 1).andExpect { status { isOk() } }
+        fakeEksAccessGateway.keepUntilWrites.size shouldBe 1
+    }
+
+    @Test
+    fun `계속 충돌하면 실패로 알린다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.keepUntilConflicts = 3
+
+        // when & then
+        postExtend(setup, "gpt-oss-20b", 1).andExpect {
+            status { isBadGateway() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_CLUSTER_API_FAILED.code) }
+        }
+        fakeEksAccessGateway.keepUntilWrites.shouldBeEmpty()
+    }
+
+    @Test
+    fun `이미 멈췄거나 지우는 중인 모델은 연장하지 않는다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        listOf(
+            FakeEksAccessGateway.READY_MODEL.copy(phase = "Stopped"),
+            FakeEksAccessGateway.READY_MODEL.copy(deleting = true),
+        ).forEach { state ->
+            fakeEksAccessGateway.servedModelState = state
+
+            // when & then
+            postExtend(setup, "gpt-oss-20b", 1).andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value(ClusterErrorCode.MODEL_NOT_READY.code) }
+            }
+        }
+        fakeEksAccessGateway.keepUntilWrites.shouldBeEmpty()
+    }
+
+    @Test
+    fun `아직 뜨는 중인 모델도 자동 중지를 미룰 수 있다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.servedModelState = FakeEksAccessGateway.READY_MODEL.copy(phase = "Loading")
+
+        // when & then
+        postExtend(setup, "gpt-oss-20b", 1).andExpect { status { isOk() } }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["""{"hours":0}""", """{"hours":5}""", """{}""", """{"hours":"많이"}"""])
+    fun `연장 시간이 1 에서 4 시간이 아니면 400 이다`(body: String) {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when & then
+        mockMvc.post("/clusters/${setup.clusterId}/gpu/served-models/gpt-oss-20b/extend") {
+            authorization(setup.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = body
+        }.andExpect { status { isBadRequest() } }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `없는 모델을 연장하면 404 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.servedModelState = null
+
+        // when & then
+        postExtend(setup, "gpt-oss-20b", 1).andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.SERVED_MODEL_NOT_FOUND.code) }
+        }
+    }
+
+    private fun postChat(setup: Setup, name: String, body: String = CHAT_BODY): ResultActionsDsl =
+        mockMvc.post("/clusters/${setup.clusterId}/gpu/served-models/$name/chat") {
+            authorization(setup.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = body
+        }
+
+    private fun postExtend(setup: Setup, name: String, hours: Int): ResultActionsDsl =
+        mockMvc.post("/clusters/${setup.clusterId}/gpu/served-models/$name/extend") {
+            authorization(setup.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"hours":$hours}"""
+        }
+
     private fun getControl(setup: Setup): ResultActionsDsl =
         mockMvc.get("/clusters/${setup.clusterId}/gpu/node-groups") {
             authorization(setup.accessToken)
@@ -789,5 +1079,6 @@ class GpuClusterIntegrationTest : IntegrationTest() {
         private const val ACCOUNT_ID = "123456789012"
         private const val EXTERNAL_ID = "kukie-0123456789abcdef"
         private val TARGET = AwsTarget(accountId = ACCOUNT_ID, externalId = EXTERNAL_ID)
+        private const val CHAT_BODY = """{"messages":[{"role":"user","content":"안녕"}]}"""
     }
 }

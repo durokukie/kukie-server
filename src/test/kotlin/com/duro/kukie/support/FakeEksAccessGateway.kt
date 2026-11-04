@@ -10,10 +10,15 @@ import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
 import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EksSubnet
+import com.duro.kukie.cluster.application.port.out.ModelChatStream
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
+import com.duro.kukie.cluster.application.port.out.ServedModelState
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
+import com.duro.kukie.cluster.exception.ServedModelNotFoundException
+import java.time.Duration
+import java.time.Instant
 
 class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
@@ -91,6 +96,18 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     /** 노드 그룹·ServedModel 을 다루는 호출에 넘어온 API 서버. */
     val servedModelEndpoints = mutableListOf<EksClusterEndpoint>()
+
+    /** getServedModel 이 돌려줄 값. null 이면 ServedModelNotFoundException. */
+    var servedModelState: ServedModelState? = READY_MODEL
+
+    val keepUntilWrites = mutableListOf<KeepUntilWrite>()
+
+    /** keepServedModelUntil 이 이 횟수만큼 충돌(false)을 돌려준다. */
+    var keepUntilConflicts: Int = 0
+
+    /** 설정하면 대화 관련 호출을 실제 구현과 로컬 가짜 API 서버로 넘긴다. */
+    var servingBackend: EksAccessGateway? = null
+    var servingBackendEndpoint: EksClusterEndpoint? = null
 
     override fun verify(target: AwsTarget) {
         record(target)
@@ -244,6 +261,54 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         servedModelDeletions += ServedModelDeletion(namespace, name)
     }
 
+    override fun getServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    ): ServedModelState {
+        servingBackend?.let { return it.getServedModel(target, region, clusterName, servingBackendEndpoint!!, namespace, name) }
+        record(target)
+        servedModelFailure?.let { throw it }
+        return servedModelState ?: throw ServedModelNotFoundException()
+    }
+
+    override fun keepServedModelUntil(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        keepUntil: Instant,
+        resourceVersion: String,
+    ): Boolean {
+        record(target)
+        servedModelFailure?.let { throw it }
+        if (keepUntilConflicts > 0) {
+            keepUntilConflicts--
+            return false
+        }
+        keepUntilWrites += KeepUntilWrite(namespace, name, keepUntil, resourceVersion)
+        return true
+    }
+
+    override fun openModelChat(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        body: ByteArray,
+        timeout: Duration,
+    ): ModelChatStream {
+        val backend = checkNotNull(servingBackend) { "대화 흐름은 ModelChatStreamIntegrationTest 에서 실제 구현으로 시험한다" }
+        return backend.openModelChat(target, region, clusterName, servingBackendEndpoint!!, namespace, name, body, timeout)
+    }
+
     private fun record(target: AwsTarget) {
         failure?.let { throw it }
         targets += target
@@ -279,7 +344,19 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         servedModelCreations.clear()
         servedModelDeletions.clear()
         servedModelEndpoints.clear()
+        servedModelState = READY_MODEL
+        keepUntilWrites.clear()
+        keepUntilConflicts = 0
+        servingBackend = null
+        servingBackendEndpoint = null
     }
+
+    data class KeepUntilWrite(
+        val namespace: String,
+        val name: String,
+        val keepUntil: Instant,
+        val resourceVersion: String,
+    )
 
     data class NodegroupUpdate(
         val target: AwsTarget,
@@ -343,6 +420,15 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val DEFAULT_ENDPOINT = EksClusterEndpoint(
             endpoint = "https://ABCDEF0123456789.gr7.ap-northeast-2.eks.amazonaws.com",
             caData = "ZWtzLWNh",
+        )
+
+        val READY_MODEL = ServedModelState(
+            model = "openai/gpt-oss-20b",
+            phase = "Ready",
+            deleting = false,
+            resourceVersion = "7",
+            keepUntil = null,
+            stopsAt = null,
         )
 
         val DEFAULT_NODEGROUP_STATES = listOf(

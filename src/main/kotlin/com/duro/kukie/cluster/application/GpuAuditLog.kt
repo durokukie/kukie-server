@@ -22,4 +22,9 @@ class GpuAuditLog {
         log.info("GPU 조작 완료: user={} cluster={} action={}", userId, clusterId, action)
         return result
     }
+
+    /** 시작한 뒤 다른 스레드에서 끝나는 조작의 결과를 남긴다. */
+    fun finished(userId: UUID, clusterId: UUID, action: String) {
+        log.info("GPU 조작 끝: user={} cluster={} action={}", userId, clusterId, action)
+    }
 }

@@ -79,3 +79,7 @@ cluster:
       - "16384"
       - --gpu-memory-utilization
       - "0.92"
+    # 모델 대화. keep-alive 간격은 CloudFront origin_read_timeout(60초)보다 짧아야 한다
+    chat-timeout: PT10M
+    chat-heartbeat: PT5S
+    chat-max-streams: 32
