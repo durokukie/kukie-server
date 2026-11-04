@@ -134,6 +134,21 @@ interface EksAccessGateway {
     ): Boolean
 
     /**
+     * annotation serving.kukie.io/measure 에 측정 요청 값을 쓴다. 값이 바뀌면 오븐이 새 측정으로 본다. resourceVersion 이 그사이 바뀌었으면
+     * 쓰지 않고 false — 읽은 뒤 측정이 시작됐을 수 있어서 다시 읽고 판단해야 한다. 다른 실패는 getServedModel 과 같다.
+     */
+    fun requestServedModelMeasure(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        request: String,
+        resourceVersion: String,
+    ): Boolean
+
+    /**
      * API 서버의 Service 프록시로 그 모델에 /v1/chat/completions 를 보낸다. timeout 은 응답 헤더까지의 시간이다. 호출한 스레드를 인터럽트하면 멈춘다.
      * 401·403 은 GpuServingDeniedException, 404·503 은 ModelNotReadyException, 400·413·422 는 ModelChatRejectedException,
      * 429 는 ModelChatBusyException, 그 밖의 실패는 GpuClusterApiFailedException. 응답 본문은 읽지 않는다.

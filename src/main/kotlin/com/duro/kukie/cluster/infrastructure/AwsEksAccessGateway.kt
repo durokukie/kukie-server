@@ -552,12 +552,56 @@ class AwsEksAccessGateway(
         name: String,
         keepUntil: Instant,
         resourceVersion: String,
+    ): Boolean = writeServedModelAnnotation(
+        target,
+        region,
+        clusterName,
+        endpoint,
+        namespace,
+        name,
+        KEEP_UNTIL_ANNOTATION,
+        keepUntil.toString(),
+        resourceVersion,
+    )
+
+    override fun requestServedModelMeasure(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        request: String,
+        resourceVersion: String,
+    ): Boolean = writeServedModelAnnotation(
+        target,
+        region,
+        clusterName,
+        endpoint,
+        namespace,
+        name,
+        MEASURE_ANNOTATION,
+        request,
+        resourceVersion,
+    )
+
+    /** annotation 하나만 merge patch 로 쓴다. resourceVersion 이 그사이 바뀌었으면 쓰지 않고 false. */
+    private fun writeServedModelAnnotation(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        annotation: String,
+        value: String,
+        resourceVersion: String,
     ): Boolean {
         val body = jsonMapper.writeValueAsString(
             mapOf(
                 "metadata" to mapOf(
                     "resourceVersion" to resourceVersion,
-                    "annotations" to mapOf(KEEP_UNTIL_ANNOTATION to keepUntil.toString()),
+                    "annotations" to mapOf(annotation to value),
                 ),
             ),
         )
@@ -994,6 +1038,7 @@ class AwsEksAccessGateway(
         private val SUCCESS = 200..299
         private const val SERVED_MODEL_API_VERSION = "serving.kukie.io/v1alpha1"
         private const val KEEP_UNTIL_ANNOTATION = "serving.kukie.io/keep-until"
+        private const val MEASURE_ANNOTATION = "serving.kukie.io/measure"
         private const val SERVING_PORT_NAME = "http"
         private const val LINE_FEED = 10
         private const val MODEL_CHAT_MAX_LINE_BYTES = 1024 * 1024

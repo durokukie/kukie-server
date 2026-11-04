@@ -307,6 +307,54 @@ class AwsEksAccessGatewayTest {
     }
 
     @Test
+    fun `측정 요청은 measure annotation 만 읽은 버전과 함께 merge patch 로 쓴다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(200, calls = calls)
+
+        // when
+        val written = gateway.requestServedModelMeasure(
+            target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b", "m-1793000000", "42",
+        )
+
+        // then
+        written shouldBe true
+        calls.single().run {
+            method shouldBe "PATCH"
+            path shouldBe "/apis/serving.kukie.io/v1alpha1/namespaces/llm/servedmodels/gpt-oss-20b"
+            contentType shouldBe "application/merge-patch+json"
+            body shouldBe """{"metadata":{"resourceVersion":"42","annotations":{"serving.kukie.io/measure":"m-1793000000"}}}"""
+        }
+    }
+
+    @Test
+    fun `측정 요청을 쓰는 사이 ServedModel 이 바뀌었으면 false 다`() {
+        // given
+        val endpoint = kubernetesAnswering(409)
+
+        // when
+        val written = gateway.requestServedModelMeasure(
+            target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b", "m-1793000000", "42",
+        )
+
+        // then
+        written shouldBe false
+    }
+
+    @Test
+    fun `측정 요청이 쿠버네티스에 거부되거나 모델이 없으면 그대로 알린다`() {
+        // given
+        fun request(endpoint: EksClusterEndpoint) = gateway.requestServedModelMeasure(
+            target, "ap-northeast-2", "demo", endpoint, "llm", "gpt-oss-20b", "m-1793000000", "42",
+        )
+
+        // when & then
+        shouldThrow<ServedModelNotFoundException> { request(kubernetesAnswering(404)) }
+        kubernetes?.stop(0)
+        shouldThrow<GpuServingDeniedException> { request(kubernetesAnswering(403)) }
+    }
+
+    @Test
     fun `모델 대화를 Service 프록시로 보내고 응답을 줄 단위로 읽는다`() {
         // given
         val calls = mutableListOf<KubernetesCall>()
