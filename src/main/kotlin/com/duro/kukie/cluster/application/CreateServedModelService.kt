@@ -26,7 +26,7 @@ class CreateServedModelService(
 
         val action = "start-model namespace=$SERVING_NAMESPACE name=$name model=${command.model} storageGi=${command.storageGi}"
         gpuAuditLog.record(command.userId, command.clusterId, action) {
-            if (!access.control) throw GpuServingDeniedException()
+            if (!access.serving) throw GpuServingDeniedException()
             val endpoint = eksGpuAccess.endpointOf(cluster)
             val credential = access.credential
             // 이름이 달라도 GPU 한 장에 모델 하나다. 동시에 시작하면 둘 다 지나갈 수 있어 화면의 확인 창에 기댄다

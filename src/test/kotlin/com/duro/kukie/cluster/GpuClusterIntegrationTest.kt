@@ -145,23 +145,6 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `패턴 밖 클러스터면 쿠버네티스를 부르지 않고 모델 시작과 중지를 거부한다`() {
-        // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true, gpuClusterPattern = "other-*")
-
-        // when & then
-        postModel(setup, "openai/gpt-oss-20b", 40).andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
-        }
-        deleteModel(setup, "gpt-oss-20b").andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
-        }
-        fakeEksAccessGateway.targets.shouldBeEmpty()
-    }
-
-    @Test
     fun `AWS 나 클러스터가 처리하지 못하면 GET·PUT·POST·DELETE 모두 502 다`() {
         // given
         val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
@@ -416,7 +399,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `ServedModel 을 llm namespace 에 서버 설정의 엔진으로 만든다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
 
         // when & then
         postModel(setup, "Qwen/Qwen3.6-35B-A3B", 120).andExpect {
@@ -442,9 +425,29 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `v5 full 스택이면 GpuNodeControl 과 GpuClusterPattern 없이 모델을 시작한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = false, gpuClusterPattern = null)
+
+        // when & then
+        postModel(setup, "openai/gpt-oss-20b", 40).andExpect { status { isCreated() } }
+        fakeEksAccessGateway.servedModelCreations.single().name shouldBe "gpt-oss-20b"
+    }
+
+    @Test
+    fun `GpuClusterPattern 밖 클러스터여도 full 이면 모델을 시작한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true, gpuClusterPattern = "other-*")
+
+        // when & then
+        postModel(setup, "openai/gpt-oss-20b", 40).andExpect { status { isCreated() } }
+        fakeEksAccessGateway.servedModelCreations.single().name shouldBe "gpt-oss-20b"
+    }
+
+    @Test
     fun `팀 Admin 이 아니면 모델을 시작할 수 없다`() {
         // given
-        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL)
 
         // when & then
         postModel(setup, "openai/gpt-oss-20b", 40).andExpect {
@@ -456,7 +459,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `namespace 에 다른 ServedModel 이 있으면 만들지 않는다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
         fakeEksAccessGateway.servedModelPresent = true
 
         // when & then
@@ -470,7 +473,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `쿠버네티스가 이미 있다고 하면 SERVED_MODEL_EXISTS 다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
         fakeEksAccessGateway.servedModelCreateFailure = ServedModelExistsException()
 
         // when & then
@@ -483,7 +486,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `CRD 나 namespace 가 없으면 GPU_ADDON_NOT_INSTALLED 다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
         fakeEksAccessGateway.servedModelFailure = GpuAddonNotInstalledException()
 
         // when & then
@@ -496,7 +499,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `쿠버네티스가 거부하면 GPU_SERVING_DENIED 다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
         fakeEksAccessGateway.servedModelFailure = GpuServingDeniedException()
 
         // when & then
@@ -520,23 +523,9 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `v5 full 스택이면 쿠버네티스를 부르지 않고 모델 시작을 거부한다`() {
-        // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = false)
-
-        // when & then
-        postModel(setup, "openai/gpt-oss-20b", 40).andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
-        }
-        fakeEksAccessGateway.targets.shouldBeEmpty()
-        fakeEksAccessGateway.servedModelCreations.shouldBeEmpty()
-    }
-
-    @Test
     fun `연결을 해제했으면 쿠버네티스를 부르지 않고 모델 시작과 중지를 거부한다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
         val connection = awsConnectionRepository.findByExternalId(EXTERNAL_ID)!!
         connection.disconnect()
         awsConnectionRepository.save(connection)
@@ -554,9 +543,49 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `연결이 다른 계정으로 바뀌었으면 쿠버네티스를 부르지 않고 모델 시작과 중지를 거부한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val connection = awsConnectionRepository.findByExternalId(EXTERNAL_ID)!!
+        connection.connect("210987654321", LocalDateTime.now(), null, AccessLevel.FULL)
+        awsConnectionRepository.save(connection)
+
+        // when & then
+        postModel(setup, "openai/gpt-oss-20b", 40).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        deleteModel(setup, "gpt-oss-20b").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `스택을 limited 로 내렸으면 클러스터가 아직 full 이어도 모델 시작과 중지를 거부한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val connection = awsConnectionRepository.findByExternalId(EXTERNAL_ID)!!
+        connection.connect(ACCOUNT_ID, LocalDateTime.now(), null, AccessLevel.LIMITED)
+        awsConnectionRepository.save(connection)
+
+        // when & then
+        postModel(setup, "openai/gpt-oss-20b", 40).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        deleteModel(setup, "gpt-oss-20b").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
     fun `모델 형식이 CRD 패턴과 다르거나 저장 공간이 범위를 벗어나면 400 이다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
 
         // when & then
         listOf(
@@ -578,7 +607,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `저장 공간의 경계값은 받는다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
 
         // when & then
         listOf(20, 500).forEach { storageGi ->
@@ -608,7 +637,31 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `ServedModel 을 llm namespace 에서 지운다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when & then
+        deleteModel(setup, "gpt-oss-20b").andExpect { status { isNoContent() } }
+        fakeEksAccessGateway.servedModelDeletions shouldBe listOf(
+            FakeEksAccessGateway.ServedModelDeletion("llm", "gpt-oss-20b"),
+        )
+    }
+
+    @Test
+    fun `v5 full 스택이면 GpuNodeControl 과 GpuClusterPattern 없이 모델을 중지한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = false, gpuClusterPattern = null)
+
+        // when & then
+        deleteModel(setup, "gpt-oss-20b").andExpect { status { isNoContent() } }
+        fakeEksAccessGateway.servedModelDeletions shouldBe listOf(
+            FakeEksAccessGateway.ServedModelDeletion("llm", "gpt-oss-20b"),
+        )
+    }
+
+    @Test
+    fun `GpuClusterPattern 밖 클러스터여도 full 이면 모델을 중지한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true, gpuClusterPattern = "other-*")
 
         // when & then
         deleteModel(setup, "gpt-oss-20b").andExpect { status { isNoContent() } }
@@ -620,7 +673,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `팀 Admin 이 아니면 모델을 중지할 수 없다`() {
         // given
-        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL)
 
         // when & then
         deleteModel(setup, "gpt-oss-20b").andExpect {
@@ -632,7 +685,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `없는 ServedModel 을 지우면 404 다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
         fakeEksAccessGateway.servedModelFailure = ServedModelNotFoundException()
 
         // when & then
@@ -645,7 +698,7 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     @Test
     fun `쿠버네티스 이름이 아니면 쿠버네티스를 부르지 않고 404 다`() {
         // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = true)
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
 
         // when & then
         listOf("Upper", "a..b", "bad_name").forEach { name ->
@@ -668,20 +721,6 @@ class GpuClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
         }
         fakeEksAccessGateway.targets.shouldBeEmpty()
-    }
-
-    @Test
-    fun `v5 full 스택이면 쿠버네티스를 부르지 않고 모델 중지를 거부한다`() {
-        // given
-        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL, gpuNodeControl = false)
-
-        // when & then
-        deleteModel(setup, "gpt-oss-20b").andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
-        }
-        fakeEksAccessGateway.targets.shouldBeEmpty()
-        fakeEksAccessGateway.servedModelDeletions.shouldBeEmpty()
     }
 
     private fun getControl(setup: Setup): ResultActionsDsl =
