@@ -15,6 +15,11 @@ import com.duro.kukie.cluster.exception.GpuAddonNotInstalledException
 import com.duro.kukie.cluster.exception.GpuClusterApiFailedException
 import com.duro.kukie.cluster.exception.GpuNodeControlDeniedException
 import com.duro.kukie.cluster.exception.GpuServingDeniedException
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import com.duro.kukie.cluster.application.GpuAuditLog
+import com.duro.kukie.cluster.application.port.out.EngineResources
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.exception.ServedModelNotFoundException
@@ -33,6 +38,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.NullSource
 import org.junit.jupiter.params.provider.ValueSource
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActionsDsl
@@ -448,6 +454,61 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `gpus 를 안 보내거나 null 이면 1장으로 시작하고 자원을 넣지 않는다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when
+        postModel(setup, "openai/gpt-oss-20b", 40).andExpect { status { isCreated() } }
+        postModel(setup, "openai/gpt-oss-20b", 40, gpusJson = "null").andExpect { status { isCreated() } }
+        postModel(setup, "openai/gpt-oss-20b", 40, gpusJson = "1").andExpect { status { isCreated() } }
+
+        // then
+        fakeEksAccessGateway.servedModelCreations.map { it.gpus to it.engineResources } shouldBe List(3) { 1 to null }
+    }
+
+    @Test
+    fun `gpus 가 2 4 8 이면 장수에 맞춘 자원으로 시작한다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when
+        listOf(2, 4, 8).forEach { gpus ->
+            postModel(setup, "openai/gpt-oss-120b", 100, gpusJson = "$gpus").andExpect { status { isCreated() } }
+        }
+
+        // then
+        fakeEksAccessGateway.servedModelCreations.map { it.gpus to it.engineResources } shouldBe listOf(
+            2 to EngineResources(cpuRequest = 8, memoryRequestGi = 64, memoryLimitGi = 128),
+            4 to EngineResources(cpuRequest = 16, memoryRequestGi = 128, memoryLimitGi = 256),
+            8 to EngineResources(cpuRequest = 32, memoryRequestGi = 256, memoryLimitGi = 512),
+        )
+    }
+
+    @Test
+    fun `감사 로그에 GPU 수를 남긴다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val logger = LoggerFactory.getLogger(GpuAuditLog::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+
+        // when
+        try {
+            postModel(setup, "openai/gpt-oss-120b", 100, gpusJson = "4").andExpect { status { isCreated() } }
+            postModel(setup, "openai/gpt-oss-20b", 40).andExpect { status { isCreated() } }
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        // then
+        appender.list.map { it.formattedMessage.substringAfter("action=") } shouldBe listOf(
+            "start-model namespace=llm name=gpt-oss-120b model=openai/gpt-oss-120b storageGi=100 gpus=4",
+            "start-model namespace=llm name=gpt-oss-20b model=openai/gpt-oss-20b storageGi=40 gpus=1",
+        )
+    }
+
+    @Test
     fun `팀 Admin 이 아니면 모델을 시작할 수 없다`() {
         // given
         val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL)
@@ -615,6 +676,32 @@ class GpuClusterIntegrationTest : IntegrationTest() {
         // when & then
         listOf(20, 500).forEach { storageGi ->
             postModel(setup, "openai/gpt-oss-20b", storageGi).andExpect { status { isCreated() } }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["0", "-1", "3", "5", "6", "7", "9", "16", "2.5", "2.0", "99999999999", "\"2\"", "\"four\"", "\"\"", "true", "[2]"])
+    fun `gpus 가 1 2 4 8 이 아니면 쿠버네티스를 부르지 않고 400 이다`(gpusJson: String) {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when & then
+        postModel(setup, "openai/gpt-oss-20b", 40, gpusJson = gpusJson).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(GlobalErrorCode.BAD_REQUEST.code) }
+        }
+        fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `gpus 가 허용하지 않는 정수면 고를 수 있는 값을 알려 준다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when & then
+        postModel(setup, "openai/gpt-oss-20b", 40, gpusJson = "3").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.message") { value("GPU 수는 1, 2, 4, 8 중 하나여야 합니다.") }
         }
     }
 
@@ -1025,11 +1112,12 @@ class GpuClusterIntegrationTest : IntegrationTest() {
             content = """{"desired":$desired}"""
         }
 
-    private fun postModel(setup: Setup, model: String, storageGi: Int): ResultActionsDsl =
+    private fun postModel(setup: Setup, model: String, storageGi: Int, gpusJson: String? = null): ResultActionsDsl =
         mockMvc.post("/clusters/${setup.clusterId}/gpu/served-models") {
             authorization(setup.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = """{"model":"$model","storageGi":$storageGi}"""
+            val gpus = gpusJson?.let { ""","gpus":$it""" }.orEmpty()
+            content = """{"model":"$model","storageGi":$storageGi$gpus}"""
         }
 
     private fun deleteModel(setup: Setup, name: String): ResultActionsDsl =

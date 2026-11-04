@@ -79,7 +79,8 @@ interface GpuClusterControllerDocs {
         summary = "모델 시작",
         description = "llm namespace 에 ServedModel 을 만들어 모델을 내려받고 서빙을 시작합니다. 팀 관리자만 할 수 있고 스택의 AccessLevel 이 full 이어야 합니다. " +
             "limited 이거나 연결을 해제했으면 GPU_SERVING_DENIED 입니다. " +
-            "GPU 한 장에 모델 하나이므로 그 namespace 에 ServedModel 이 이미 있으면 SERVED_MODEL_EXISTS 입니다.",
+            "클러스터에 모델 하나이므로 그 namespace 에 ServedModel 이 이미 있으면 SERVED_MODEL_EXISTS 입니다. " +
+            "gpus 는 1, 2, 4, 8 중 하나이고 그 밖의 값은 400 입니다. 없으면 1 입니다.",
     )
     @ApiResponse(responseCode = "201", description = "Created")
     @ApiErrorResponses(

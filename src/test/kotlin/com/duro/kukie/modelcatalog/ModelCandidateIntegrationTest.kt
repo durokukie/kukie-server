@@ -1,5 +1,6 @@
 package com.duro.kukie.modelcatalog
 
+import com.duro.kukie.modelcatalog.ModelCatalogFixture.gptOss120b
 import com.duro.kukie.modelcatalog.ModelCatalogFixture.gptOss20b
 import com.duro.kukie.modelcatalog.ModelCatalogFixture.model
 import com.duro.kukie.modelcatalog.domain.GatedAccess
@@ -18,6 +19,7 @@ import io.kotest.matchers.longs.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -36,6 +38,11 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     @Autowired
     private lateinit var redisTemplate: StringRedisTemplate
 
+    @BeforeEach
+    fun verifiedModelOffTheList() {
+        fakeHuggingFaceClient.models["openai/gpt-oss-120b"] = gptOss120b()
+    }
+
     @Test
     fun `갱신하면 허깅페이스 후보를 거르고 저장해 약속한 형태로 준다`() {
         // given
@@ -44,7 +51,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
             model("OBLITERATUS/gpt-oss-20b-obliterated"),
             model("Qwen/Qwen3-32B", paramsB = 32.8, usedStorageGb = 66.0, weightGb = 66.0, license = "llama3.1"),
             model("KRAFTON/Raon-1-mini-preview", paramsB = 28.8, architecture = "Raon1MiniForCausalLM", gated = GatedAccess.AUTO),
-            model("openai/gpt-oss-120b", paramsB = 116.8, weightGb = 65.2),
+            gptOss120b(),
             gptOss20b(),
         )
 
@@ -53,34 +60,41 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.generatedAt") { exists() }
             jsonPath("$.candidates.length()") { value(4) }
-            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
-            jsonPath("$.candidates[0].paramsB") { value(20.9) }
-            jsonPath("$.candidates[0].sizeGb") { value(41.4) }
-            jsonPath("$.candidates[0].weightGb") { value(13.8) }
-            jsonPath("$.candidates[0].license") { value("apache-2.0") }
-            jsonPath("$.candidates[0].gated") { value(false) }
-            jsonPath("$.candidates[0].vllmNative") { value(true) }
-            jsonPath("$.candidates[0].gpus[0]") { value("l40s") }
-            jsonPath("$.candidates[0].gpus[1]") { value("pro6000") }
+            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-120b") }
+            jsonPath("$.candidates[0].weightGb") { value(65.2) }
+            jsonPath("$.candidates[0].gpus.length()") { value(1) }
+            jsonPath("$.candidates[0].gpus[0]") { value("pro6000") }
             jsonPath("$.candidates[0].verified") { value(true) }
-            jsonPath("$.candidates[0].maxConcurrency") { value(32) }
+            jsonPath("$.candidates[0].maxConcurrency") { value(8) }
             jsonPath("$.candidates[0].measuredGpu") { value("l40s") }
-            jsonPath("$.candidates[1].id") { value("Qwen/Qwen3-32B") }
-            jsonPath("$.candidates[1].licenseNote") { value("조건 있음") }
-            jsonPath("$.candidates[1].gpus.length()") { value(1) }
-            jsonPath("$.candidates[1].gpus[0]") { value("pro6000") }
-            jsonPath("$.candidates[1].verified") { value(false) }
-            jsonPath("$.candidates[1].maxConcurrency") { value(null) }
-            jsonPath("$.candidates[1].measuredGpu") { value(null) }
-            jsonPath("$.candidates[2].id") { value("KRAFTON/Raon-1-mini-preview") }
-            jsonPath("$.candidates[2].gated") { value(true) }
-            jsonPath("$.candidates[2].vllmNative") { value(false) }
-            jsonPath("$.candidates[2].sizeGb") { value(null) }
-            jsonPath("$.candidates[2].weightGb") { value(null) }
-            jsonPath("$.candidates[2].gpus") { isEmpty() }
-            jsonPath("$.candidates[3].id") { value("openai/gpt-oss-120b") }
-            jsonPath("$.candidates[3].gpus.length()") { value(1) }
-            jsonPath("$.candidates[3].gpus[0]") { value("pro6000") }
+            jsonPath("$.candidates[0].measuredGpus") { value(4) }
+            jsonPath("$.candidates[1].id") { value("openai/gpt-oss-20b") }
+            jsonPath("$.candidates[1].paramsB") { value(20.9) }
+            jsonPath("$.candidates[1].sizeGb") { value(41.4) }
+            jsonPath("$.candidates[1].weightGb") { value(13.8) }
+            jsonPath("$.candidates[1].license") { value("apache-2.0") }
+            jsonPath("$.candidates[1].gated") { value(false) }
+            jsonPath("$.candidates[1].vllmNative") { value(true) }
+            jsonPath("$.candidates[1].gpus[0]") { value("l40s") }
+            jsonPath("$.candidates[1].gpus[1]") { value("pro6000") }
+            jsonPath("$.candidates[1].verified") { value(true) }
+            jsonPath("$.candidates[1].maxConcurrency") { value(32) }
+            jsonPath("$.candidates[1].measuredGpu") { value("l40s") }
+            jsonPath("$.candidates[1].measuredGpus") { value(1) }
+            jsonPath("$.candidates[2].id") { value("Qwen/Qwen3-32B") }
+            jsonPath("$.candidates[2].licenseNote") { value("조건 있음") }
+            jsonPath("$.candidates[2].gpus.length()") { value(1) }
+            jsonPath("$.candidates[2].gpus[0]") { value("pro6000") }
+            jsonPath("$.candidates[2].verified") { value(false) }
+            jsonPath("$.candidates[2].maxConcurrency") { value(null) }
+            jsonPath("$.candidates[2].measuredGpu") { value(null) }
+            jsonPath("$.candidates[2].measuredGpus") { value(null) }
+            jsonPath("$.candidates[3].id") { value("KRAFTON/Raon-1-mini-preview") }
+            jsonPath("$.candidates[3].gated") { value(true) }
+            jsonPath("$.candidates[3].vllmNative") { value(false) }
+            jsonPath("$.candidates[3].sizeGb") { value(null) }
+            jsonPath("$.candidates[3].weightGb") { value(null) }
+            jsonPath("$.candidates[3].gpus") { isEmpty() }
         }
     }
 
@@ -100,7 +114,8 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
             jsonPath("$.generatedAt") { exists() }
             jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
             jsonPath("$.candidates[0].verified") { value(true) }
-            jsonPath("$.candidates[1].verified") { value(false) }
+            jsonPath("$.candidates[1].verified") { value(true) }
+            jsonPath("$.candidates[2].verified") { value(false) }
         }
         fakeHuggingFaceClient.calls shouldBe calls
     }
@@ -133,7 +148,24 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
             jsonPath("$.candidates[0].verified") { value(true) }
-            jsonPath("$.candidates[1].id") { value("Qwen/Qwen3-32B") }
+            jsonPath("$.candidates[1].id") { value("openai/gpt-oss-120b") }
+            jsonPath("$.candidates[1].verified") { value(true) }
+            jsonPath("$.candidates[2].id") { value("Qwen/Qwen3-32B") }
+        }
+    }
+
+    @Test
+    fun `여러 장에서 잰 검증 모델은 GPU 1장에 안 들어가도 실측한 장수에 들어가면 갱신한다`() {
+        // given
+        val user = teamAdmin()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
+            jsonPath("$.candidates[1].id") { value("openai/gpt-oss-120b") }
+            jsonPath("$.candidates[1].verified") { value(true) }
         }
     }
 
@@ -152,7 +184,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
 
         // then
         modelCandidateRepository.findAllByOrderByDisplayOrder().map { it.modelId }
-            .shouldContainExactly("google/g-30B", "openai/gpt-oss-20b")
+            .shouldContainExactly("google/g-30B", "openai/gpt-oss-20b", "openai/gpt-oss-120b")
         saved("openai/gpt-oss-20b").run {
             previousCollectedAt shouldBe firstCollectedAt
             collectedAt.isAfter(firstCollectedAt) shouldBe true
@@ -223,6 +255,18 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         // given
         val user = teamAdmin()
         fakeHuggingFaceClient.trending = listOf(model("openai/gpt-oss-20b", weightGb = 40.0))
+
+        // when & then
+        refresh(user.accessToken).andExpect { status { isBadGateway() } }
+        modelCandidateRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `여러 장에서 잰 검증 모델이 실측한 장수에도 안 들어가면 갱신하지 않는다`() {
+        // given
+        val user = teamAdmin()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.models["openai/gpt-oss-120b"] = model("openai/gpt-oss-120b", paramsB = 116.8, weightGb = 141.0)
 
         // when & then
         refresh(user.accessToken).andExpect { status { isBadGateway() } }

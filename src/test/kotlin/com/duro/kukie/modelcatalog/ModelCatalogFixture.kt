@@ -32,4 +32,12 @@ object ModelCatalogFixture {
         weightGb = 13.8,
         architecture = "GptOssForCausalLM",
     )
+
+    fun gptOss120b() = model(
+        id = "openai/gpt-oss-120b",
+        paramsB = 116.829156672,
+        usedStorageGb = 195.9,
+        weightGb = 65.2,
+        architecture = "GptOssForCausalLM",
+    )
 }

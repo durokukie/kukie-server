@@ -25,6 +25,7 @@ data class ModelCandidatesResponse(
         val verified: Boolean,
         val maxConcurrency: Int?,
         val measuredGpu: String?,
+        val measuredGpus: Int?,
     ) {
         companion object {
             fun from(candidate: ModelCandidate): CandidateResponse {
@@ -42,6 +43,7 @@ data class ModelCandidatesResponse(
                     verified = verified != null,
                     maxConcurrency = verified?.maxConcurrency,
                     measuredGpu = verified?.gpu,
+                    measuredGpus = verified?.gpus,
                 )
             }
         }

@@ -79,7 +79,7 @@ class RefreshModelCandidatesService(
         log.info("모델 후보를 모았습니다: 후보={}, 걸러짐={}", selection.kept.size, selection.dropped.size)
 
         val collected = selection.kept.map { ModelCandidateRules.withRepoFiles(it, huggingFaceClient.fetchModel(it.id)) }
-        collected.firstOrNull { VerifiedModels.MODELS[it.id]?.let { verified -> verified.gpu !in it.fitsGpus } == true }?.let {
+        collected.firstOrNull { VerifiedModels.MODELS[it.id]?.let { verified -> !ModelCandidateRules.fitsMeasured(it, verified) } == true }?.let {
             throw refreshFailed("검증된 모델이 실측한 GPU 에 들어가지 않는다고 나옵니다: ${it.id}, 가중치 ${it.weightGb}GB")
         }
         return collected

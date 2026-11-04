@@ -690,10 +690,25 @@ class AwsEksAccessGateway(
         "metadata" to mapOf("name" to manifest.name, "namespace" to manifest.namespace),
         "spec" to mapOf(
             "source" to mapOf("huggingface" to manifest.model),
-            "engine" to mapOf("image" to manifest.engineImage, "args" to manifest.engineArgs, "gpus" to manifest.gpus),
+            "engine" to engineBody(manifest),
             "storage" to mapOf("size" to "${manifest.storageGi}Gi", "retainOnDelete" to manifest.retainOnDelete),
         ),
     )
+
+    private fun engineBody(manifest: ServedModelManifest): Map<String, Any> = buildMap {
+        put("image", manifest.engineImage)
+        put("args", manifest.engineArgs)
+        put("gpus", manifest.gpus)
+        manifest.engineResources?.let { resources ->
+            put(
+                "resources",
+                mapOf(
+                    "requests" to mapOf("cpu" to "${resources.cpuRequest}", "memory" to "${resources.memoryRequestGi}Gi"),
+                    "limits" to mapOf("memory" to "${resources.memoryLimitGi}Gi"),
+                ),
+            )
+        }
+    }
 
     /** 토큰을 담아 부른다. 토큰과 응답 본문은 로그에 넣지 않는다. */
     private fun <T> sendToKubernetes(
