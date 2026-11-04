@@ -46,6 +46,10 @@ class User private constructor(
     var password = password
         protected set
 
+    @Column(name = "avatar_url", length = AVATAR_URL_MAX_LENGTH)
+    var avatarUrl: String? = null
+        protected set
+
     fun matchesPassword(rawPassword: String, passwordEncoder: PasswordEncoder): Boolean =
         password?.let { passwordEncoder.matches(rawPassword, it) } ?: false
 
@@ -53,7 +57,13 @@ class User private constructor(
         this.name = name
     }
 
+    /** https 만 받는다(화면이 img 로 띄운다). 사진을 안 주는 로그인은 있던 사진을 지우지 않는다. */
+    fun changeAvatar(url: String?) {
+        if (url != null && url.startsWith("https://") && url.length <= AVATAR_URL_MAX_LENGTH) avatarUrl = url
+    }
+
     companion object {
         const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
+        private const val AVATAR_URL_MAX_LENGTH = 500
     }
 }

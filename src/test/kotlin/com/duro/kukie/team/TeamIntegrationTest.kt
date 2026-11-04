@@ -21,6 +21,7 @@ import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamRequest
 import com.duro.kukie.user.UserFixture
 import io.kotest.matchers.shouldBe
+import org.hamcrest.Matchers.contains
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
@@ -130,7 +131,9 @@ class TeamIntegrationTest : IntegrationTest() {
     fun `팀 구성원 목록을 조회한다`() {
         // given
         val admin = loggedInUser()
-        val member = loggedInUser(UserFixture.user(name = "구성원", email = "member@example.com"))
+        val member = loggedInUser(
+            UserFixture.user(name = "구성원", email = "member@example.com").apply { changeAvatar(AVATAR_URL) },
+        )
         val team = teamRepository.save(TeamFixture.team())
         teamMembershipRepository.save(TeamFixture.membership(team.id, admin.user.id))
         teamMembershipRepository.save(TeamFixture.membership(team.id, member.user.id, TeamRole.MEMBER))
@@ -141,6 +144,7 @@ class TeamIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(2) }
+            jsonPath("$[?(@.email == 'member@example.com')].avatarUrl") { value(contains(AVATAR_URL)) }
         }
     }
 
@@ -503,5 +507,9 @@ class TeamIntegrationTest : IntegrationTest() {
             status { isForbidden() }
             jsonPath("$.code") { value(TeamErrorCode.INSUFFICIENT_TEAM_ROLE.code) }
         }
+    }
+
+    companion object {
+        private const val AVATAR_URL = "https://avatars.githubusercontent.com/u/1"
     }
 }
