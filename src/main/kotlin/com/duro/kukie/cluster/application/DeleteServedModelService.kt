@@ -23,7 +23,7 @@ class DeleteServedModelService(
 
         val action = "stop-model namespace=${CreateServedModelService.SERVING_NAMESPACE} name=$name"
         gpuAuditLog.record(userId, clusterId, action) {
-            if (!access.control) throw GpuServingDeniedException()
+            if (!access.serving) throw GpuServingDeniedException()
             val credential = access.credential
             eksAccessGateway.deleteServedModel(
                 credential.target,
