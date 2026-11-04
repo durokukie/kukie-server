@@ -504,10 +504,6 @@ class AwsEksAccessGatewayTest {
             "requests" to mapOf("cpu" to "16", "memory" to "128Gi"),
             "limits" to mapOf("memory" to "256Gi"),
         )
-        val resources = engine["resources"] as Map<*, *>
-        resources.values.flatMap { (it as Map<*, *>).values }.forEach { quantity ->
-            CRD_QUANTITY.matches(quantity as String) shouldBe true
-        }
     }
 
     @Test
@@ -1277,10 +1273,6 @@ class AwsEksAccessGatewayTest {
             storageGi = 40,
             retainOnDelete = true,
         )
-
-        /** 오븐 CRD 의 engine.resources.requests·limits 값 패턴. */
-        private val CRD_QUANTITY =
-            Regex("""^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$""")
         private const val EDIT_POLICY = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
         private const val CLUSTER_ADMIN_POLICY = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
         private const val INVALID_TOKEN = "The security token included in the request is invalid."

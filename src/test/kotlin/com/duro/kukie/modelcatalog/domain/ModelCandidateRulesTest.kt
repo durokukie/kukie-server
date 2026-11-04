@@ -262,6 +262,7 @@ class ModelCandidateRulesTest {
         verified.keys.toList().shouldContainExactly("openai/gpt-oss-20b", "openai/gpt-oss-120b")
         verified.getValue("openai/gpt-oss-20b").run { Triple(gpu, gpus, maxConcurrency) } shouldBe Triple("l40s", 1, 32)
         verified.getValue("openai/gpt-oss-120b").run { Triple(gpu, gpus, maxConcurrency) } shouldBe Triple("l40s", 4, 8)
+        verified.getValue("openai/gpt-oss-120b").measuredOn shouldBe "2026-11-04"
     }
 
     @Test

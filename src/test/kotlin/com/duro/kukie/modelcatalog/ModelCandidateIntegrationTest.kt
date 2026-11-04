@@ -155,6 +155,21 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `여러 장에서 잰 검증 모델은 GPU 1장에 안 들어가도 실측한 장수에 들어가면 갱신한다`() {
+        // given
+        val user = teamAdmin()
+        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+
+        // when & then
+        refresh(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
+            jsonPath("$.candidates[1].id") { value("openai/gpt-oss-120b") }
+            jsonPath("$.candidates[1].verified") { value(true) }
+        }
+    }
+
+    @Test
     fun `다시 갱신하면 덮어쓰고 빠진 모델을 지우며 이전 수집 시각을 남긴다`() {
         // given
         val user = teamAdmin()
@@ -244,21 +259,6 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         // when & then
         refresh(user.accessToken).andExpect { status { isBadGateway() } }
         modelCandidateRepository.count() shouldBe 0
-    }
-
-    @Test
-    fun `여러 장에서 잰 검증 모델은 GPU 1장에 안 들어가도 실측한 장수에 들어가면 갱신한다`() {
-        // given
-        val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
-
-        // when & then
-        refresh(user.accessToken).andExpect {
-            status { isOk() }
-            jsonPath("$.candidates[0].id") { value("openai/gpt-oss-20b") }
-            jsonPath("$.candidates[1].id") { value("openai/gpt-oss-120b") }
-            jsonPath("$.candidates[1].verified") { value(true) }
-        }
     }
 
     @Test
