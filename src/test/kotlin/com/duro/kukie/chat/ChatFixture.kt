@@ -35,6 +35,7 @@ object ChatFixture {
         kind: RunKind = RunKind.CHAT,
         inputText: String? = "파드 목록 보여줘",
         status: RunStatus = RunStatus.RUNNING,
+        requestedBy: UUID? = null,
     ): ChatRun = ChatRun(
         sessionId = sessionId,
         requestId = requestId,
@@ -42,5 +43,6 @@ object ChatFixture {
         kind = kind,
         mode = "학습",
         inputText = inputText,
+        requestedBy = requestedBy,
     ).apply { if (status != RunStatus.RUNNING) changeStatus(status) }
 }

@@ -40,6 +40,7 @@ class StartRunService(
                 kind = command.kind,
                 mode = command.mode,
                 inputText = command.inputText,
+                requestedBy = command.userId,
             ),
         )
         session.touch()

@@ -146,7 +146,7 @@ class ChatIntegrationTest : IntegrationTest() {
         val me = loggedInUser()
         val cluster = savedCluster(me.user.id)
         val session = savedSession(me.user.id, cluster.id)
-        val answered = ChatFixture.run(session.id, turnNo = 1, status = RunStatus.COMPLETED).apply {
+        val answered = ChatFixture.run(session.id, turnNo = 1, status = RunStatus.COMPLETED, requestedBy = me.user.id).apply {
             recordResponse(mapOf("kind" to "answer", "text" to "파드 3개", "tool_calls" to emptyList<Any>()))
         }
         val failed = ChatFixture.run(session.id, turnNo = 2, inputText = "다시", status = RunStatus.FAILED).apply {
@@ -168,12 +168,14 @@ class ChatIntegrationTest : IntegrationTest() {
             jsonPath("$.turns[0].mode") { value("학습") }
             jsonPath("$.turns[0].status") { value("completed") }
             jsonPath("$.turns[0].inputText") { value("파드 목록 보여줘") }
+            jsonPath("$.turns[0].requestedBy") { value(me.user.id.toString()) }
             jsonPath("$.turns[0].payload.kind") { value("answer") }
             jsonPath("$.turns[0].payload.tool_calls") { value(empty<Any>()) }
             jsonPath("$.turns[0].error") { value(null) }
             jsonPath("$.turns[0].finishedAt") { exists() }
             jsonPath("$.turns[1].status") { value("failed") }
             jsonPath("$.turns[1].payload") { value(null) }
+            jsonPath("$.turns[1].requestedBy") { value(null) }
             jsonPath("$.turns[1].error.code") { value("RUN_FAILED") }
             jsonPath("$.turns[1].error.http_status") { value(500) }
             jsonPath("$.turns[1].error.kind") { doesNotExist() }
