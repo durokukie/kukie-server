@@ -5,6 +5,8 @@ import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeVerificationCodeSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.exception.UserErrorCode
+import com.duro.kukie.auth.presentation.dto.request.LogInRequest
+import com.duro.kukie.user.presentation.dto.request.ChangePasswordRequest
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import com.duro.kukie.user.presentation.dto.request.SendVerificationCodeRequest
 import com.duro.kukie.user.presentation.dto.request.UpdateUserRequest
@@ -85,6 +87,7 @@ class UserIntegrationTest : IntegrationTest() {
             jsonPath("$.id") { value(user.user.id.toString()) }
             jsonPath("$.name") { value(user.user.name) }
             jsonPath("$.email") { value(user.user.email.value) }
+            jsonPath("$.hasPassword") { value(true) }
         }
     }
 
@@ -140,6 +143,60 @@ class UserIntegrationTest : IntegrationTest() {
             jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
         }
     }
+
+    @Test
+    fun `로그인 한 유저가 현재 비밀번호를 확인하고 비밀번호를 바꾼다`() {
+        // given
+        val user = loggedInUser()
+
+        // when
+        changePassword(user.accessToken, UserFixture.DEFAULT_PASSWORD, "new-password1")
+            .andExpect { status { isNoContent() } }
+
+        // then
+        logIn("new-password1").andExpect { status { isOk() } }
+        logIn(UserFixture.DEFAULT_PASSWORD).andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `현재 비밀번호가 틀리면 400 으로 거절하고 로그인은 유지된다`() {
+        // given
+        val user = loggedInUser()
+
+        // when & then
+        changePassword(user.accessToken, "wrong-password", "new-password1").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(UserErrorCode.INVALID_CURRENT_PASSWORD.code) }
+        }
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `로그인하지 않으면 비밀번호를 변경할 수 없다`() {
+        // when & then
+        mockMvc.put("/users/me/password") {
+            contentType = MediaType.APPLICATION_JSON
+            content = ChangePasswordRequest(UserFixture.DEFAULT_PASSWORD, "new-password1").toJson()
+        }.andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.UNAUTHORIZED.code) }
+        }
+    }
+
+    private fun changePassword(accessToken: String, current: String, new: String): ResultActionsDsl =
+        mockMvc.put("/users/me/password") {
+            authorization(accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = ChangePasswordRequest(current, new).toJson()
+        }
+
+    private fun logIn(password: String): ResultActionsDsl =
+        mockMvc.post("/auth/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = LogInRequest(email, password).toJson()
+        }
 
     private fun sendVerificationCode(email: String = UserFixture.DEFAULT_EMAIL): ResultActionsDsl {
         val request = SendVerificationCodeRequest(email)
