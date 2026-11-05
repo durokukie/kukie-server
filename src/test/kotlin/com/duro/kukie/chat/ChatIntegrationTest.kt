@@ -8,6 +8,7 @@ import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSession
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.chat.domain.ChatVisibility
+import com.duro.kukie.chat.domain.RunKind
 import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.chat.exception.ChatErrorCode
 import com.duro.kukie.chat.presentation.dto.request.CreateChatRequest
@@ -22,8 +23,13 @@ import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.user.UserFixture
 import com.jayway.jsonpath.JsonPath
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
 import org.hamcrest.Matchers.contains
+import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.empty
+import org.hamcrest.Matchers.endsWith
+import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -233,6 +239,145 @@ class ChatIntegrationTest : IntegrationTest() {
 
         // when & then
         mockMvc.get("/conversations/${mine.id}") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ChatErrorCode.NOT_FOUND.code) }
+        }
+    }
+
+    @Test
+    fun `대화의 요청·명령·변경·답을 작업내역으로 모아 준다`() {
+        // given
+        val me = loggedInUser()
+        val bok = userRepository.save(UserFixture.user(email = "bok@example.com", name = "Bok"))
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN, bok.id to TeamRole.MEMBER)
+        val cluster = savedCluster(me.user.id, teamId = teamId, name = "dev")
+        val session = savedSession(me.user.id, cluster.id, visibility = ChatVisibility.SHARED)
+        val asked = ChatFixture.run(session.id, turnNo = 1, inputText = "api 가 왜 죽어?", status = RunStatus.COMPLETED, requestedBy = bok.id)
+            .apply { recordResponse(answerPayload(output = "x".repeat(4001))) }
+        val failed = ChatFixture.run(session.id, turnNo = 2, inputText = "다시", status = RunStatus.FAILED).apply {
+            recordResponse(mapOf("kind" to "error", "code" to "RUN_FAILED", "message" to "실패", "http_status" to 500))
+        }
+        chatRunRepository.saveAll(listOf(asked, failed))
+        actionPlanRepository.save(
+            ActionPlanFixture.plan(asked.id).approved(me.user.id).apply {
+                start()
+                recordResult(success = true, stdout = "deployment.apps/web scaled", stderr = "", exitCode = 0)
+            },
+        )
+        actionPlanRepository.save(ActionPlanFixture.plan(asked.id, toolCallId = "call-2").offered().apply { reject(me.user.id) })
+
+        // when & then
+        mockMvc.get("/conversations/${session.id}/worklog") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.schema") { value("kukie.worklog/v1") }
+            jsonPath("$.conversation.shared") { value(true) }
+            jsonPath("$.conversation.ownerId") { value(me.user.id.toString()) }
+            jsonPath("$.environment.clusterName") { value("dev") }
+            jsonPath("$.environment.context") { value(ChatFixture.DEFAULT_CONTEXT) }
+            jsonPath("$.environment.namespace") { value(ChatFixture.DEFAULT_NAMESPACE) }
+            jsonPath("$.environment.fingerprint") { value(ChatFixture.FINGERPRINT) }
+            jsonPath("$.people[*].name") { value(contains("Bok", me.user.name)) }
+            jsonPath("$.turns[*].seq") { value(contains(1, 2)) }
+            jsonPath("$.turns[0].requestedBy") { value(bok.id.toString()) }
+            jsonPath("$.turns[0].request") { value("api 가 왜 죽어?") }
+            jsonPath("$.turns[0].startedAt") { value(endsWith("Z")) }
+            jsonPath("$.turns[0].changes[0].appliedAt") { value(endsWith("Z")) }
+            jsonPath("$.turns[0].steps[0].label") { value("로그 조회") }
+            jsonPath("$.turns[0].steps[0].access") { value("read-only") }
+            jsonPath("$.turns[0].steps[0].command") { value("kubectl logs deploy/api -n web") }
+            jsonPath("$.turns[0].steps[0].output") { value(startsWith("x".repeat(4000) + "\n…(1자 생략)")) }
+            jsonPath("$.turns[0].answer.narration") { value("메모리가 부족해요") }
+            jsonPath("$.turns[0].answer.finding.cause") { value("OOMKilled") }
+            jsonPath("$.turns[0].answer.suggestedNextAction") { value("한도를 올리세요") }
+            jsonPath("$.turns[0].changes[*].status") { value(contains("APPLIED", "REJECTED")) }
+            jsonPath("$.turns[0].changes[0].tool") { value(ActionPlanFixture.TOOL) }
+            jsonPath("$.turns[0].changes[0].intent") { value(ActionPlanFixture.INTENT) }
+            jsonPath("$.turns[0].changes[0].command[1]") { value("scale") }
+            jsonPath("$.turns[0].changes[0].args.replicas") { value(3) }
+            jsonPath("$.turns[0].changes[0].risk") { value("caution") }
+            jsonPath("$.turns[0].changes[0].dryRun.status") { value("succeeded") }
+            jsonPath("$.turns[0].changes[0].decision.approved") { value(true) }
+            jsonPath("$.turns[0].changes[0].decision.by") { value(me.user.id.toString()) }
+            jsonPath("$.turns[0].changes[0].decision.at") { value(endsWith("Z")) }
+            jsonPath("$.turns[0].changes[0].result.exit_code") { value(0) }
+            jsonPath("$.turns[0].changes[1].decision.approved") { value(false) }
+            jsonPath("$.turns[0].error") { value(null) }
+            jsonPath("$.turns[1].requestedBy") { value(null) }
+            jsonPath("$.turns[1].answer") { value(null) }
+            jsonPath("$.turns[1].error.code") { value("RUN_FAILED") }
+        }
+    }
+
+    @Test
+    fun `작업내역을 Markdown 파일로 내려받는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, name = "dev")
+        val session = savedSession(me.user.id, cluster.id)
+        val run = chatRunRepository.save(
+            ChatFixture.run(session.id, inputText = "api 가 왜 죽어?", status = RunStatus.COMPLETED, requestedBy = me.user.id)
+                .apply { recordResponse(answerPayload(output = "```\nOOMKilled")) },
+        )
+        actionPlanRepository.save(ActionPlanFixture.plan(run.id).offered().apply { reject(me.user.id) })
+        chatRunRepository.save(
+            ChatFixture.run(session.id, turnNo = 2, kind = RunKind.MODE_CHANGE, inputText = null, status = RunStatus.COMPLETED),
+        )
+
+        // when
+        val markdown = mockMvc.get("/conversations/${session.id}/worklog/markdown") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            content { contentTypeCompatibleWith("text/markdown") }
+            header { string("Content-Disposition", containsString("worklog-${session.id}.md")) }
+        }.andReturn().response.getContentAsString(Charsets.UTF_8)
+
+        // then
+        markdown shouldStartWith "# 작업내역 · ${ChatSession.DEFAULT_TITLE}"
+        markdown shouldContain "- 대화: 개인(Private) · 만든 사람 ${me.user.name}"
+        markdown shouldContain "- 클러스터: dev · context `prod` · namespace `web`"
+        markdown shouldContain "## 1. api 가 왜 죽어?"
+        markdown shouldContain "요청: ${me.user.name} · "
+        markdown shouldContain " KST · 상태 `completed`"
+        markdown shouldContain "**로그 조회** · 읽기 전용\n\n````\n$ kubectl logs deploy/api -n web\n```\nOOMKilled\n````"
+        markdown shouldContain "#### ${ActionPlanFixture.INTENT}"
+        markdown shouldContain "- 명령: `kubectl scale deployment/web --replicas=3 -n web`"
+        markdown shouldContain "- 결정: 거절 · ${me.user.name} · "
+        markdown shouldContain "- 원인: OOMKilled"
+        markdown shouldContain "다음에 할 일: 한도를 올리세요"
+        markdown shouldContain "## 2. 모드 변경 → 학습"
+    }
+
+    @Test
+    fun `기록이 없는 대화도 빈 작업내역을 준다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when & then
+        mockMvc.get("/conversations/${session.id}/worklog") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.turns") { value(empty<Any>()) }
+            jsonPath("$.people[*].id") { value(contains(me.user.id.toString())) }
+        }
+    }
+
+    @Test
+    fun `남의 private 대화의 작업내역은 받을 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val other = userRepository.save(UserFixture.user(email = "other@example.com"))
+        val teamId = savedTeam(other.id to TeamRole.ADMIN, me.user.id to TeamRole.ADMIN)
+        val othersPrivate = savedSession(other.id, savedCluster(other.id, teamId = teamId).id)
+
+        // when & then
+        mockMvc.get("/conversations/${othersPrivate.id}/worklog/markdown") {
             authorization(me.accessToken)
         }.andExpect {
             status { isNotFound() }
@@ -559,6 +704,25 @@ class ChatIntegrationTest : IntegrationTest() {
         }
         chatSessionRepository.existsById(session.id) shouldBe true
     }
+
+    private fun answerPayload(output: String): Map<String, Any?> = mapOf(
+        "kind" to "answer",
+        "skill" to "shared",
+        "response" to mapOf(
+            "narration" to "메모리가 부족해요",
+            "steps" to listOf(
+                mapOf(
+                    "step_label" to "로그 조회",
+                    "access" to "read-only",
+                    "command" to "kubectl logs deploy/api -n web",
+                    "output" to output,
+                    "explanations" to emptyList<Any>(),
+                ),
+            ),
+            "suggested_next_action" to "한도를 올리세요",
+            "finding" to mapOf("cause" to "OOMKilled", "evidence" to "로그", "recommendation" to "한도 올리기"),
+        ),
+    )
 
     private fun savedCluster(
         registeredBy: UUID,

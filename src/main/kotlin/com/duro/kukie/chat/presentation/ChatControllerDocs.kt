@@ -9,6 +9,7 @@ import com.duro.kukie.chat.presentation.dto.request.RenameChatRequest
 import com.duro.kukie.chat.presentation.dto.response.ChatDetailResponse
 import com.duro.kukie.chat.presentation.dto.response.ChatResponse
 import com.duro.kukie.chat.presentation.dto.response.CreateChatResponse
+import com.duro.kukie.chat.presentation.dto.response.WorklogResponse
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.team.exception.NotTeamAdminException
@@ -40,6 +41,21 @@ interface ChatControllerDocs {
     )
     @ApiErrorResponses(ChatNotFoundException::class)
     fun getChat(conversationId: UUID, userId: UUID): ResponseEntity<ChatDetailResponse>
+
+    @Operation(
+        summary = "작업내역 조회 (JSON)",
+        description = "대화의 턴마다 요청·실행한 명령·변경(조치 계획)·답을 모아 작업내역으로 돌려줍니다. schema 는 kukie.worklog/v1 이고, " +
+            "시각은 모두 UTC(ISO-8601, Z)입니다. 명령 출력과 dry-run·실행 결과의 stdout·stderr 는 4000자에서 자릅니다. 에이전트 내부 메시지는 넣지 않습니다. 대화를 볼 수 있는 사람만 받습니다.",
+    )
+    @ApiErrorResponses(ChatNotFoundException::class)
+    fun getWorklog(conversationId: UUID, userId: UUID): ResponseEntity<WorklogResponse>
+
+    @Operation(
+        summary = "작업내역 내려받기 (Markdown)",
+        description = "같은 작업내역을 사람이 읽는 Markdown 파일(text/markdown, 첨부)로 돌려줍니다. 시각은 KST 로 적습니다.",
+    )
+    @ApiErrorResponses(ChatNotFoundException::class)
+    fun getWorklogMarkdown(conversationId: UUID, userId: UUID): ResponseEntity<String>
 
     @Operation(
         summary = "대화 이름 변경",
