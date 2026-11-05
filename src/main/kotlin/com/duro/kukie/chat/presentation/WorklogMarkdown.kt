@@ -72,8 +72,11 @@ object WorklogMarkdown {
             else -> "구분 없음"
         }
         appendLine("**${step.label ?: "명령"}** · $access")
-        appendLine()
-        fenced(listOfNotNull(step.command?.let { "$ $it" }, step.output).joinToString("\n"))
+        val body = listOfNotNull(step.command?.let { "$ $it" }, step.output).joinToString("\n")
+        if (body.isNotEmpty()) {
+            appendLine()
+            fenced(body)
+        }
     }
 
     private fun StringBuilder.change(change: WorklogResponse.Change, names: Map<UUID, String>) {
@@ -153,9 +156,6 @@ object WorklogMarkdown {
     private fun name(names: Map<UUID, String>, id: UUID): String = names[id] ?: "알 수 없는 사용자"
 
     private fun time(at: Instant): String = at.atZone(KST).format(TIME) + " KST"
-
-    private fun time(iso: String): String =
-        runCatching { Instant.parse(iso).atZone(KST).format(TIME) + " KST" }.getOrDefault(iso)
 
     private const val SAFE_CHARS = "-_./=:,@%+"
 }

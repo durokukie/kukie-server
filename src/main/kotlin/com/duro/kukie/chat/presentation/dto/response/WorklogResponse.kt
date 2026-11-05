@@ -68,7 +68,7 @@ data class WorklogResponse(
         val appliedAt: Instant?,
     )
 
-    data class Decision(val approved: Boolean, val by: UUID?, val at: String?)
+    data class Decision(val approved: Boolean, val by: UUID?, val at: Instant?)
 
     data class Answer(val narration: String?, val finding: Finding?, val suggestedNextAction: String?)
 
@@ -150,7 +150,7 @@ data class WorklogResponse(
                     Decision(
                         approved = it["approved"] == true,
                         by = it.string("user_id")?.let { id -> runCatching { UUID.fromString(id) }.getOrNull() },
-                        at = it.string("at"),
+                        at = it.string("at")?.let { at -> runCatching { Instant.parse(at) }.getOrNull() },
                     )
                 },
                 result = plan.executionResult?.let(::clipped),

@@ -302,6 +302,7 @@ class ChatIntegrationTest : IntegrationTest() {
             jsonPath("$.turns[0].changes[0].dryRun.status") { value("succeeded") }
             jsonPath("$.turns[0].changes[0].decision.approved") { value(true) }
             jsonPath("$.turns[0].changes[0].decision.by") { value(me.user.id.toString()) }
+            jsonPath("$.turns[0].changes[0].decision.at") { value(endsWith("Z")) }
             jsonPath("$.turns[0].changes[0].result.exit_code") { value(0) }
             jsonPath("$.turns[0].changes[1].decision.approved") { value(false) }
             jsonPath("$.turns[0].error") { value(null) }
