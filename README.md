@@ -54,3 +54,4 @@ cp .env.example .env
 ## API 이용 권한
 
 회원·팀 권한과 분리된 API 이용 초대·수락·취소 계약은 [운영 문서](runbooks/serving-access.md)를 참고하세요. 키 발급·공통 API 중계·화면은 후속 단계입니다.
+- [개인 API 키 발급·폐기](runbooks/serving-api-keys.md)
