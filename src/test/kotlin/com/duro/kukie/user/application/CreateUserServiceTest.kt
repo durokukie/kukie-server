@@ -6,6 +6,7 @@ import com.duro.kukie.user.application.port.`in`.CreateUserCommand
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
+import com.duro.kukie.user.domain.VerificationType
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import io.kotest.assertions.throwables.shouldThrow
@@ -51,7 +52,7 @@ class CreateUserServiceTest {
         // given
         val savedUser = slot<User>()
         every { userRepository.existsByEmail(command.email) } returns false
-        every { verificationCodeRepository.findByEmail(command.email) } returns command.verificationCode
+        every { verificationCodeRepository.findByEmail(VerificationType.SIGN_UP, command.email) } returns command.verificationCode
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
 
         // when
@@ -59,7 +60,7 @@ class CreateUserServiceTest {
 
         // then
         verify(exactly = 1) { userRepository.saveAndFlush(any()) }
-        verify(exactly = 1) { verificationCodeRepository.deleteByEmail(command.email) }
+        verify(exactly = 1) { verificationCodeRepository.deleteByEmail(VerificationType.SIGN_UP, command.email) }
         with(savedUser.captured) {
             name shouldBe command.name
             email shouldBe command.email
@@ -76,40 +77,40 @@ class CreateUserServiceTest {
         shouldThrow<DuplicatedEmailException> { createUserService(command) }
 
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
-        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any(), any()) }
     }
 
     @Test
     fun `발급된 인증 코드가 없으면 예외가 발생한다`() {
         // given
         every { userRepository.existsByEmail(command.email) } returns false
-        every { verificationCodeRepository.findByEmail(command.email) } returns null
+        every { verificationCodeRepository.findByEmail(VerificationType.SIGN_UP, command.email) } returns null
 
         // when & then
         shouldThrow<InvalidVerificationCodeException> { createUserService(command) }
 
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
-        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any(), any()) }
     }
 
     @Test
     fun `인증 코드가 일치하지 않으면 예외가 발생한다`() {
         // given
         every { userRepository.existsByEmail(command.email) } returns false
-        every { verificationCodeRepository.findByEmail(command.email) } returns "654321"
+        every { verificationCodeRepository.findByEmail(VerificationType.SIGN_UP, command.email) } returns "654321"
 
         // when & then
         shouldThrow<InvalidVerificationCodeException> { createUserService(command) }
 
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
-        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any(), any()) }
     }
 
     @Test
     fun `동시 가입으로 저장 시점에 이메일이 중복되면 예외가 발생한다`() {
         // given
         every { userRepository.existsByEmail(command.email) } returns false
-        every { verificationCodeRepository.findByEmail(command.email) } returns command.verificationCode
+        every { verificationCodeRepository.findByEmail(VerificationType.SIGN_UP, command.email) } returns command.verificationCode
         every { userRepository.saveAndFlush(any()) } throws DataIntegrityViolationException(
             "could not execute statement",
             ConstraintViolationException("duplicate key", SQLException(), "tbl_user_email_key"),
@@ -119,6 +120,6 @@ class CreateUserServiceTest {
         shouldThrow<DuplicatedEmailException> { createUserService(command) }
 
         verify(exactly = 1) { userRepository.saveAndFlush(any()) }
-        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any()) }
+        verify(exactly = 0) { verificationCodeRepository.deleteByEmail(any(), any()) }
     }
 }
