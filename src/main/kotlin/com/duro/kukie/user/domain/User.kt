@@ -50,8 +50,15 @@ class User private constructor(
     var avatarUrl: String? = null
         protected set
 
+    val hasPassword: Boolean
+        get() = password != null
+
     fun matchesPassword(rawPassword: String, passwordEncoder: PasswordEncoder): Boolean =
         password?.let { passwordEncoder.matches(rawPassword, it) } ?: false
+
+    fun changePassword(rawPassword: String, passwordEncoder: PasswordEncoder) {
+        password = checkNotNull(passwordEncoder.encode(rawPassword))
+    }
 
     fun update(name: String) {
         this.name = name

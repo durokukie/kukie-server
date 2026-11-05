@@ -5,6 +5,7 @@ import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.application.port.out.VerificationCodeSender
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
+import com.duro.kukie.user.domain.VerificationType
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -41,7 +42,7 @@ class SendVerificationCodeServiceTest {
         val savedCode = slot<String>()
         val sentCode = slot<String>()
         every { userRepository.existsByEmail(email) } returns false
-        every { verificationCodeRepository.save(email, capture(savedCode)) } returns Unit
+        every { verificationCodeRepository.save(VerificationType.SIGN_UP, email, capture(savedCode)) } returns Unit
         every { verificationCodeSender.send(email.value, capture(sentCode)) } returns Unit
 
         // when

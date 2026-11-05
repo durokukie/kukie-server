@@ -12,9 +12,12 @@ import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.auth.presentation.dto.request.ResetPasswordRequest
+import com.duro.kukie.auth.presentation.dto.request.SendPasswordResetCodeRequest
 import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
+import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import jakarta.servlet.http.HttpServletRequest
@@ -66,4 +69,20 @@ interface AuthControllerDocs {
     )
     @ApiErrorResponses(InvalidHandoffCodeException::class)
     fun exchangeHandoffCode(request: ExchangeHandoffCodeRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
+
+    @Operation(
+        summary = "비밀번호 재설정 코드 발송",
+        description = "가입된 이메일이면 6자리 재설정 코드(3분 유효)를 메일로 보냅니다. 비밀번호가 없는 소셜 로그인 계정도 받아서 비밀번호를 처음 설정할 수 있습니다. " +
+            "가입 여부를 드러내지 않도록 가입하지 않은 이메일에도 204 로 응답합니다.",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    fun sendPasswordResetCode(request: SendPasswordResetCodeRequest): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "비밀번호 재설정",
+        description = "재설정 코드를 확인하고 새 비밀번호로 바꿉니다. 코드는 한 번 쓰면 지워집니다."
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(InvalidVerificationCodeException::class)
+    fun resetPassword(request: ResetPasswordRequest): ResponseEntity<Unit>
 }
