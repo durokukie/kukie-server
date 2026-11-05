@@ -80,7 +80,7 @@ object WorklogMarkdown {
 
     private fun StringBuilder.change(change: WorklogResponse.Change, names: Map<UUID, String>) {
         appendLine()
-        appendLine("#### ${change.intent?.takeIf { it.isNotBlank() } ?: change.tool}")
+        appendLine("#### ${change.intent?.takeIf { it.isNotBlank() }?.lines()?.joinToString(" ") { it.trim() } ?: change.tool}")
         appendLine()
         appendLine("- 도구 ${code(change.tool)} · 위험도 ${code(change.risk)} · 상태 ${code(change.status.name)}")
         val command = change.command.joinToString(" ") { shellWord(it.toString()) }
