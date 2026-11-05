@@ -3,9 +3,7 @@ package com.duro.kukie.chat.presentation
 import com.duro.kukie.chat.domain.RunKind
 import com.duro.kukie.chat.presentation.dto.response.WorklogResponse
 import java.time.Instant
-import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
@@ -154,7 +152,7 @@ object WorklogMarkdown {
 
     private fun name(names: Map<UUID, String>, id: UUID): String = names[id] ?: "알 수 없는 사용자"
 
-    private fun time(utc: LocalDateTime): String = utc.atOffset(ZoneOffset.UTC).atZoneSameInstant(KST).format(TIME) + " KST"
+    private fun time(at: Instant): String = at.atZone(KST).format(TIME) + " KST"
 
     private fun time(iso: String): String =
         runCatching { Instant.parse(iso).atZone(KST).format(TIME) + " KST" }.getOrDefault(iso)

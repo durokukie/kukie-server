@@ -28,6 +28,7 @@ import io.kotest.matchers.string.shouldStartWith
 import org.hamcrest.Matchers.contains
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.empty
+import org.hamcrest.Matchers.endsWith
 import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -283,6 +284,8 @@ class ChatIntegrationTest : IntegrationTest() {
             jsonPath("$.turns[*].seq") { value(contains(1, 2)) }
             jsonPath("$.turns[0].requestedBy") { value(bok.id.toString()) }
             jsonPath("$.turns[0].request") { value("api 가 왜 죽어?") }
+            jsonPath("$.turns[0].startedAt") { value(endsWith("Z")) }
+            jsonPath("$.turns[0].changes[0].appliedAt") { value(endsWith("Z")) }
             jsonPath("$.turns[0].steps[0].label") { value("로그 조회") }
             jsonPath("$.turns[0].steps[0].access") { value("read-only") }
             jsonPath("$.turns[0].steps[0].command") { value("kubectl logs deploy/api -n web") }

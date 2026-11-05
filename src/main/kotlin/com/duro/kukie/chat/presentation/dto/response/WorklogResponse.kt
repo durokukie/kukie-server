@@ -10,7 +10,9 @@ import com.duro.kukie.chat.domain.RunKind
 import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.chat.domain.RunTurn
 import com.duro.kukie.cluster.domain.Cluster
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 data class WorklogResponse(
@@ -39,8 +41,8 @@ data class WorklogResponse(
         val status: RunStatus,
         val requestedBy: UUID?,
         val request: String?,
-        val startedAt: LocalDateTime,
-        val finishedAt: LocalDateTime?,
+        val startedAt: Instant,
+        val finishedAt: Instant?,
         val steps: List<Step>,
         val changes: List<Change>,
         val answer: Answer?,
@@ -63,7 +65,7 @@ data class WorklogResponse(
         val decision: Decision?,
         val result: Map<String, Any?>?,
         val pullRequest: Any?,
-        val appliedAt: LocalDateTime?,
+        val appliedAt: Instant?,
     )
 
     data class Decision(val approved: Boolean, val by: UUID?, val at: String?)
@@ -103,8 +105,8 @@ data class WorklogResponse(
                 status = run.status,
                 requestedBy = run.requestedBy,
                 request = run.inputText,
-                startedAt = run.startedAt,
-                finishedAt = run.finishedAt,
+                startedAt = run.startedAt.utc(),
+                finishedAt = run.finishedAt?.utc(),
                 steps = (response?.get("steps") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>().map(::step),
                 changes = plans.map(::change),
                 answer = response?.let(::answer),
@@ -153,7 +155,7 @@ data class WorklogResponse(
                 },
                 result = plan.executionResult?.let(::clipped),
                 pullRequest = payload[ActionPlan.PULL_REQUEST],
-                appliedAt = plan.appliedAt,
+                appliedAt = plan.appliedAt?.utc(),
             )
         }
 
@@ -165,6 +167,8 @@ data class WorklogResponse(
             val end = if (text[OUTPUT_LIMIT - 1].isHighSurrogate()) OUTPUT_LIMIT - 1 else OUTPUT_LIMIT
             return text.take(end) + "\n…(${text.length - end}자 생략)"
         }
+
+        private fun LocalDateTime.utc(): Instant = toInstant(ZoneOffset.UTC)
 
         private fun Map<*, *>.string(key: String): String? = this[key] as? String
     }
