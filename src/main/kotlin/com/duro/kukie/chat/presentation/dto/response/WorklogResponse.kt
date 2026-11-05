@@ -10,19 +10,26 @@ import com.duro.kukie.chat.domain.RunKind
 import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.chat.domain.RunTurn
 import com.duro.kukie.cluster.domain.Cluster
+import com.fasterxml.jackson.annotation.JsonIgnore
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 data class WorklogResponse(
     val schema: String,
+    /** 시각 값은 모두 UTC(Z)다. timeZone·utcOffset 은 Markdown 을 그린 시간대이고 JSON 값은 바꾸지 않는다 */
+    val exportedAt: Instant,
+    val timeZone: String,
+    val utcOffset: String,
     val conversation: Conversation,
     val environment: Environment,
     val people: List<Person>,
     val turns: List<Turn>,
 ) {
-    data class Conversation(val id: UUID, val title: String, val shared: Boolean, val ownerId: UUID)
+    data class Conversation(val id: UUID, val title: String, val shared: Boolean, val ownerId: UUID, val createdAt: Instant)
 
     data class Environment(
         val clusterId: UUID,
@@ -66,6 +73,8 @@ data class WorklogResponse(
         val result: Map<String, Any?>?,
         val pullRequest: Any?,
         val appliedAt: Instant?,
+        /** 계획이 만들어진 시각. 승인 대기 시간을 Markdown 에만 적고 JSON 스키마에는 넣지 않는다 */
+        @get:JsonIgnore val proposedAt: Instant?,
     )
 
     data class Decision(val approved: Boolean, val by: UUID?, val at: Instant?)
@@ -79,6 +88,14 @@ data class WorklogResponse(
     companion object {
         const val SCHEMA = "kukie.worklog/v1"
         const val OUTPUT_LIMIT = 4000
+        private val OFFSET = DateTimeFormatter.ofPattern("xxx")
+        private val UTC: ZoneId = ZoneId.of("UTC")
+
+        /** 브라우저가 보낸 시간대(IANA 이름). 비었거나 모르는 값이면 UTC 로 그린다 */
+        fun zoneOf(tz: String?): ZoneId =
+            tz?.takeIf { it.isNotBlank() }?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: UTC
+
+        fun offsetOf(zone: ZoneId, at: Instant): String = OFFSET.format(at.atZone(zone))
 
         fun of(
             session: ChatSession,
@@ -86,9 +103,20 @@ data class WorklogResponse(
             people: List<Person>,
             runs: List<RunTurn>,
             plansByRun: Map<UUID, List<ActionPlan>>,
+            zone: ZoneId,
+            exportedAt: Instant,
         ) = WorklogResponse(
             schema = SCHEMA,
-            conversation = Conversation(session.id, session.title, session.visibility == ChatVisibility.SHARED, session.userId),
+            exportedAt = exportedAt,
+            timeZone = zone.id,
+            utcOffset = offsetOf(zone, exportedAt),
+            conversation = Conversation(
+                session.id,
+                session.title,
+                session.visibility == ChatVisibility.SHARED,
+                session.userId,
+                session.createdAt.utc(),
+            ),
             environment = Environment(cluster.id, cluster.name, session.contextName, session.namespace, session.clusterFingerprint),
             people = people,
             turns = runs.map { turn(it, plansByRun[it.id].orEmpty()) },
@@ -156,6 +184,7 @@ data class WorklogResponse(
                 result = plan.executionResult?.let(::clipped),
                 pullRequest = payload[ActionPlan.PULL_REQUEST],
                 appliedAt = plan.appliedAt?.utc(),
+                proposedAt = plan.createdAt.utc(),
             )
         }
 

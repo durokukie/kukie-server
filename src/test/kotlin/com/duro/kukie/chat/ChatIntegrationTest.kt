@@ -271,9 +271,15 @@ class ChatIntegrationTest : IntegrationTest() {
         // when & then
         mockMvc.get("/conversations/${session.id}/worklog") {
             authorization(me.accessToken)
+            param("tz", "Asia/Seoul")
         }.andExpect {
             status { isOk() }
             jsonPath("$.schema") { value("kukie.worklog/v1") }
+            jsonPath("$.exportedAt") { value(endsWith("Z")) }
+            jsonPath("$.timeZone") { value("Asia/Seoul") }
+            jsonPath("$.utcOffset") { value("+09:00") }
+            jsonPath("$.conversation.createdAt") { value(endsWith("Z")) }
+            jsonPath("$.turns[0].changes[0].proposedAt") { doesNotExist() }
             jsonPath("$.conversation.shared") { value(true) }
             jsonPath("$.conversation.ownerId") { value(me.user.id.toString()) }
             jsonPath("$.environment.clusterName") { value("dev") }
@@ -330,6 +336,7 @@ class ChatIntegrationTest : IntegrationTest() {
         // when
         val markdown = mockMvc.get("/conversations/${session.id}/worklog/markdown") {
             authorization(me.accessToken)
+            param("tz", "Asia/Seoul")
         }.andExpect {
             status { isOk() }
             content { contentTypeCompatibleWith("text/markdown") }
@@ -341,8 +348,10 @@ class ChatIntegrationTest : IntegrationTest() {
         markdown shouldContain "- 대화: 개인(Private) · 만든 사람 ${me.user.name}"
         markdown shouldContain "- 클러스터: dev · context `prod` · namespace `web`"
         markdown shouldContain "## 1. api 가 왜 죽어?"
-        markdown shouldContain "요청: ${me.user.name} · "
-        markdown shouldContain " KST · 상태 `completed`"
+        markdown shouldContain "요청: ${me.user.name} · 상태 `completed`"
+        markdown shouldContain "- 시작: "
+        markdown shouldContain " (Asia/Seoul, UTC+09:00)"
+        markdown shouldContain "- 내보낸 시각: "
         markdown shouldContain "**로그 조회** · 읽기 전용\n\n````\n$ kubectl logs deploy/api -n web\n```\nOOMKilled\n````"
         markdown shouldContain "#### ${ActionPlanFixture.INTENT}"
         markdown shouldContain "- 명령: `kubectl scale deployment/web --replicas=3 -n web`"
@@ -364,6 +373,8 @@ class ChatIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isOk() }
             jsonPath("$.turns") { value(empty<Any>()) }
+            jsonPath("$.timeZone") { value("UTC") }
+            jsonPath("$.utcOffset") { value("+00:00") }
             jsonPath("$.people[*].id") { value(contains(me.user.id.toString())) }
         }
     }
