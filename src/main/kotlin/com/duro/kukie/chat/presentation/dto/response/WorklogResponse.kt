@@ -147,7 +147,7 @@ data class WorklogResponse(
                 decision = decision?.let {
                     Decision(
                         approved = it["approved"] == true,
-                        by = it.string("user_id")?.let(UUID::fromString),
+                        by = it.string("user_id")?.let { id -> runCatching { UUID.fromString(id) }.getOrNull() },
                         at = it.string("at"),
                     )
                 },
@@ -160,8 +160,11 @@ data class WorklogResponse(
         private fun clipped(map: Map<*, *>): Map<String, Any?> =
             map.entries.associate { (key, value) -> key.toString() to if (value is String) clip(value) else value }
 
-        private fun clip(text: String): String =
-            if (text.length <= OUTPUT_LIMIT) text else text.take(OUTPUT_LIMIT) + "\n…(${text.length - OUTPUT_LIMIT}자 생략)"
+        private fun clip(text: String): String {
+            if (text.length <= OUTPUT_LIMIT) return text
+            val end = if (text[OUTPUT_LIMIT - 1].isHighSurrogate()) OUTPUT_LIMIT - 1 else OUTPUT_LIMIT
+            return text.take(end) + "\n…(${text.length - end}자 생략)"
+        }
 
         private fun Map<*, *>.string(key: String): String? = this[key] as? String
     }

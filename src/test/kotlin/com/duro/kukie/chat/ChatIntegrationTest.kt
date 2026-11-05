@@ -8,6 +8,7 @@ import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSession
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.chat.domain.ChatVisibility
+import com.duro.kukie.chat.domain.RunKind
 import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.chat.exception.ChatErrorCode
 import com.duro.kukie.chat.presentation.dto.request.CreateChatRequest
@@ -318,6 +319,9 @@ class ChatIntegrationTest : IntegrationTest() {
                 .apply { recordResponse(answerPayload(output = "```\nOOMKilled")) },
         )
         actionPlanRepository.save(ActionPlanFixture.plan(run.id).offered().apply { reject(me.user.id) })
+        chatRunRepository.save(
+            ChatFixture.run(session.id, turnNo = 2, kind = RunKind.MODE_CHANGE, inputText = null, status = RunStatus.COMPLETED),
+        )
 
         // when
         val markdown = mockMvc.get("/conversations/${session.id}/worklog/markdown") {
@@ -341,6 +345,23 @@ class ChatIntegrationTest : IntegrationTest() {
         markdown shouldContain "- 결정: 거절 · ${me.user.name} · "
         markdown shouldContain "- 원인: OOMKilled"
         markdown shouldContain "다음에 할 일: 한도를 올리세요"
+        markdown shouldContain "## 2. 모드 변경 → 학습"
+    }
+
+    @Test
+    fun `기록이 없는 대화도 빈 작업내역을 준다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when & then
+        mockMvc.get("/conversations/${session.id}/worklog") {
+            authorization(me.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.turns") { value(empty<Any>()) }
+            jsonPath("$.people[*].id") { value(contains(me.user.id.toString())) }
+        }
     }
 
     @Test
