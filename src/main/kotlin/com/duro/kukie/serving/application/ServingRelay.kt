@@ -28,6 +28,8 @@ class ServingRelay(
     private val slots: ServingRelaySlots,
     private val properties: ServingRelayProperties,
     private val events: ApplicationEventPublisher,
+    private val beginUsage: BeginServingUsageService,
+    private val completeUsage: CompleteServingUsageService,
 ) : DisposableBean {
     private val deadlines = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("serving-deadline").factory())
     private val mapper = JsonMapper.builder().build()
@@ -36,7 +38,13 @@ class ServingRelay(
         val lease = slots.acquire(target.identity.keyId)
         val exchange = try { transport.create(target.counter, if (body == null) "/models" else "/chat/completions", body) }
         catch (_: Exception) { lease.close(); throw ServingAccessException(ServingErrorCode.SERVING_UPSTREAM_FAILED) }
-        val async = try { request.startAsync() } catch (e: Exception) { exchange.cancel(); lease.close(); throw e }
+        val requestId = try { beginUsage(target.identity, model) }
+        catch (_: Exception) { exchange.cancel(); lease.close(); throw ServingAccessException(ServingErrorCode.SERVING_USAGE_UNAVAILABLE) }
+        val async = try { request.startAsync() } catch (e: Exception) {
+            exchange.cancel(); lease.close()
+            runCatching { completeUsage(ServingUsageObservation(target.identity, model, Instant.now(), 0, 502, "failed", null, null, model != null, requestId)) }
+            throw e
+        }
         async.timeout = (properties.totalSeconds + 5) * 1000
         val stopped = AtomicBoolean()
         val timedOut = AtomicBoolean()
@@ -93,7 +101,7 @@ class ServingRelay(
                 deadline.get()?.cancel(false)
                 exchange.cancel()
                 lease.close()
-                runCatching { events.publishEvent(ServingUsageObservation(target.identity, model, started, (System.nanoTime() - timer) / 1_000_000, status, outcome, usage.inputTokens, usage.outputTokens, body != null && (outcome != "completed" || usage.inputTokens == null || usage.outputTokens == null))) }
+                runCatching { events.publishEvent(ServingUsageObservation(target.identity, model, started, (System.nanoTime() - timer) / 1_000_000, status, outcome, usage.inputTokens, usage.outputTokens, body != null && (outcome != "completed" || usage.inputTokens == null || usage.outputTokens == null), requestId, if (response.isCommitted) response.status else status)) }
                 runCatching { async.complete() }
             }
         }

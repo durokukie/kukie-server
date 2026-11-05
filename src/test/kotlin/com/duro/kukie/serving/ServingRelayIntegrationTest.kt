@@ -45,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean
     "serving.relay.max-connections=2", "serving.relay.max-connections-per-key=1", "serving.relay.total-seconds=2",
 ])
 class ServingRelayIntegrationTest : IntegrationTest() {
+    @Autowired private lateinit var usageJournal: ServingUsageRepository
     @Autowired private lateinit var clusters: ClusterRepository
     @Autowired private lateinit var accesses: ServingAccessRepository
     @Autowired private lateinit var endpoints: ServingEndpointRepository
@@ -95,6 +96,10 @@ class ServingRelayIntegrationTest : IntegrationTest() {
         event.outcome shouldBe "completed"
         event.toString().contains("안녕") shouldBe false
         event.identity.clusterId shouldBe s.clusterId
+        val stored = usageJournal.findById(event.requestId).get()
+        stored.outcome shouldBe "COMPLETED"
+        stored.inputTokens shouldBe 3
+        stored.outputTokens shouldBe 7
     }
 
     @Test
