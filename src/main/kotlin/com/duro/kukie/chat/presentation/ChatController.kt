@@ -72,21 +72,23 @@ class ChatController(
     override fun getWorklog(
         @PathVariable conversationId: UUID,
         @AuthUser userId: UUID,
+        @RequestParam(required = false) tz: String?,
     ): ResponseEntity<WorklogResponse> {
-        return ResponseEntity.ok(getWorklogService(conversationId, userId))
+        return ResponseEntity.ok(getWorklogService(conversationId, userId, WorklogResponse.zoneOf(tz)))
     }
 
     @GetMapping("/{conversationId}/worklog/markdown")
     override fun getWorklogMarkdown(
         @PathVariable conversationId: UUID,
         @AuthUser userId: UUID,
+        @RequestParam(required = false) tz: String?,
     ): ResponseEntity<String> {
         val disposition = ContentDisposition.attachment().filename("worklog-$conversationId.md", StandardCharsets.UTF_8).build()
 
         return ResponseEntity.ok()
             .contentType(MARKDOWN)
             .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-            .body(WorklogMarkdown.render(getWorklogService(conversationId, userId)))
+            .body(WorklogMarkdown.render(getWorklogService(conversationId, userId, WorklogResponse.zoneOf(tz))))
     }
 
     @PatchMapping("/{conversationId}")

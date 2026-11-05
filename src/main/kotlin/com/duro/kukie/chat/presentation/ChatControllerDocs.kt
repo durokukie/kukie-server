@@ -45,17 +45,18 @@ interface ChatControllerDocs {
     @Operation(
         summary = "작업내역 조회 (JSON)",
         description = "대화의 턴마다 요청·실행한 명령·변경(조치 계획)·답을 모아 작업내역으로 돌려줍니다. schema 는 kukie.worklog/v1 이고, " +
-            "시각은 모두 UTC(ISO-8601, Z)입니다. 명령 출력과 dry-run·실행 결과의 stdout·stderr 는 4000자에서 자릅니다. 에이전트 내부 메시지는 넣지 않습니다. 대화를 볼 수 있는 사람만 받습니다.",
+            "시각 값은 모두 UTC(ISO-8601, Z)입니다. tz(IANA 시간대, 예: Asia/Seoul)를 주면 timeZone·utcOffset 에 그 시간대를 적고, 비었거나 모르는 값이면 UTC 입니다. 명령 출력과 dry-run·실행 결과의 stdout·stderr 는 4000자에서 자릅니다. 에이전트 내부 메시지는 넣지 않습니다. 대화를 볼 수 있는 사람만 받습니다.",
     )
     @ApiErrorResponses(ChatNotFoundException::class)
-    fun getWorklog(conversationId: UUID, userId: UUID): ResponseEntity<WorklogResponse>
+    fun getWorklog(conversationId: UUID, userId: UUID, tz: String?): ResponseEntity<WorklogResponse>
 
     @Operation(
         summary = "작업내역 내려받기 (Markdown)",
-        description = "같은 작업내역을 사람이 읽는 Markdown 파일(text/markdown, 첨부)로 돌려줍니다. 시각은 KST 로 적습니다.",
+        description = "같은 작업내역을 사람이 읽는 Markdown 파일(text/markdown, 첨부)로 돌려줍니다. " +
+            "시각은 tz(IANA 시간대, 예: Asia/Seoul)로 적고 옆에 시간대와 UTC 오프셋을 붙입니다. 비었거나 모르는 값이면 UTC 입니다.",
     )
     @ApiErrorResponses(ChatNotFoundException::class)
-    fun getWorklogMarkdown(conversationId: UUID, userId: UUID): ResponseEntity<String>
+    fun getWorklogMarkdown(conversationId: UUID, userId: UUID, tz: String?): ResponseEntity<String>
 
     @Operation(
         summary = "대화 이름 변경",

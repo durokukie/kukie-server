@@ -8,6 +8,9 @@ import com.duro.kukie.cluster.domain.findByIdOrThrow
 import com.duro.kukie.user.domain.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 @Service
@@ -20,12 +23,13 @@ class GetWorklogService(
 ) {
 
     @Transactional(readOnly = true)
-    operator fun invoke(conversationId: UUID, userId: UUID): WorklogResponse {
+    operator fun invoke(conversationId: UUID, userId: UUID, zone: ZoneId): WorklogResponse {
         val session = chatPermission.requireReadable(conversationId, userId).session
         val cluster = clusterRepository.findByIdOrThrow(session.clusterId)
         val runs = chatRunRepository.findTurnsBySessionId(session.id)
         val plans = if (runs.isEmpty()) emptyList() else actionPlanRepository.findAllByRunIdInOrderByCreatedAtAscIdAsc(runs.map { it.id })
-        val worklog = WorklogResponse.of(session, cluster, emptyList(), runs, plans.groupBy { it.runId })
+        val exportedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+        val worklog = WorklogResponse.of(session, cluster, emptyList(), runs, plans.groupBy { it.runId }, zone, exportedAt)
 
         val peopleIds = buildSet {
             add(session.userId)
