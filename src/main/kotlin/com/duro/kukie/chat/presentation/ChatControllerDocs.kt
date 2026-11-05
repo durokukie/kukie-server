@@ -45,14 +45,14 @@ interface ChatControllerDocs {
     @Operation(
         summary = "작업내역 조회 (JSON)",
         description = "대화의 턴마다 요청·실행한 명령·변경(조치 계획)·답을 모아 작업내역으로 돌려줍니다. schema 는 kukie.worklog/v1 이고, " +
-            "명령 출력과 실행 결과의 긴 글은 4000자에서 자릅니다. 에이전트 내부 메시지는 넣지 않습니다. 대화를 볼 수 있는 사람만 받습니다.",
+            "명령 출력과 dry-run·실행 결과의 stdout·stderr 는 4000자에서 자릅니다. 에이전트 내부 메시지는 넣지 않습니다. 대화를 볼 수 있는 사람만 받습니다.",
     )
     @ApiErrorResponses(ChatNotFoundException::class)
     fun getWorklog(conversationId: UUID, userId: UUID): ResponseEntity<WorklogResponse>
 
     @Operation(
         summary = "작업내역 내려받기 (Markdown)",
-        description = "format=markdown 이면 같은 작업내역을 사람이 읽는 Markdown 파일(text/markdown, 첨부)로 돌려줍니다. 시각은 KST 로 적습니다.",
+        description = "같은 작업내역을 사람이 읽는 Markdown 파일(text/markdown, 첨부)로 돌려줍니다. 시각은 KST 로 적습니다.",
     )
     @ApiErrorResponses(ChatNotFoundException::class)
     fun getWorklogMarkdown(conversationId: UUID, userId: UUID): ResponseEntity<String>

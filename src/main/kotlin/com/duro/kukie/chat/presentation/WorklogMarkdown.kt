@@ -21,7 +21,7 @@ object WorklogMarkdown {
         val environment = worklog.environment
 
         return buildString {
-            appendLine("# 작업내역 · ${conversation.title}")
+            appendLine("# 작업내역 · ${conversation.title.lines().joinToString(" ")}")
             appendLine()
             appendLine("- 대화: ${if (conversation.shared) "공유(Shared)" else "개인(Private)"} · 만든 사람 ${name(names, conversation.ownerId)}")
             appendLine("- 클러스터: ${environment.clusterName} · context ${code(environment.context)} · namespace ${code(environment.namespace)}")
@@ -68,7 +68,11 @@ object WorklogMarkdown {
 
     private fun StringBuilder.step(step: WorklogResponse.Step) {
         appendLine()
-        val access = if (step.access == "read-only") "읽기 전용" else "변경"
+        val access = when (step.access) {
+            "read-only" -> "읽기 전용"
+            "mutating" -> "변경"
+            else -> "구분 없음"
+        }
         appendLine("**${step.label ?: "명령"}** · $access")
         appendLine()
         fenced(listOfNotNull(step.command?.let { "$ $it" }, step.output).joinToString("\n"))
@@ -79,7 +83,8 @@ object WorklogMarkdown {
         appendLine("#### ${change.intent?.takeIf { it.isNotBlank() } ?: change.tool}")
         appendLine()
         appendLine("- 도구 ${code(change.tool)} · 위험도 ${code(change.risk)} · 상태 ${code(change.status.name)}")
-        if (change.command.isNotEmpty()) appendLine("- 명령: ${code(change.command.joinToString(" ") { shellWord(it.toString()) })}")
+        val command = change.command.joinToString(" ") { shellWord(it.toString()) }
+        if (command.isNotEmpty() && '\n' !in command) appendLine("- 명령: ${code(command)}")
         change.dryRun?.get("status")?.let { appendLine("- 예행(dry-run): $it") }
         change.decision?.let {
             val who = it.by?.let { id -> name(names, id) } ?: "알 수 없음"
@@ -92,6 +97,10 @@ object WorklogMarkdown {
         }
         ((change.pullRequest as? Map<*, *>)?.get("url") as? String)?.let { appendLine("- PR: $it") }
         change.failureReason?.let { appendLine("- 실패 이유: ${code(it.name)}") }
+        if ('\n' in command) {
+            appendLine()
+            fenced(command)
+        }
         val output = listOfNotNull(change.result?.get("stdout") as? String, change.result?.get("stderr") as? String)
             .filter { it.isNotBlank() }
         if (output.isNotEmpty()) {

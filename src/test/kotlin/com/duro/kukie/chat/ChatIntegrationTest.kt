@@ -320,7 +320,7 @@ class ChatIntegrationTest : IntegrationTest() {
         actionPlanRepository.save(ActionPlanFixture.plan(run.id).offered().apply { reject(me.user.id) })
 
         // when
-        val markdown = mockMvc.get("/conversations/${session.id}/worklog?format=markdown") {
+        val markdown = mockMvc.get("/conversations/${session.id}/worklog/markdown") {
             authorization(me.accessToken)
         }.andExpect {
             status { isOk() }
@@ -352,7 +352,7 @@ class ChatIntegrationTest : IntegrationTest() {
         val othersPrivate = savedSession(other.id, savedCluster(other.id, teamId = teamId).id)
 
         // when & then
-        mockMvc.get("/conversations/${othersPrivate.id}/worklog?format=markdown") {
+        mockMvc.get("/conversations/${othersPrivate.id}/worklog/markdown") {
             authorization(me.accessToken)
         }.andExpect {
             status { isNotFound() }

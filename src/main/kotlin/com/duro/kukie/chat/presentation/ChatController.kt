@@ -76,7 +76,7 @@ class ChatController(
         return ResponseEntity.ok(getWorklogService(conversationId, userId))
     }
 
-    @GetMapping("/{conversationId}/worklog", params = ["format=markdown"])
+    @GetMapping("/{conversationId}/worklog/markdown")
     override fun getWorklogMarkdown(
         @PathVariable conversationId: UUID,
         @AuthUser userId: UUID,
