@@ -89,6 +89,33 @@ class HttpsCounterTransportTest {
     }
 
     @Test
+    fun `거절한 상위 오류 본문이 끝나지 않아도 추가로 읽지 않고 종료한다`() {
+        // given
+        withCounter { server, context ->
+            val release = CountDownLatch(1)
+            server.createContext("/v1/models") { exchange ->
+                exchange.sendResponseHeaders(503, 0)
+                exchange.responseBody.flush()
+                release.await(5, TimeUnit.SECONDS)
+                runCatching { exchange.close() }
+            }
+            val policy = mockk<ServingDestinationPolicy>()
+            every { policy.resolve("counter.test") } returns arrayOf(InetAddress.getLoopbackAddress())
+            val transport = HttpsCounterTransport(counterHttpClient(policy, ServingRelayProperties(), ClientTlsStrategyBuilder.create().setSslContext(context).buildClassic()))
+            val workers = Executors.newVirtualThreadPerTaskExecutor()
+            // when then
+            try {
+                val future = workers.submit<Int> {
+                    var status = 0
+                    transport.create(CounterTarget("https://counter.test:${server.address.port}/v1", "test-token"), "/models", null).execute { status = it.status }
+                    status
+                }
+                future.get(3, TimeUnit.SECONDS) shouldBe 503
+            } finally { release.countDown(); workers.shutdownNow(); transport.destroy() }
+        }
+    }
+
+    @Test
     fun `TLS 인증서 이름이 다른 호스트는 거절한다`() {
         // given
         withCounter { server, context ->

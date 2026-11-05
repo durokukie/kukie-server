@@ -33,8 +33,13 @@ class HttpsCounterTransport internal constructor(private val client: org.apache.
         body?.let { request.entity = ByteArrayEntity(it, ContentType.APPLICATION_JSON) }
         return object : CounterExchange {
             override fun execute(consume: (CounterResponse) -> Unit) {
-                client.execute(request) { response ->
+                val response = client.executeOpen(null, request, null)
+                try {
                     consume(CounterResponse(response.code, response.entity?.contentType, response.entity?.content ?: InputStream.nullInputStream()))
+                } finally {
+                    // 오류·초과 본문을 연결 재사용을 위해 끝까지 읽지 않는다.
+                    request.cancel()
+                    runCatching { response.close() }
                 }
             }
             override fun cancel() { request.cancel() }
