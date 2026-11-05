@@ -7,12 +7,18 @@ import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.auth.presentation.dto.request.ResetPasswordRequest
+import com.duro.kukie.auth.presentation.dto.request.SendPasswordResetCodeRequest
 import com.duro.kukie.global.config.properties.AuthCookieProperties
 import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeOAuthClient
+import com.duro.kukie.support.FakePasswordResetCodeSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.UserFixture
+import com.duro.kukie.user.domain.VerificationCodeRepository
+import com.duro.kukie.user.domain.VerificationType
+import com.duro.kukie.user.exception.UserErrorCode
 import com.jayway.jsonpath.JsonPath
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -22,6 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
+import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -33,6 +40,15 @@ class AuthIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var cookies: AuthCookieProperties
+
+    @Autowired
+    private lateinit var fakePasswordResetCodeSender: FakePasswordResetCodeSender
+
+    @Autowired
+    private lateinit var verificationCodeRepository: VerificationCodeRepository
+
+    private val resetEmail = UserFixture.DEFAULT_EMAIL
+    private val resetNewPassword = "new-password1"
 
     @Test
     fun `정상적으로 로그인한다`() {
@@ -562,6 +578,80 @@ class AuthIntegrationTest : IntegrationTest() {
         }
     }
 
+    // ── 비밀번호 재설정 ──────────────────────────────────────
+
+    @Test
+    fun `재설정 코드로 비밀번호를 바꾸면 새 비밀번호로만 로그인된다`() {
+        // given
+        userRepository.save(UserFixture.user())
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // when
+        resetPassword(code = fakePasswordResetCodeSender.lastCodeFor(resetEmail)).andExpect { status { isNoContent() } }
+
+        // then
+        logInWith(resetNewPassword).andExpect { status { isOk() } }
+        logInWith(UserFixture.DEFAULT_PASSWORD).andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.INVALID_CREDENTIALS.code) }
+        }
+    }
+
+    @Test
+    fun `로그인한 소셜 계정이 비밀번호를 설정해도 로그인이 유지된다`() {
+        // given
+        val user = loggedInUser(UserFixture.oAuthUser())
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // when
+        resetPassword(code = fakePasswordResetCodeSender.lastCodeFor(resetEmail)).andExpect { status { isNoContent() } }
+
+        // then
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.hasPassword") { value(true) }
+        }
+        refresh(user.refreshToken).andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `가입하지 않은 이메일도 같은 응답을 받지만 메일은 가지 않는다`() {
+        // when
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // then
+        fakePasswordResetCodeSender.sentCount(resetEmail) shouldBe 0
+    }
+
+    @Test
+    fun `잘못된 코드로는 비밀번호를 바꿀 수 없다`() {
+        // given
+        userRepository.save(UserFixture.user())
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // when & then
+        resetPassword(code = wrongResetCode()).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(UserErrorCode.INVALID_VERIFICATION_CODE.code) }
+        }
+        logInWith(UserFixture.DEFAULT_PASSWORD).andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `회원가입 인증 코드로는 비밀번호를 바꿀 수 없다`() {
+        // given
+        userRepository.save(UserFixture.user())
+        verificationCodeRepository.save(VerificationType.SIGN_UP, Email(resetEmail), "123456")
+
+        // when & then
+        resetPassword(code = "123456").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(UserErrorCode.INVALID_VERIFICATION_CODE.code) }
+        }
+    }
+
     private fun issueHandoffCode(accessToken: String, codeChallenge: String): String {
         val body = mockMvc.post("/auth/handoff") {
             authorization(accessToken)
@@ -583,5 +673,28 @@ class AuthIntegrationTest : IntegrationTest() {
         mockMvc.post("/auth/refresh") {
             contentType = MediaType.APPLICATION_JSON
             content = RefreshTokenRequest(refreshToken).toJson()
+        }
+
+    private fun wrongResetCode(): String {
+        val actual = fakePasswordResetCodeSender.lastCodeFor(resetEmail)
+        return if (actual != "000000") "000000" else "999999"
+    }
+
+    private fun sendResetCode(): ResultActionsDsl =
+        mockMvc.post("/auth/password-reset/code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = SendPasswordResetCodeRequest(resetEmail).toJson()
+        }
+
+    private fun resetPassword(code: String, password: String = resetNewPassword): ResultActionsDsl =
+        mockMvc.post("/auth/password-reset") {
+            contentType = MediaType.APPLICATION_JSON
+            content = ResetPasswordRequest(email = resetEmail, verificationCode = code, newPassword = password).toJson()
+        }
+
+    private fun logInWith(password: String): ResultActionsDsl =
+        mockMvc.post("/auth/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = LogInRequest(resetEmail, password).toJson()
         }
 }

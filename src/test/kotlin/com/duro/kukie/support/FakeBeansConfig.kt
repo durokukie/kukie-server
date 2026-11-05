@@ -13,6 +13,10 @@ class FakeBeansConfig {
 
     @Bean
     @Primary
+    fun fakePasswordResetCodeSender(): FakePasswordResetCodeSender = FakePasswordResetCodeSender()
+
+    @Bean
+    @Primary
     fun fakeOAuthClient(): FakeOAuthClient = FakeOAuthClient()
 
     @Bean
