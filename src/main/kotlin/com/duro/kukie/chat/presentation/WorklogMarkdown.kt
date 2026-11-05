@@ -102,9 +102,10 @@ object WorklogMarkdown {
         change.dryRun?.get("status")?.let { appendLine("- 예행(dry-run): $it") }
         change.decision?.let {
             val who = it.by?.let { id -> name(names, id) } ?: "알 수 없음"
-            val at = it.at?.let { at -> " · ${time(at, zone)}" }.orEmpty()
-            val waited = it.at?.let { at -> change.proposedAt?.let { proposed -> " · 제안 후 ${span(proposed, at)} 만에 결정" } }.orEmpty()
-            appendLine("- 결정: ${if (it.approved) "승인" else "거절"} · $who$at$waited")
+            val decidedAt = it.at
+            val atText = decidedAt?.let { at -> " · ${time(at, zone)}" }.orEmpty()
+            val waited = decidedAt?.let { at -> change.proposedAt?.let { proposed -> " · 제안 후 ${span(proposed, at)} 만에 결정" } }.orEmpty()
+            appendLine("- 결정: ${if (it.approved) "승인" else "거절"} · $who$atText$waited")
         }
         change.result?.let { result ->
             val exit = result["exit_code"]?.let { "exit $it" } ?: "exit 없음"
