@@ -37,6 +37,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
 
+    implementation("org.apache.httpcomponents.client5:httpclient5")
+
     // Database
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
