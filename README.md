@@ -50,3 +50,7 @@ cp .env.example .env
 ## 기여
 
 브랜치 전략, 커밋 컨벤션 등은 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
+
+## API 이용 권한
+
+회원·팀 권한과 분리된 API 이용 초대·수락·취소 계약은 [운영 문서](runbooks/serving-access.md)를 참고하세요. 키 발급·공통 API 중계·화면은 후속 단계입니다.
