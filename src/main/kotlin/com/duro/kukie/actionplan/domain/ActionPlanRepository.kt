@@ -14,6 +14,8 @@ interface ActionPlanRepository : JpaRepository<ActionPlan, UUID> {
 
     fun findAllByRunIdOrderByCreatedAtAscIdAsc(runId: UUID): List<ActionPlan>
 
+    fun findAllByRunIdInOrderByCreatedAtAscIdAsc(runIds: Collection<UUID>): List<ActionPlan>
+
     fun findAllByRunIdAndStatusInOrderByCreatedAtAscIdAsc(runId: UUID, statuses: Collection<PlanStatus>): List<ActionPlan>
 
     fun findByRunIdAndToolCallId(runId: UUID, toolCallId: String): ActionPlan?
