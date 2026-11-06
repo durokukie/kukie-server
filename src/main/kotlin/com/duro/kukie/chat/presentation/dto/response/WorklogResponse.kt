@@ -89,11 +89,11 @@ data class WorklogResponse(
         const val SCHEMA = "kukie.worklog/v1"
         const val OUTPUT_LIMIT = 4000
         private val OFFSET = DateTimeFormatter.ofPattern("xxx")
-        private val UTC: ZoneId = ZoneId.of("UTC")
+        val UTC: ZoneId = ZoneId.of("UTC")
 
-        /** 브라우저가 보낸 시간대(IANA 이름). 비었거나 모르는 값이면 UTC 로 그린다 */
-        fun zoneOf(tz: String?): ZoneId =
-            tz?.takeIf { it.isNotBlank() }?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: UTC
+        /** 브라우저가 보낸 시간대(IANA 이름). 비었거나 모르는 값이면 null — 부르는 쪽이 UTC 로 그리고 그 사실을 적는다 */
+        fun zoneOf(tz: String?): ZoneId? =
+            tz?.takeIf { it.isNotBlank() }?.let { runCatching { ZoneId.of(it) }.getOrNull() }
 
         fun offsetOf(zone: ZoneId, at: Instant): String = OFFSET.format(at.atZone(zone))
 

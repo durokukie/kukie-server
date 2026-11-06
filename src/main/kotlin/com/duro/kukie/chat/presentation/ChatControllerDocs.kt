@@ -53,7 +53,8 @@ interface ChatControllerDocs {
     @Operation(
         summary = "작업내역 내려받기 (Markdown)",
         description = "같은 작업내역을 사람이 읽는 Markdown 파일(text/markdown, 첨부)로 돌려줍니다. " +
-            "시각은 tz(IANA 시간대, 예: Asia/Seoul)로 적고 옆에 시간대와 UTC 오프셋을 붙입니다. 비었거나 모르는 값이면 UTC 입니다.",
+            "시각은 tz(IANA 시간대, 예: Asia/Seoul)로 적고 옆에 시간대와 UTC 오프셋을 붙입니다. 비었거나 모르는 값이면 UTC 입니다. " +
+            "맨 위에 어느 시간대 기준인지(시간대를 받지 못해 UTC 로 그렸는지) 한 줄로 적습니다.",
     )
     @ApiErrorResponses(ChatNotFoundException::class)
     fun getWorklogMarkdown(conversationId: UUID, userId: UUID, tz: String?): ResponseEntity<String>

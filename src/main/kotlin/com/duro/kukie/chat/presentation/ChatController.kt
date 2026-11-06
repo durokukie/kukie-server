@@ -74,7 +74,7 @@ class ChatController(
         @AuthUser userId: UUID,
         @RequestParam(required = false) tz: String?,
     ): ResponseEntity<WorklogResponse> {
-        return ResponseEntity.ok(getWorklogService(conversationId, userId, WorklogResponse.zoneOf(tz)))
+        return ResponseEntity.ok(getWorklogService(conversationId, userId, WorklogResponse.zoneOf(tz) ?: WorklogResponse.UTC))
     }
 
     @GetMapping("/{conversationId}/worklog/markdown")
@@ -84,11 +84,17 @@ class ChatController(
         @RequestParam(required = false) tz: String?,
     ): ResponseEntity<String> {
         val disposition = ContentDisposition.attachment().filename("worklog-$conversationId.md", StandardCharsets.UTF_8).build()
+        val zone = WorklogResponse.zoneOf(tz)
 
         return ResponseEntity.ok()
             .contentType(MARKDOWN)
             .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-            .body(WorklogMarkdown.render(getWorklogService(conversationId, userId, WorklogResponse.zoneOf(tz))))
+            .body(
+                WorklogMarkdown.render(
+                    getWorklogService(conversationId, userId, zone ?: WorklogResponse.UTC),
+                    zoneReceived = zone != null,
+                ),
+            )
     }
 
     @PatchMapping("/{conversationId}")

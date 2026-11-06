@@ -352,6 +352,7 @@ class ChatIntegrationTest : IntegrationTest() {
         markdown shouldContain "- 시작: "
         markdown shouldContain " (Asia/Seoul, UTC+09:00)"
         markdown shouldContain "- 내보낸 시각: "
+        markdown shouldContain "> 시각은 내려받은 브라우저의 시간대(Asia/Seoul, UTC+09:00) 기준입니다."
         markdown shouldContain "**로그 조회** · 읽기 전용\n\n````\n$ kubectl logs deploy/api -n web\n```\nOOMKilled\n````"
         markdown shouldContain "#### ${ActionPlanFixture.INTENT}"
         markdown shouldContain "- 명령: `kubectl scale deployment/web --replicas=3 -n web`"
@@ -377,6 +378,25 @@ class ChatIntegrationTest : IntegrationTest() {
             jsonPath("$.utcOffset") { value("+00:00") }
             jsonPath("$.people[*].id") { value(contains(me.user.id.toString())) }
         }
+    }
+
+    @Test
+    fun `시간대 없이 받은 Markdown 은 UTC 로 그렸다고 적는다`() {
+        // given
+        val me = loggedInUser()
+        val session = savedSession(me.user.id, savedCluster(me.user.id).id)
+
+        // when
+        val markdown = mockMvc.get("/conversations/${session.id}/worklog/markdown") {
+            authorization(me.accessToken)
+            param("tz", "Mars/Olympus")
+        }.andExpect {
+            status { isOk() }
+        }.andReturn().response.getContentAsString(Charsets.UTF_8)
+
+        // then
+        markdown shouldContain " (UTC, UTC+00:00)"
+        markdown shouldContain "> 브라우저 시간대를 받지 못해 UTC 기준으로 표시합니다."
     }
 
     @Test
