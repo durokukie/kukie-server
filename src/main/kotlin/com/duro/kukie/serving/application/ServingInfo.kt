@@ -40,7 +40,11 @@ class ServingInfo(private val endpoints: ServingEndpointRepository, private val 
                 if (observed?.connected == true && checked != null) minOf(45 - Duration.between(checked, now).seconds.coerceAtLeast(0), 45 - Duration.between(observed.receivedAt, now).seconds.coerceAtLeast(0)).coerceIn(0, 45) else 0)
         }
         val endpoint = endpoints.findByClusterId(clusterId)
-        return ServingInfoResponse(endpoint != null, portal.publicApiBaseUrl?.takeIf { it.isNotBlank() }, endpoint?.models ?: emptyList(), ServingLimits(relay.maxConnectionsPerKey, relay.totalSeconds, relay.idleSeconds), if (endpoint == null) "UNCONFIGURED" else "HTTPS_COUNTER")
+        val excluded = disabled.find(clusterId)
+        val models = endpoint?.models.orEmpty().filter { includeDisabled || it !in excluded }
+        return ServingInfoResponse(endpoint != null, portal.publicApiBaseUrl?.takeIf { it.isNotBlank() }, models,
+            ServingLimits(relay.maxConnectionsPerKey, relay.totalSeconds, relay.idleSeconds), if (endpoint == null) "UNCONFIGURED" else "HTTPS_COUNTER",
+            modelStatuses = models.map { ServingModelStatus(it, "UNKNOWN", it !in excluded) })
     }
 }
 
