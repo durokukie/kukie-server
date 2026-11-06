@@ -627,8 +627,8 @@ class AwsEksAccessGateway(
         return items.mapNotNull { item ->
             val name = item.path("metadata").path("name").textOrNull() ?: return@mapNotNull null
             val model = item.path("spec").path("source").path("huggingface").textOrNull() ?: return@mapNotNull null
-            if (!ServedModelName.valid(name) || !ServedModelName.validModel(model)) return@mapNotNull null
-            NamedServingModel(name, ServedModelState(model, item.path("status").path("phase").textOrNull(),
+            if (!ServedModelName.valid(name) || model.length > 200 || !ServedModelName.validModel(model)) return@mapNotNull null
+            NamedServingModel(name, ServedModelState(model, item.path("status").path("phase").textOrNull()?.takeIf { it.length <= 64 },
                 item.path("metadata").path("deletionTimestamp").textOrNull() != null,
                 item.path("metadata").path("resourceVersion").textOrNull(), null,
                 item.path("status").path("stopsAt").instantOrNull()))

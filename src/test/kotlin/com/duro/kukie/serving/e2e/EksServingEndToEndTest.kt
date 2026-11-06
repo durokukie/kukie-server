@@ -70,6 +70,9 @@ class EksServingEndToEndTest : IntegrationTest() {
     private var phase = "Ready"
     private var deletion = false
     private var continuation = false
+    private var catalogRelease: CountDownLatch? = null
+    private val catalogEntered = CountDownLatch(1)
+    private val duplicateCatalog = CountDownLatch(1)
     private var ready = CountDownLatch(1)
     private var closed = CountDownLatch(1)
 
@@ -77,6 +80,9 @@ class EksServingEndToEndTest : IntegrationTest() {
         upstream.executor = threads
         upstream.createContext("/apis/") { e ->
             catalogHeaders.add(e.requestHeaders.getFirst("Authorization"))
+            catalogEntered.countDown()
+            if (catalogHeaders.size > 1) duplicateCatalog.countDown()
+            catalogRelease?.await(3, TimeUnit.SECONDS)
             val item = """{"metadata":{"name":"gpt-oss-20b"${if (deletion) ",\"deletionTimestamp\":\"2026-01-01T00:00:00Z\"" else ""}},"spec":{"source":{"huggingface":"openai/gpt-oss-20b"}},"status":{"phase":"$phase"}}"""
             val list = """{"metadata":{${if (continuation) "\"continue\":\"more\"" else ""}},"items":[$item,{"metadata":{"name":"evil/../../x"},"spec":{"source":{"huggingface":"org/model"}},"status":{"phase":"Ready"}}]}"""
             e.answer(listStatus, "application/json", list)
@@ -227,6 +233,36 @@ class EksServingEndToEndTest : IntegrationTest() {
         gateway.servingClusters.distinct().size shouldBe 1
         (ac.first() != gateway.servingClusters.first()) shouldBe true
         eventually { jdbc.queryForObject("select count(distinct cluster_id) from tbl_serving_usage where outcome='COMPLETED'", Int::class.java) shouldBe 2 }
+    }
+
+    @Test fun `모델 발견이 진행 중이면 같은 클러스터 조회를 하나로 합친다`() {
+        // given
+        val s = setup(); catalogRelease = CountDownLatch(1)
+        val first = client.sendAsync(request("/serving/v1/models", s.key, null), HttpResponse.BodyHandlers.ofString())
+        catalogEntered.await(3, TimeUnit.SECONDS) shouldBe true
+        val second = client.sendAsync(request("/serving/v1/models", s.key, null), HttpResponse.BodyHandlers.ofString())
+        // when then
+        try { duplicateCatalog.await(250, TimeUnit.MILLISECONDS) shouldBe false }
+        finally { catalogRelease!!.countDown() }
+        listOf(first.get(5, TimeUnit.SECONDS).statusCode(), second.get(5, TimeUnit.SECONDS).statusCode()).all { it == 200 || it == 429 } shouldBe true
+        catalogHeaders.size shouldBe 1
+    }
+
+    @Test fun `CA가 사라지면 캐시가 있어도 내부 오류 대신 공통 API 오류로 변환한다`() {
+        // given
+        val s = setup()
+        call("/serving/v1/models", s.key).statusCode() shouldBe 200
+        s.cluster.replaceConnection(s.cluster.apiServer, null, false, s.cluster.credential, s.cluster.fingerprint)
+        clusters.save(s.cluster)
+        // when then
+        val public = call("/serving/v1/models", s.key)
+        public.statusCode() shouldBe 502
+        public.body().contains("SERVING_UPSTREAM_FAILED") shouldBe true
+        val info = call("/serving/accesses/${s.access.id}/info", s.user.accessToken)
+        info.statusCode() shouldBe 502
+        info.body().contains("SERVING_UPSTREAM_FAILED") shouldBe true
+        info.body().contains("EKS_CLUSTER_NOT_READY") shouldBe false
+        catalogHeaders.size shouldBe 1
     }
 
     @Test fun `명시적 외부 카운터 설정은 EKS 자동 연결보다 우선한다`() {
