@@ -18,13 +18,13 @@ class GatewayControlController(private val authorize: AuthorizeGatewayService, p
     @PostMapping("/authorize")
     fun authorize(@Valid @RequestBody request: GatewayAuthorizeRequest, response: HttpServletResponse): GatewayIdentity {
         response.setHeader("Cache-Control", "no-store")
-        return authorize(request.token)
+        return authorize(request)
     }
 
     @PostMapping("/requests")
     fun begin(@Valid @RequestBody request: GatewayBeginRequest, response: HttpServletResponse): Map<String, UUID> {
         response.setHeader("Cache-Control", "no-store")
-        return mapOf("requestId" to begin(request.keyId, request.model))
+        return mapOf("requestId" to begin(request))
     }
 
     @PostMapping("/requests/{requestId}/finish")
