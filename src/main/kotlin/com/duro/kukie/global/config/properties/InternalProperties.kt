@@ -8,4 +8,5 @@ import org.springframework.validation.annotation.Validated
 @ConfigurationProperties(prefix = "internal")
 data class InternalProperties(
     @field:NotBlank val token: String,
+    val gatewayToken: String = "",
 )
