@@ -18,6 +18,7 @@ enum class ServingErrorCode(override val status: HttpStatus, override val messag
     SERVING_MODEL_DENIED(HttpStatus.FORBIDDEN, "허용되지 않은 모델입니다."),
     SERVING_UPSTREAM_FAILED(HttpStatus.BAD_GATEWAY, "고객 카운터에 연결할 수 없습니다."),
     SERVING_UPSTREAM_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "고객 카운터 응답 시간이 초과되었습니다."),
+    SERVING_USAGE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "API 사용량 기록을 시작할 수 없습니다."),
     ;
     override val code: String get() = name
 }
