@@ -47,6 +47,7 @@ class ConnectorModelStatusIntegrationTest : IntegrationTest() {
         report(a.id, hash, Instant.now())
         info.of(a.id).modelStatuses.map { it.state } shouldBe listOf("AVAILABLE", "UNAVAILABLE")
         info.of(a.id).models shouldBe listOf("ready", "stopped")
+        (info.of(a.id).modelStatusValidForSeconds in 40..45) shouldBe true
         info.of(b.id).modelStatuses.single().state shouldBe "UNKNOWN"
         report(a.id, hash, Instant.now(), false)
         info.of(a.id).connectionStatus shouldBe "OFFLINE"
