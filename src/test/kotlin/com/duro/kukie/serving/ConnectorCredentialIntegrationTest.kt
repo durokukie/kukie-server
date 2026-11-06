@@ -7,6 +7,8 @@ import com.duro.kukie.serving.application.*
 import com.duro.kukie.serving.application.port.`in`.IssueConnectorCredentialCommand
 import com.duro.kukie.serving.domain.ConnectorCredentials
 import com.duro.kukie.serving.domain.ConnectorCredential
+import com.duro.kukie.serving.domain.ServingEndpoint
+import com.duro.kukie.serving.domain.ServingEndpointRepository
 import com.duro.kukie.serving.exception.ServingAccessException
 import com.duro.kukie.serving.exception.ServingErrorCode
 import io.kotest.assertions.throwables.shouldThrow
@@ -27,6 +29,8 @@ class ConnectorCredentialIntegrationTest : IntegrationTest() {
     @Autowired private lateinit var clusters: ClusterRepository
     @Autowired private lateinit var credentials: ConnectorCredentials
     @Autowired private lateinit var issue: IssueConnectorCredentialService
+    @Autowired private lateinit var gatewayPermission: GatewayKeyPermission
+    @Autowired private lateinit var endpoints: ServingEndpointRepository
     @Autowired private lateinit var revoke: RevokeConnectorCredentialService
 
     @Test
@@ -75,6 +79,8 @@ class ConnectorCredentialIntegrationTest : IntegrationTest() {
         val command = IssueConnectorCredentialCommand(cluster.id, admin.user.id, listOf("shared"))
         issue(command)
         val old = credentials.find(cluster.id)!!.tokenHash
+        endpoints.save(ServingEndpoint(cluster.id, "https://legacy.example/v1", "fixture", listOf("legacy")))
+        gatewayPermission.models(cluster.id) shouldBe listOf("shared")
         // when
         val replacement = issue(command)
         // then
@@ -82,6 +88,10 @@ class ConnectorCredentialIntegrationTest : IntegrationTest() {
         replacement.toString().contains(replacement.token) shouldBe false
         repeat(2) { revoke(cluster.id, admin.user.id) }
         credentials.active(utcNow()) shouldBe emptyList()
+        gatewayPermission.models(cluster.id) shouldBe emptyList()
+        mockMvc.post("/internal/serving-gateway/connector-bindings") {
+            header("X-Kukie-Internal-Token", "test-gateway-token")
+        }.andExpect { status { isOk() }; jsonPath("$.bindings.length()") { value(0) } }
         mockMvc.post("/internal/serving-gateway/connector-bindings") {
             header("X-Kukie-Internal-Token", "test-internal-token")
         }.andExpect { status { isUnauthorized() } }

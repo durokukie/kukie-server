@@ -11,8 +11,6 @@ import com.duro.kukie.serving.application.port.`in`.IssueConnectorCredentialComm
 import com.duro.kukie.serving.infrastructure.ConnectorTokens
 import java.time.Instant
 import java.time.ZoneOffset
-import java.time.LocalDateTime
-import java.util.UUID
 
 class IssuedConnectorCredential(val token: String, val expiresAt: Instant, val models: List<String>) {
     override fun toString() = "IssuedConnectorCredential(REDACTED)"
@@ -30,9 +28,10 @@ class IssueConnectorCredentialService(private val permission: ServingAccessPermi
             throw ServingAccessException(ServingErrorCode.SERVING_CONNECTOR_LIMIT_REACHED)
         }
         val token = tokens.generate()
-        val expires = utcNow().plusHours(24)
+        val expires = now.plusHours(24)
+        val models = command.models.distinct()
         val hash = tokens.hash(token)
-        credentials.save(ConnectorCredential(command.clusterId, hash, command.models.distinct(), expires))
-        return IssuedConnectorCredential(token, expires.toInstant(ZoneOffset.UTC), command.models.distinct())
+        credentials.save(ConnectorCredential(command.clusterId, hash, models, expires))
+        return IssuedConnectorCredential(token, expires.toInstant(ZoneOffset.UTC), models)
     }
 }

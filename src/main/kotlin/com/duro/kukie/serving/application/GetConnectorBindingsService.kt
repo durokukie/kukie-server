@@ -17,7 +17,7 @@ class GetConnectorBindingsService(private val credentials: ConnectorCredentials)
     @Transactional(readOnly = true)
     operator fun invoke(): Map<String, List<ConnectorBinding>> {
         val rows = credentials.active(utcNow())
-        if (rows.size > 256) throw ServingAccessException(ServingErrorCode.SERVING_RELAY_BUSY)
+        if (rows.size > 256) throw ServingAccessException(ServingErrorCode.SERVING_CONNECTOR_LIMIT_REACHED)
         return mapOf("bindings" to rows.map { ConnectorBinding(it.clusterId, it.tokenHash, it.expiresAt.toInstant(ZoneOffset.UTC)) })
     }
 }
