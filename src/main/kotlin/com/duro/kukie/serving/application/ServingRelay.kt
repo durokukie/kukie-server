@@ -31,6 +31,7 @@ class ServingRelay(
     private val events: ApplicationEventPublisher,
     private val beginUsage: BeginServingUsageService,
     private val completeUsage: CompleteServingUsageService,
+    private val eksTransport: com.duro.kukie.serving.application.port.out.EksServingTransport,
 ) : DisposableBean {
     private val deadlines = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("serving-deadline").factory())
     private val mapper = JsonMapper.builder().build()
@@ -38,7 +39,7 @@ class ServingRelay(
 
     fun start(request: HttpServletRequest, response: HttpServletResponse, target: ServingRelayTarget, body: ByteArray?, model: String?, stream: Boolean) {
         val lease = slots.acquire(target.identity.keyId)
-        val exchange = try { transport.create(target.counter, if (body == null) "/models" else "/chat/completions", body) }
+        val exchange = try { target.eks?.let { eksTransport.create(it, body, model) } ?: transport.create(requireNotNull(target.counter), if (body == null) "/models" else "/chat/completions", body) }
         catch (_: Exception) { lease.close(); throw ServingAccessException(ServingErrorCode.SERVING_UPSTREAM_FAILED) }
         val requestId = try { beginUsage(target.identity, model) }
         catch (_: Exception) { exchange.cancel(); lease.close(); throw ServingAccessException(ServingErrorCode.SERVING_USAGE_UNAVAILABLE) }

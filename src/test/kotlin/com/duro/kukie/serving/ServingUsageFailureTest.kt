@@ -27,7 +27,7 @@ class ServingUsageFailureTest {
         val begin = mockk<BeginServingUsageService>()
         every { begin(any(), any()) } throws IllegalStateException("private detail")
         val slots = ServingRelaySlots(ServingRelayProperties(maxConnections = 1, maxConnectionsPerKey = 1))
-        val relay = ServingRelay(transport, slots, ServingRelayProperties(), mockk<ApplicationEventPublisher>(), begin, mockk<CompleteServingUsageService>())
+        val relay = ServingRelay(transport, slots, ServingRelayProperties(), mockk<ApplicationEventPublisher>(), begin, mockk<CompleteServingUsageService>(), mockk())
         // when then
         try {
             val error = shouldThrow<ServingAccessException> { relay.start(MockHttpServletRequest(), MockHttpServletResponse(), ServingRelayTarget(identity, CounterTarget("https://counter.example/v1", "test"), listOf("m")), "{}".toByteArray(), "m", false) }
@@ -59,7 +59,7 @@ class ServingUsageFailureTest {
         val requestId = UUID.randomUUID()
         every { begin(any(), any()) } returns requestId
         val events = ApplicationEventPublisher { event -> if (event is ServingUsageObservation) observed.add(event) }
-        val relay = ServingRelay(transport, ServingRelaySlots(ServingRelayProperties()), ServingRelayProperties(), events, begin, mockk<CompleteServingUsageService>())
+        val relay = ServingRelay(transport, ServingRelaySlots(ServingRelayProperties()), ServingRelayProperties(), events, begin, mockk<CompleteServingUsageService>(), mockk())
         val request = MockHttpServletRequest().apply { isAsyncSupported = true }
         val response = object : MockHttpServletResponse() {
             @Volatile var recycled = false

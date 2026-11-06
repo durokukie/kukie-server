@@ -15,6 +15,7 @@ enum class ServingErrorCode(override val status: HttpStatus, override val messag
     SERVING_DESTINATION_REJECTED(HttpStatus.BAD_REQUEST, "허용된 공개 HTTPS 카운터 주소가 아닙니다."),
     SERVING_ENDPOINT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "API 제공 대상이 연결되지 않았습니다."),
     SERVING_RELAY_BUSY(HttpStatus.TOO_MANY_REQUESTS, "동시 API 요청 한도를 초과했습니다."),
+    SERVING_MODEL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "준비된 GPU 모델이 없습니다."),
     SERVING_MODEL_DENIED(HttpStatus.FORBIDDEN, "허용되지 않은 모델입니다."),
     SERVING_UPSTREAM_FAILED(HttpStatus.BAD_GATEWAY, "고객 카운터에 연결할 수 없습니다."),
     SERVING_UPSTREAM_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "고객 카운터 응답 시간이 초과되었습니다."),

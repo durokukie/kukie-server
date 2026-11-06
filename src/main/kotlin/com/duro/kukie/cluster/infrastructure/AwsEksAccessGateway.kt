@@ -14,6 +14,9 @@ import com.duro.kukie.cluster.application.port.out.ModelChatStream
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
 import com.duro.kukie.cluster.application.port.out.ServedModelState
+import com.duro.kukie.cluster.application.port.out.NamedServingModel
+import com.duro.kukie.cluster.application.port.out.ModelServingResponse
+import com.duro.kukie.cluster.application.ServedModelName
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
@@ -612,6 +615,50 @@ class AwsEksAccessGateway(
         if (response.statusCode() == CONFLICT) return false
         requireServingSuccess(response.statusCode()) { throw ServedModelNotFoundException() }
         return true
+    }
+
+    override fun listServingModels(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, namespace: String): List<NamedServingModel> {
+        val response = sendToKubernetes(target, region, clusterName, endpoint, "${servedModelsPath(namespace)}?limit=100", HttpResponse.BodyHandlers.limiting(HttpResponse.BodyHandlers.ofString(), 4L * 1024 * 1024)) { GET() }
+        if (response.statusCode() == NOT_FOUND) return emptyList()
+        requireServingSuccess(response.statusCode()) { throw GpuAddonNotInstalledException() }
+        val root = try { jsonMapper.readTree(response.body()) } catch (_: JacksonException) { throw GpuClusterApiFailedException() }
+        val items = root.path("items")
+        if (!items.isArray || items.size() > 100 || !root.path("metadata").path("continue").textOrNull().isNullOrEmpty()) throw GpuClusterApiFailedException()
+        return items.mapNotNull { item ->
+            val name = item.path("metadata").path("name").textOrNull() ?: return@mapNotNull null
+            val model = item.path("spec").path("source").path("huggingface").textOrNull() ?: return@mapNotNull null
+            if (!ServedModelName.valid(name) || !ServedModelName.validModel(model)) return@mapNotNull null
+            NamedServingModel(name, ServedModelState(model, item.path("status").path("phase").textOrNull(),
+                item.path("metadata").path("deletionTimestamp").textOrNull() != null,
+                item.path("metadata").path("resourceVersion").textOrNull(), null,
+                item.path("status").path("stopsAt").instantOrNull()))
+        }
+    }
+
+    override fun openServingResponse(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, namespace: String, name: String, body: ByteArray, timeout: Duration): ModelServingResponse {
+        if (!ServedModelName.valid(name) || namespace != "llm") throw GpuClusterApiFailedException()
+        val ssl = runCatching { trusting(endpoint.caData) }.getOrElse { throw GpuClusterApiFailedException() }
+        val token = gpuCall { issueToken(target, region, clusterName) }
+        val http = HttpClient.newBuilder().sslContext(ssl).connectTimeout(PROBE_TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER).executor(streamExecutor).build()
+        try {
+            val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}/api/v1/namespaces/$namespace/services/$name:$SERVING_PORT_NAME/proxy/v1/chat/completions"))
+                .timeout(timeout).header("Authorization", "Bearer $token").header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream").header("Accept-Encoding", "identity")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body)).build()
+            val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
+            return object : ModelServingResponse {
+                override val status = response.statusCode()
+                override val contentType = response.headers().firstValue("Content-Type").orElse(null)
+                override val body = response.body()
+                override fun close() { http.shutdownNow(); runCatching { this.body.close() } }
+            }
+        } catch (failure: Exception) {
+            http.shutdownNow()
+            if (failure is java.net.http.HttpTimeoutException) throw java.net.SocketTimeoutException()
+            if (failure is InterruptedException) Thread.currentThread().interrupt()
+            throw GpuClusterApiFailedException()
+        }
     }
 
     override fun openModelChat(
