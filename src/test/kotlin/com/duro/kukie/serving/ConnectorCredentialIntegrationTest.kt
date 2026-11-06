@@ -6,6 +6,10 @@ import com.duro.kukie.global.util.utcNow
 import com.duro.kukie.serving.application.*
 import com.duro.kukie.serving.application.port.`in`.IssueConnectorCredentialCommand
 import com.duro.kukie.serving.domain.ConnectorCredentials
+import com.duro.kukie.serving.domain.ConnectorCredential
+import com.duro.kukie.serving.exception.ServingAccessException
+import com.duro.kukie.serving.exception.ServingErrorCode
+import io.kotest.assertions.throwables.shouldThrow
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.user.UserFixture
@@ -24,6 +28,20 @@ class ConnectorCredentialIntegrationTest : IntegrationTest() {
     @Autowired private lateinit var credentials: ConnectorCredentials
     @Autowired private lateinit var issue: IssueConnectorCredentialService
     @Autowired private lateinit var revoke: RevokeConnectorCredentialService
+
+    @Test
+    fun `등록 상한에서 새 대상은 거절해도 기존 대상은 회전할 수 있다`() {
+        // given
+        val admin = loggedInUser(UserFixture.user())
+        val team = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val targets = clusters.saveAll((0..256).map { ClusterFixture.cluster(admin.user.id, team, name = "capacity-$it") })
+        for (cluster in targets.take(256)) credentials.save(ConnectorCredential(cluster.id, "a".repeat(64), listOf("shared"), utcNow().plusHours(1)))
+        // when then
+        shouldThrow<ServingAccessException> { issue(IssueConnectorCredentialCommand(targets.last().id, admin.user.id, listOf("shared"))) }
+            .errorCode shouldBe ServingErrorCode.SERVING_CONNECTOR_LIMIT_REACHED
+        issue(IssueConnectorCredentialCommand(targets.first().id, admin.user.id, listOf("shared")))
+        credentials.active(utcNow()).size shouldBe 256
+    }
 
     @Test
     fun `관리자만 등록하며 원문은 한 번만 반환하고 내부 조회는 해시만 반환한다`() {

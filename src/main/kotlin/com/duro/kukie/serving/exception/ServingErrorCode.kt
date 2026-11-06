@@ -14,6 +14,7 @@ enum class ServingErrorCode(override val status: HttpStatus, override val messag
     SERVING_KEY_LIMIT_REACHED(HttpStatus.CONFLICT, "유효한 API 키는 대상별 최대 5개입니다."),
     SERVING_DESTINATION_REJECTED(HttpStatus.BAD_REQUEST, "허용된 공개 HTTPS 카운터 주소가 아닙니다."),
     SERVING_ENDPOINT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "API 제공 대상이 연결되지 않았습니다."),
+    SERVING_CONNECTOR_LIMIT_REACHED(HttpStatus.TOO_MANY_REQUESTS, "등록 가능한 커넥터 수를 초과했습니다."),
     SERVING_RELAY_BUSY(HttpStatus.TOO_MANY_REQUESTS, "동시 API 요청 한도를 초과했습니다."),
     SERVING_MODEL_DENIED(HttpStatus.FORBIDDEN, "허용되지 않은 모델입니다."),
     SERVING_UPSTREAM_FAILED(HttpStatus.BAD_GATEWAY, "고객 카운터에 연결할 수 없습니다."),

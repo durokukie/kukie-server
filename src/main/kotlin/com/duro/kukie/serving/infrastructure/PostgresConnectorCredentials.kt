@@ -18,6 +18,7 @@ class PostgresConnectorCredentials(private val jdbc: JdbcTemplate) : ConnectorCr
         mapper.readValue(rs.getString("models"), Array<String>::class.java).toList(), rs.getTimestamp("expires_at").toLocalDateTime(),
     ) }
 
+    override fun lockCapacity() { jdbc.execute("select pg_advisory_xact_lock(hashtext('kukie.connector.registration')::bigint)") }
     override fun find(clusterId: UUID): ConnectorCredential? = jdbc.query("select * from tbl_connector_credential where cluster_id = ?", row, clusterId).firstOrNull()
     override fun active(now: LocalDateTime): List<ConnectorCredential> = jdbc.query("select * from tbl_connector_credential where expires_at > ? order by cluster_id limit 257", row, now)
     override fun save(credential: ConnectorCredential) {
