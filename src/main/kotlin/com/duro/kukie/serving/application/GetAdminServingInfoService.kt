@@ -9,6 +9,6 @@ class GetAdminServingInfoService(private val permission: ServingAccessPermission
     @Transactional(readOnly = true)
     operator fun invoke(clusterId: UUID, userId: UUID): ServingInfoResponse {
         permission.requireAdmin(clusterId, userId)
-        return info.of(clusterId)
+        return info.of(clusterId, includeDisabled = true)
     }
 }
