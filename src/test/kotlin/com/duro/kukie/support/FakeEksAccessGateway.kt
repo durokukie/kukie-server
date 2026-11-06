@@ -324,6 +324,25 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         return true
     }
 
+    var servingModels: List<com.duro.kukie.cluster.application.port.out.NamedServingModel> = emptyList()
+    var servingResponse: ((ByteArray) -> com.duro.kukie.cluster.application.port.out.ModelServingResponse)? = null
+    val servingCalls = java.util.concurrent.CopyOnWriteArrayList<Pair<String, ByteArray>>()
+    val servingClusters = java.util.concurrent.CopyOnWriteArrayList<String>()
+
+    override fun listServingModels(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, namespace: String): List<com.duro.kukie.cluster.application.port.out.NamedServingModel> {
+        servingClusters.add(clusterName)
+        servingBackend?.let { return it.listServingModels(target, region, clusterName, servingBackendEndpoint!!, namespace) }
+        record(target); servedModelFailure?.let { throw it }
+        return servingModels
+    }
+    override fun openServingResponse(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, namespace: String, name: String, body: ByteArray, timeout: Duration): com.duro.kukie.cluster.application.port.out.ModelServingResponse {
+        servingClusters.add(clusterName)
+        servingBackend?.let { return it.openServingResponse(target, region, clusterName, servingBackendEndpoint!!, namespace, name, body, timeout) }
+        record(target); servedModelFailure?.let { throw it }
+        servingCalls.add(name to body)
+        return servingResponse?.invoke(body) ?: throw IllegalStateException("No serving response fixture")
+    }
+
     override fun openModelChat(
         target: AwsTarget,
         region: String,
@@ -344,6 +363,10 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     }
 
     override fun clear() {
+        servingModels = emptyList()
+        servingResponse = null
+        servingCalls.clear()
+        servingClusters.clear()
         clusters = DEFAULT_CLUSTERS
         endpoint = DEFAULT_ENDPOINT
         setup = DEFAULT_SETUP

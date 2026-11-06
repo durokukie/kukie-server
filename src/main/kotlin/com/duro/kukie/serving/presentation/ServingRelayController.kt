@@ -40,6 +40,7 @@ class ServingRelayController(private val prepare: PrepareServingRelayService, pr
                 if (json == null || !json.isObject || json.get("model")?.isString != true || json.get("stream")?.let { !it.isBoolean } == true) { badRequest(response); return }
                 model = json.get("model").asString()
                 stream = json.get("stream")?.asBoolean() ?: false
+                if (target.eks != null && target.models.isEmpty()) throw ServingAccessException(ServingErrorCode.SERVING_MODEL_UNAVAILABLE)
                 if (model !in target.models) throw ServingAccessException(ServingErrorCode.SERVING_MODEL_DENIED)
             }
             relay.start(request, response, target, body, model, stream)

@@ -1,0 +1,77 @@
+package com.duro.kukie.serving.application
+
+import com.duro.kukie.cluster.application.CreateServedModelService
+import com.duro.kukie.cluster.application.EksCredential
+import com.duro.kukie.cluster.application.EksGpuAccess
+import com.duro.kukie.cluster.application.port.out.EksAccessGateway
+import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.NamedServingModel
+import com.duro.kukie.cluster.domain.AccessLevel
+import com.duro.kukie.cluster.domain.ClusterProvider
+import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.global.config.properties.ServingRelayProperties
+import com.duro.kukie.serving.exception.ServingAccessException
+import com.duro.kukie.serving.exception.ServingErrorCode
+import org.springframework.data.repository.findByIdOrNull
+import org.springframework.stereotype.Component
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+
+@Component
+class EksServingResolver(
+    private val clusters: ClusterRepository,
+    private val access: EksGpuAccess,
+    private val gateway: EksAccessGateway,
+    private val properties: ServingRelayProperties,
+) {
+    private val slots = Semaphore(properties.maxConnections)
+    private val catalog = ConcurrentHashMap<UUID, CachedCatalog>()
+    private val flights = Array(64) { ReentrantLock() }
+    private class CachedCatalog(val target: EksServingTarget, val expiresAt: Long)
+
+    fun resolve(clusterId: UUID): EksServingTarget? {
+        val cluster = clusters.findByIdOrNull(clusterId) ?: return null
+        if (cluster.provider != ClusterProvider.EKS) return null
+        if (cluster.accessLevel != AccessLevel.FULL || cluster.accessLevelFailedAt != null) return null
+        val credential = try { access.of(cluster).takeIf { it.serving }?.credential ?: return null }
+        catch (_: Exception) { failed() }
+        val endpoint = try { access.endpointOf(cluster) } catch (_: Exception) { failed() }
+        cached(clusterId, credential, endpoint)?.let { return it }
+        val flight = flights[Math.floorMod(clusterId.hashCode(), flights.size)]
+        val acquired = try { flight.tryLock(properties.connectSeconds, TimeUnit.SECONDS) }
+        catch (_: InterruptedException) { Thread.currentThread().interrupt(); failed() }
+        if (!acquired) throw ServingAccessException(ServingErrorCode.SERVING_RELAY_BUSY)
+        try {
+            cached(clusterId, credential, endpoint)?.let { return it }
+            if (!slots.tryAcquire()) throw ServingAccessException(ServingErrorCode.SERVING_RELAY_BUSY)
+            try {
+                val models = gateway.listServingModels(credential.target, credential.region, credential.clusterName, endpoint, CreateServedModelService.SERVING_NAMESPACE)
+                    .filter { !it.state.deleting }.associateBy { it.name }
+                val target = EksServingTarget(credential, endpoint, models)
+                synchronized(catalog) {
+                    catalog.entries.removeIf { it.value.expiresAt - System.nanoTime() <= 0 }
+                    if (catalog.size < 256 || catalog.containsKey(clusterId)) {
+                        catalog[clusterId] = CachedCatalog(target, System.nanoTime() + TimeUnit.SECONDS.toNanos(2))
+                    }
+                }
+                return target
+            } catch (_: Exception) { failed() }
+            finally { slots.release() }
+        } finally { flight.unlock() }
+    }
+
+    private fun cached(clusterId: UUID, credential: EksCredential, endpoint: EksClusterEndpoint): EksServingTarget? =
+        catalog[clusterId]?.takeIf {
+            it.expiresAt - System.nanoTime() > 0 && it.target.credential == credential && it.target.endpoint == endpoint
+        }?.target
+
+    private fun failed(): Nothing = throw ServingAccessException(ServingErrorCode.SERVING_UPSTREAM_FAILED)
+}
+
+class EksServingTarget(val credential: EksCredential, val endpoint: EksClusterEndpoint, val models: Map<String, NamedServingModel>) {
+    val readyModels: List<String> get() = models.values.filter { it.state.phase == "Ready" }.map { it.name }.sorted()
+    override fun toString() = "EksServingTarget([REDACTED])"
+}

@@ -163,4 +163,24 @@ interface EksAccessGateway {
         body: ByteArray,
         timeout: Duration,
     ): ModelChatStream
+
+    fun listServingModels(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+    ): List<NamedServingModel>
+
+    /** 고정된 모델 Service 경로의 OpenAI 응답을 가공하지 않고 연다. 호출자 인증은 EKS 토큰으로 교체한다. */
+    fun openServingResponse(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        body: ByteArray,
+        timeout: Duration,
+    ): ModelServingResponse
 }
