@@ -14,7 +14,13 @@ import java.util.UUID
 @GatewayApi
 @RestController
 @RequestMapping("/internal/serving-gateway")
-class GatewayControlController(private val authorize: AuthorizeGatewayService, private val begin: BeginGatewayUsageService, private val complete: CompleteGatewayUsageService) {
+class GatewayControlController(private val authorize: AuthorizeGatewayService, private val begin: BeginGatewayUsageService, private val complete: CompleteGatewayUsageService, private val connectors: GetConnectorBindingsService) {
+    @PostMapping("/connector-bindings")
+    fun connectorBindings(response: HttpServletResponse): Map<String, List<ConnectorBinding>> {
+        response.setHeader("Cache-Control", "no-store")
+        return connectors()
+    }
+
     @PostMapping("/authorize")
     fun authorize(@Valid @RequestBody request: GatewayAuthorizeRequest, response: HttpServletResponse): GatewayIdentity {
         response.setHeader("Cache-Control", "no-store")
