@@ -38,6 +38,7 @@ web-app:
   url: ${WEB_APP_URL}
 
 internal:
+  gateway-token: ${KUKIE_GATEWAY_INTERNAL_TOKEN:}
   token: ${KUKIE_INTERNAL_TOKEN}
 
 # 매니페스트 레포에 PR 을 여는 GitHub App (kukie-gitops). 개인키는 서버에만 둔다
