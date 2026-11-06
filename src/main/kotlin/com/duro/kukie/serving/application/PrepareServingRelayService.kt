@@ -19,6 +19,7 @@ class PrepareServingRelayService(
         val endpoint = endpoints.findByClusterId(identity.clusterId)
         if (endpoint == null) {
             val target = eks.resolve(identity.clusterId) ?: throw ServingAccessException(ServingErrorCode.SERVING_ENDPOINT_NOT_CONFIGURED)
+            // 알려진 비준비 모델은 권한 거절(403) 대신 준비 안 됨(503)으로 구분한다.
             return ServingRelayTarget(identity, null, target.models.keys.toList(), target)
         }
         val secret = try { cipher.decrypt(endpoint.encryptedToken)["token"] ?: failed() } catch (_: Exception) { failed() }

@@ -129,6 +129,7 @@ class EksServingEndToEndTest : IntegrationTest() {
             mapper.readTree(it.body).path("model").asString() shouldBe "openai/gpt-oss-20b"
         }
         catalogHeaders.all { it?.startsWith("Bearer k8s-aws-v1.") == true } shouldBe true
+        catalogHeaders.size shouldBe 1
         endpoints.findByClusterId(s.cluster.id) shouldBe null
         eventually { jdbc.queryForObject("select count(*) from tbl_serving_usage where outcome='COMPLETED'", Int::class.java) shouldBe 3 }
         val info = call("/serving/accesses/${s.access.id}/info", s.user.accessToken)
@@ -166,11 +167,13 @@ class EksServingEndToEndTest : IntegrationTest() {
     @Test fun `EKS 권한이 제한되거나 연결이 해제되면 자동 중계를 허용하지 않는다`() {
         // given
         val s = setup()
+        call("/serving/v1/models", s.key).statusCode() shouldBe 200
+        val before = catalogHeaders.size
         // when then
         val connection = connections.findAll().single(); connection.connect("123456789012", utcNow(), null, AccessLevel.LIMITED, false, null)
         connections.save(connection)
         call("/serving/v1/models", s.key).statusCode() shouldBe 503
-        catalogHeaders.size shouldBe 0
+        catalogHeaders.size shouldBe before
         calls.size shouldBe 0
     }
 
@@ -248,7 +251,8 @@ class EksServingEndToEndTest : IntegrationTest() {
         absent.statusCode() shouldBe 503
         absent.body().contains("SERVING_MODEL_UNAVAILABLE") shouldBe true
         listStatus = 404
-        mapper.readTree(call("/serving/v1/models", s.key).body()).path("data").size() shouldBe 0
+        val withoutAddon = setup()
+        mapper.readTree(call("/serving/v1/models", withoutAddon.key).body()).path("data").size() shouldBe 0
         calls.size shouldBe 0
     }
 

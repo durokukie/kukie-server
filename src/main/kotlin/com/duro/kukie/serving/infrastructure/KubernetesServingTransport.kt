@@ -42,7 +42,7 @@ class KubernetesServingTransport(private val gateway: EksAccessGateway, private 
                     consume(CounterResponse(503, "application/json", ByteArrayInputStream(byteArrayOf())))
                     return
                 }
-                val payload = (mapper.readTree(body) as ObjectNode).put("model", served.state.model)
+                val payload = (mapper.readTree(body) as? ObjectNode ?: throw IOException()).put("model", served.state.model)
                 val credential = target.credential
                 val upstream = gateway.openServingResponse(credential.target, credential.region, credential.clusterName,
                     target.endpoint, CreateServedModelService.SERVING_NAMESPACE, served.name, mapper.writeValueAsBytes(payload), Duration.ofSeconds(properties.idleSeconds))

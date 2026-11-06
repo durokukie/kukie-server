@@ -16,10 +16,14 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Component
 import java.util.UUID
 import java.util.concurrent.Semaphore
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 @Component
 class EksServingResolver(private val clusters: ClusterRepository, private val access: EksGpuAccess, private val gateway: EksAccessGateway, properties: ServingRelayProperties) {
     private val slots = Semaphore(properties.maxConnections)
+    private val catalog = ConcurrentHashMap<UUID, CachedCatalog>()
+    private class CachedCatalog(val target: EksServingTarget, val expiresAt: Long)
 
     fun resolve(clusterId: UUID): EksServingTarget? {
         val cluster = clusters.findByIdOrNull(clusterId) ?: return null
@@ -28,11 +32,22 @@ class EksServingResolver(private val clusters: ClusterRepository, private val ac
         val credential = try { access.of(cluster).takeIf { it.serving }?.credential ?: return null }
         catch (_: Exception) { throw ServingAccessException(ServingErrorCode.SERVING_UPSTREAM_FAILED) }
         val endpoint = access.endpointOf(cluster)
+        val now = System.nanoTime()
+        catalog[clusterId]?.takeIf {
+            it.expiresAt - now > 0 && it.target.credential == credential && it.target.endpoint == endpoint
+        }?.let { return it.target }
         if (!slots.tryAcquire()) throw ServingAccessException(ServingErrorCode.SERVING_RELAY_BUSY)
         try {
             val models = gateway.listServingModels(credential.target, credential.region, credential.clusterName, endpoint, CreateServedModelService.SERVING_NAMESPACE)
                 .filter { !it.state.deleting }.associateBy { it.name }
-            return EksServingTarget(credential, endpoint, models)
+            val target = EksServingTarget(credential, endpoint, models)
+            synchronized(catalog) {
+                catalog.entries.removeIf { it.value.expiresAt - System.nanoTime() <= 0 }
+                if (catalog.size < 256 || catalog.containsKey(clusterId)) {
+                    catalog[clusterId] = CachedCatalog(target, System.nanoTime() + TimeUnit.SECONDS.toNanos(2))
+                }
+            }
+            return target
         } catch (_: Exception) { throw ServingAccessException(ServingErrorCode.SERVING_UPSTREAM_FAILED) }
         finally { slots.release() }
     }

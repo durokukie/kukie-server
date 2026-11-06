@@ -69,7 +69,7 @@ class ServingRelay(
                     if (upstream.status != 200) {
                         status = when (upstream.status) { 400 -> 400; 429 -> 429; 404, 503 -> 503; else -> 502 }
                         val code = when (upstream.status) { 400 -> "SERVING_UPSTREAM_BAD_REQUEST"; 429 -> "SERVING_UPSTREAM_RATE_LIMITED"; 404, 503 -> "SERVING_MODEL_UNAVAILABLE"; 401, 403 -> "SERVING_UPSTREAM_AUTH_FAILED"; else -> "SERVING_UPSTREAM_FAILED" }
-                        ServingApiErrors.write(response, status, code, "고객 카운터가 요청을 처리하지 못했습니다.")
+                        ServingApiErrors.write(response, status, code, "모델 제공 서버가 요청을 처리하지 못했습니다.")
                         return@execute
                     }
                     val contentType = upstream.contentType?.substringBefore(';')?.trim()?.lowercase()
