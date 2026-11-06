@@ -54,6 +54,7 @@ class ServingRelayIntegrationTest : IntegrationTest() {
     @Autowired private lateinit var revoke: RevokeMyServingApiKeyService
     @Autowired private lateinit var cipher: CredentialCipher
     @Autowired private lateinit var counter: FakeCounterTransport
+    @Autowired private lateinit var completionProbe: CompletionInterruptionProbe
     @Autowired private lateinit var observations: RelayObservations
 
     @Test
@@ -228,6 +229,26 @@ class ServingRelayIntegrationTest : IntegrationTest() {
         }.andExpect { status { isNotFound() } }
     }
 
+    @Test
+    fun `취소와 완료 콜백이 반복돼도 원장 완료 기록을 인터럽트하지 않는다`() {
+        // given
+        val s = setup("a")
+        completionProbe.armed = true
+        counter.answer = { CounterResponse(200, "text/event-stream", BlockingCounterBody()) }
+        val result = chat(s.token, """{"model":"shared","stream":true}""")
+        val context = result.request.asyncContext as MockAsyncContext
+        // when
+        try {
+            context.listeners.toList().forEach { it.onError(AsyncEvent(context, IOException("gone"))) }
+            completionProbe.entered.await(5, TimeUnit.SECONDS) shouldBe true
+            context.listeners.toList().forEach { it.onComplete(AsyncEvent(context)) }
+        } finally { completionProbe.release.countDown() }
+        val event = observations.next()
+        // then
+        completionProbe.interrupted.get() shouldBe false
+        usageJournal.findById(event.requestId).get().outcome shouldBe "CANCELLED"
+    }
+
     private fun chat(token: String, body: String) = mockMvc.post("/serving/v1/chat/completions") {
         authorization(token); contentType = MediaType.APPLICATION_JSON; content = body
     }.andReturn()
@@ -249,6 +270,7 @@ class ServingRelayIntegrationTest : IntegrationTest() {
 class RelayFakeConfig {
     @Bean @Primary fun fakeCounterTransport() = FakeCounterTransport()
     @Bean fun relayObservations() = RelayObservations()
+    @Bean fun completionProbe() = CompletionInterruptionProbe()
 }
 
 class RelayObservations : Resettable {
@@ -284,3 +306,27 @@ class BlockingCounterBody : InputStream() {
 }
 
 private fun jsonResponse() = CounterResponse(200, "application/json", ByteArrayInputStream("""{"choices":[],"usage":{"prompt_tokens":2,"completion_tokens":4}}""".toByteArray()))
+
+class CompletionInterruptionProbe : Resettable {
+    @Volatile var armed = false
+    var entered = java.util.concurrent.CountDownLatch(1)
+        private set
+    var release = java.util.concurrent.CountDownLatch(1)
+        private set
+    val interrupted = AtomicBoolean()
+    @EventListener
+    @org.springframework.core.annotation.Order(-1)
+    fun onObservation(event: ServingUsageObservation) {
+        if (!armed || event.outcome != "cancelled") return
+        entered.countDown()
+        try { release.await(5, TimeUnit.SECONDS) }
+        catch (_: InterruptedException) { interrupted.set(true) }
+    }
+    override fun clear() {
+        release.countDown()
+        armed = false
+        entered = java.util.concurrent.CountDownLatch(1)
+        release = java.util.concurrent.CountDownLatch(1)
+        interrupted.set(false)
+    }
+}

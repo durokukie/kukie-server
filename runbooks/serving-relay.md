@@ -12,7 +12,7 @@
 | 메서드·경로 | 동작 |
 | --- | --- |
 | PUT `/clusters/{clusterId}/serving/endpoint` | 기존 Kukie 로그인으로 해당 ADMIN만 구성·교체. `{"baseUrl":"https://api.customer.example/v1","serviceToken":"<서비스 키>","models":["model-a"]}`. 204 |
-| GET `/clusters/{clusterId}/serving/endpoint` | 해당 ADMIN에게 주소·모델만 반환. 미설정 시 null, 서비스 키/암호문은 반환하지 않음 |
+| GET `/clusters/{clusterId}/serving/endpoint` | 해당 ADMIN에게 주소·모델만 반환. 미설정 시 200 빈 본문(클라이언트는 null로 정규화), 서비스 키/암호문은 반환하지 않음 |
 | DELETE `/clusters/{clusterId}/serving/endpoint` | 해당 ADMIN만 연결 제거. 204. 이후 새 요청은 503 |
 
 클러스터당 제공 대상은 하나이며 모델 이름을 그대로 전달한다. 서비스 키는 ASCII 가시문자 1~4096자(공백 없음), 모델은 1~100개, 모델명은 영숫자로 시작하고 영숫자·`.`·`_`·`/`·`-`로 최대 200자다. PUT은 전체 교체이며 모델·서비스 키를 모두 다시 보낸다. 연결 제거·교체 전에 이미 준비된 요청은 기존 연결로 완료할 수 있다.

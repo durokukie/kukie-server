@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.ScheduledFuture
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 @Component
 class ServingRelay(
@@ -33,6 +34,7 @@ class ServingRelay(
 ) : DisposableBean {
     private val deadlines = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("serving-deadline").factory())
     private val mapper = JsonMapper.builder().build()
+    private val completionThreads = Thread.ofVirtual().name("serving-usage-", 0).factory()
 
     fun start(request: HttpServletRequest, response: HttpServletResponse, target: ServingRelayTarget, body: ByteArray?, model: String?, stream: Boolean) {
         val lease = slots.acquire(target.identity.keyId)
@@ -48,6 +50,11 @@ class ServingRelay(
         async.timeout = (properties.totalSeconds + 5) * 1000
         val stopped = AtomicBoolean()
         val timedOut = AtomicBoolean()
+        val wireStatus = AtomicInteger(0)
+        fun captureWireStatus() {
+            val observed = runCatching { if (response.isCommitted) response.status else null }.getOrNull()
+            if (observed != null) wireStatus.compareAndSet(0, observed)
+        }
         val deadline = AtomicReference<ScheduledFuture<*>?>()
         val worker = Thread.ofVirtual().unstarted {
             val started = Instant.now()
@@ -75,7 +82,7 @@ class ServingRelay(
                         if (bytes.size > MAX_JSON) throw IOException()
                         val result = if (body == null) filterModels(bytes, target.models) else bytes
                         if (body != null) usage.json(bytes)
-                        try { response.outputStream.write(result); response.flushBuffer() } catch (e: IOException) { stopped.set(true); throw e }
+                        try { response.outputStream.write(result); response.flushBuffer(); wireStatus.compareAndSet(0, 200) } catch (e: IOException) { stopped.set(true); throw e }
                     } else {
                         val buffer = ByteArray(8192)
                         var total = 0L
@@ -85,7 +92,7 @@ class ServingRelay(
                             total += size
                             if (total > MAX_STREAM) throw IOException()
                             usage.sse(buffer, size)
-                            try { response.outputStream.write(buffer, 0, size); response.flushBuffer() } catch (e: IOException) { stopped.set(true); throw e }
+                            try { response.outputStream.write(buffer, 0, size); response.flushBuffer(); wireStatus.compareAndSet(0, 200) } catch (e: IOException) { stopped.set(true); throw e }
                         }
                         if (stopped.get()) throw IOException()
                     }
@@ -101,14 +108,24 @@ class ServingRelay(
                 deadline.get()?.cancel(false)
                 exchange.cancel()
                 lease.close()
-                runCatching { events.publishEvent(ServingUsageObservation(target.identity, model, started, (System.nanoTime() - timer) / 1_000_000, status, outcome, usage.inputTokens, usage.outputTokens, body != null && (outcome != "completed" || usage.inputTokens == null || usage.outputTokens == null), requestId, if (response.isCommitted) response.status else status)) }
-                runCatching { async.complete() }
+                captureWireStatus()
+                val observation = ServingUsageObservation(target.identity, model, started, (System.nanoTime() - timer) / 1_000_000, status, outcome, usage.inputTokens, usage.outputTokens, body != null && (outcome != "completed" || usage.inputTokens == null || usage.outputTokens == null), requestId, wireStatus.get().takeUnless { it == 0 } ?: status.takeUnless { it == 499 })
+                // 취소 콜백의 반복 인터럽트가 완료 기록의 DB 트랜잭션을 끊지 않게 분리한다.
+                completionThreads.newThread {
+                    runCatching { events.publishEvent(observation) }
+                    runCatching { async.complete() }
+                }.start()
             }
         }
         async.addListener(object : AsyncListener {
-            override fun onComplete(event: AsyncEvent) { stopped.set(true); exchange.cancel(); worker.interrupt() }
-            override fun onError(event: AsyncEvent) { stopped.set(true); exchange.cancel(); worker.interrupt() }
+            override fun onComplete(event: AsyncEvent) { captureWireStatus(); stopped.set(true); exchange.cancel(); worker.interrupt() }
+            override fun onError(event: AsyncEvent) {
+                captureWireStatus()
+                stopped.set(true); exchange.cancel(); worker.interrupt()
+                runCatching { async.complete() }
+            }
             override fun onTimeout(event: AsyncEvent) {
+                captureWireStatus()
                 timedOut.set(true); stopped.set(true); exchange.cancel(); worker.interrupt()
                 runCatching { ServingApiErrors.write(response, 504, "SERVING_UPSTREAM_TIMEOUT", "API 응답 시간이 초과되었습니다.") }
                 runCatching { async.complete() }

@@ -57,3 +57,4 @@ cp .env.example .env
 - [개인 API 키 발급·폐기](runbooks/serving-api-keys.md)
 - [공통 API 카운터 중계](runbooks/serving-relay.md)
 - [API 사용량 저장·조회](runbooks/serving-usage.md)
+- [공통 API 로컬 종단 검증](runbooks/serving-e2e.md)
