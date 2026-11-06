@@ -13,7 +13,8 @@ object WorklogMarkdown {
     private val TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
     private const val TITLE_LIMIT = 60
 
-    fun render(worklog: WorklogResponse): String {
+    /** zoneReceived 가 false 면 브라우저 시간대를 받지 못해 UTC 로 그린 것이라 맨 위 안내 문구가 다르다 */
+    fun render(worklog: WorklogResponse, zoneReceived: Boolean = true): String {
         val names = worklog.people.associate { it.id to it.name }
         val conversation = worklog.conversation
         val environment = worklog.environment
@@ -27,6 +28,8 @@ object WorklogMarkdown {
             appendLine("- 턴 ${worklog.turns.size}개 · 변경 ${worklog.turns.sumOf { it.changes.size }}개")
             appendLine("- 대화를 만든 시각: ${time(conversation.createdAt, zone)}")
             appendLine("- 내보낸 시각: ${time(worklog.exportedAt, zone)}")
+            appendLine()
+            appendLine(zoneNotice(zone, worklog.utcOffset, zoneReceived))
             worklog.turns.forEach { turn(it, names, zone) }
         }
     }
@@ -171,6 +174,13 @@ object WorklogMarkdown {
     }
 
     private fun name(names: Map<UUID, String>, id: UUID): String = names[id] ?: "알 수 없는 사용자"
+
+    private fun zoneNotice(zone: ZoneId, offset: String, zoneReceived: Boolean): String =
+        if (zoneReceived) {
+            "> 시각은 내려받은 브라우저의 시간대(${zone.id}, UTC$offset) 기준입니다. 원본은 UTC 로 저장되며 .json 에는 UTC 그대로 들어 있습니다."
+        } else {
+            "> 브라우저 시간대를 받지 못해 UTC 기준으로 표시합니다. 원본도 UTC 로 저장되며 .json 에는 UTC 그대로 들어 있습니다."
+        }
 
     /** 시각마다 시간대와 오프셋을 붙인다. 서머타임이 있는 시간대는 시각에 따라 오프셋이 다르다 */
     private fun time(at: Instant, zone: ZoneId): String =

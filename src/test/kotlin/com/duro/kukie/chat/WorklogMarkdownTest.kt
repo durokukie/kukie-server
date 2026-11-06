@@ -70,11 +70,27 @@ class WorklogMarkdownTest {
     }
 
     @Test
-    fun `모르는 시간대는 UTC 로 본다`() {
-        WorklogResponse.zoneOf("Mars/Olympus") shouldBe ZoneId.of("UTC")
-        WorklogResponse.zoneOf(" ") shouldBe ZoneId.of("UTC")
-        WorklogResponse.zoneOf(null) shouldBe ZoneId.of("UTC")
+    fun `모르는 시간대는 받지 못한 것으로 본다`() {
+        WorklogResponse.zoneOf("Mars/Olympus") shouldBe null
+        WorklogResponse.zoneOf(" ") shouldBe null
+        WorklogResponse.zoneOf(null) shouldBe null
         WorklogResponse.zoneOf("Asia/Seoul") shouldBe ZoneId.of("Asia/Seoul")
+    }
+
+    @Test
+    fun `맨 위에 어느 시간대 기준인지 적는다`() {
+        val markdown = WorklogMarkdown.render(worklog(ZoneId.of("Asia/Seoul"), turn(finishedAt = null)))
+
+        markdown shouldContain "- 내보낸 시각: 2026-11-06 08:00:00 (Asia/Seoul, UTC+09:00)\n\n" +
+            "> 시각은 내려받은 브라우저의 시간대(Asia/Seoul, UTC+09:00) 기준입니다. 원본은 UTC 로 저장되며 .json 에는 UTC 그대로 들어 있습니다."
+    }
+
+    @Test
+    fun `시간대를 받지 못해 UTC 로 그렸으면 그렇다고 적는다`() {
+        val markdown = WorklogMarkdown.render(worklog(WorklogResponse.UTC, turn(finishedAt = null)), zoneReceived = false)
+
+        markdown shouldContain "> 브라우저 시간대를 받지 못해 UTC 기준으로 표시합니다."
+        markdown shouldNotContain "내려받은 브라우저의 시간대"
     }
 
     private fun worklog(zone: ZoneId, vararg turns: WorklogResponse.Turn): WorklogResponse {
