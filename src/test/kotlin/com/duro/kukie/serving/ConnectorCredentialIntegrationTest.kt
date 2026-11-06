@@ -104,7 +104,7 @@ class ConnectorCredentialIntegrationTest : IntegrationTest() {
         val team = savedTeam(admin.user.id to TeamRole.ADMIN)
         val cluster = clusters.save(ClusterFixture.cluster(admin.user.id, team))
         // when then
-        for (models in listOf(emptyList(), listOf("bad model"), listOf("x".repeat(201)))) {
+        for (models in listOf(emptyList(), listOf(null), listOf("bad model"), listOf("x".repeat(201)))) {
             mockMvc.post("/clusters/${cluster.id}/serving/connector-credential") {
                 authorization(admin.accessToken); contentType = MediaType.APPLICATION_JSON; content = mapOf("models" to models).toJson()
             }.andExpect { status { isBadRequest() } }
