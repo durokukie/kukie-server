@@ -9,4 +9,10 @@ import org.springframework.validation.annotation.Validated
 data class InternalProperties(
     @field:NotBlank val token: String,
     val gatewayToken: String = "",
-)
+) {
+    init {
+        require(gatewayToken.isEmpty() || (gatewayToken.isNotBlank() && gatewayToken != token)) {
+            "Gateway token must be nonblank and distinct from the agent token"
+        }
+    }
+}

@@ -14,6 +14,35 @@ import java.lang.reflect.Method
 class InternalApiConventionTest {
 
     @Test
+    fun `게이트웨이 핸들러는 전용 인증과 내부 인증을 함께 선언한다`() {
+        val violations = findHandlerMethods().filter { it.isGatewayApi() && !it.isInternalApi() }
+        withClue("@GatewayApi 는 @InternalApi 와 함께 선언해야 합니다") { violations.shouldBeEmpty() }
+    }
+
+    @Test
+    fun `게이트웨이 내부 경로는 전용 인증을 선언한다`() {
+        val violations = findHandlerMethods().filter { it.isGatewayPath() && !it.isGatewayApi() }
+        withClue("게이트웨이 경로는 전용 인증을 선언해야 합니다") { violations.shouldBeEmpty() }
+    }
+
+    @Test
+    fun `게이트웨이 전용 인증은 게이트웨이 경로에만 선언한다`() {
+        val violations = findHandlerMethods().filter { it.isGatewayApi() && !it.isGatewayPath() }
+        withClue("게이트웨이 전용 자격을 다른 내부 API에 허용하지 않습니다") { violations.shouldBeEmpty() }
+    }
+
+    private fun Method.isGatewayApi(): Boolean =
+        AnnotatedElementUtils.hasAnnotation(this, GatewayApi::class.java) ||
+            AnnotatedElementUtils.hasAnnotation(declaringClass, GatewayApi::class.java)
+
+    private fun Method.isGatewayPath(): Boolean = declaringClass.mappedPaths().ifEmpty { listOf("") }.any { prefix ->
+        mappedPaths().ifEmpty { listOf("") }.any { path ->
+            val full = listOf(prefix, path).map { it.trim('/') }.filter { it.isNotEmpty() }.joinToString("/", prefix = "/")
+            full == "/internal/serving-gateway" || full.startsWith("/internal/serving-gateway/")
+        }
+    }
+
+    @Test
     fun `internal 경로의 핸들러는 InternalApi를 선언해야 한다`() {
         val violations = findHandlerMethods()
             .filter { it.isUnderInternal() }

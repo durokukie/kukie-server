@@ -17,5 +17,10 @@ data class GatewayFinishRequest(
     @field:Min(0) val inputTokens: Long?,
     @field:Min(0) val outputTokens: Long?,
 ) {
+    @get:AssertTrue(message = "완료 상태와 HTTP 상태 또는 토큰 정보가 일치하지 않습니다.")
+    val consistent: Boolean get() = (status == 0 || status in 100..599) &&
+        (outcome != "COMPLETED" || status == 200) &&
+        (!tokensKnown || (inputTokens != null && outputTokens != null))
+
     fun toCommand(requestId: UUID) = CompleteGatewayUsageCommand(requestId, outcome, status, tokensKnown, inputTokens, outputTokens)
 }

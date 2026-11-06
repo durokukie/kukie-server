@@ -22,7 +22,7 @@ class InternalApiInterceptor(
         response: HttpServletResponse,
         handler: Any,
     ): Boolean {
-        if (handler !is HandlerMethod || handler.isInternalApi().not()) {
+        if (handler !is HandlerMethod || (handler.isInternalApi().not() && handler.isGatewayApi().not())) {
             return true
         }
 

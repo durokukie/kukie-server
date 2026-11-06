@@ -42,7 +42,8 @@ class GatewayControlIntegrationTest : IntegrationTest() {
         }
         post("/requests", mapOf("keyId" to issued.key.id, "model" to "shared")).andExpect { status { isOk() } }
         val id = usage.findAll().single().id
-        repeat(2) { post("/requests/$id/finish", finish()).andExpect { status { isNoContent() } } }
+        post("/requests/$id/finish", finish()).andExpect { status { isNoContent() } }
+        post("/requests/$id/finish", finish() + ("inputTokens" to 999)).andExpect { status { isNoContent() } }
         // then
         usage.findAll().size shouldBe 1
         usage.findById(id).get().let { it.outcome shouldBe "COMPLETED"; it.inputTokens shouldBe 3; it.outputTokens shouldBe 7 }
@@ -50,8 +51,11 @@ class GatewayControlIntegrationTest : IntegrationTest() {
 
     @Test
     fun `일반 내부 토큰과 개인 키는 게이트웨이 서비스 인증에 사용할 수 없다`() {
-        // given when then
-        for (token in listOf("test-internal-token", "", "invalid")) {
+        // given
+        val s = setup("a")
+        val personal = issue(IssueServingApiKeyCommand(s.first.id, s.second, "test", 90)).token
+        // when then
+        for (token in listOf("test-internal-token", "", "invalid", personal)) {
             post("/authorize", mapOf("token" to "invalid"), token).andExpect { status { isUnauthorized() } }
         }
         mockMvc.patch("/internal/clusters/${UUID.randomUUID()}/status") {
@@ -96,6 +100,9 @@ class GatewayControlIntegrationTest : IntegrationTest() {
         post("/requests", mapOf("keyId" to issued.key.id, "model" to "shared")).andExpect { status { isOk() } }
         val id = usage.findAll().single().id
         // when then
+        post("/requests/${UUID.randomUUID()}/finish", finish()).andExpect { status { isNotFound() } }
+        post("/requests/$id/finish", finish() + ("status" to 0)).andExpect { status { isBadRequest() } }
+        post("/requests/$id/finish", finish() + ("status" to 42)).andExpect { status { isBadRequest() } }
         post("/requests/$id/finish", finish() + ("inputTokens" to -1)).andExpect { status { isBadRequest() } }
         post("/requests/$id/finish", finish() + ("outcome" to "IN_PROGRESS")).andExpect { status { isBadRequest() } }
         post("/requests/$id/finish", finish() + mapOf("tokensKnown" to false, "inputTokens" to null, "outputTokens" to null)).andExpect { status { isNoContent() } }
