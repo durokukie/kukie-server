@@ -49,12 +49,8 @@ class SnakeYamlKubeconfigParser(
         val insecure = cluster["insecure-skip-tls-verify"] == true
         val ca = cluster["certificate-authority-data"]
         ensure(!(insecure && ca != null), "CA 인증서와 insecure-skip-tls-verify 를 함께 쓸 수 없습니다 — 하나만 남기세요")
-        val caData = if (ca == null) {
-            ensure(insecure, "CA 인증서(certificate-authority-data)가 없습니다")
-            null
-        } else {
-            base64(ca, "certificate-authority-data")
-        }
+        // CA 가 없으면 공인 인증서 서버(GKE DNS 엔드포인트 등)로 보고 agent 가 기본 신뢰 저장소로 검증한다.
+        val caData = ca?.let { base64(it, "certificate-authority-data") }
 
         val namespace = (context["namespace"] as? String)?.trim().orEmpty()
 

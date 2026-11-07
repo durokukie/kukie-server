@@ -129,6 +129,29 @@ class ClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `CA 가 없는 공인 주소 kubeconfig 는 기본 신뢰 저장소로 검증하도록 등록한다`() {
+        // given: GKE DNS 엔드포인트처럼 공인 인증서를 쓰는 서버는 kubeconfig 에 CA 를 넣지 않는다
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(cluster = mapOf("server" to "https://gke-abc.asia-northeast3.gke.goog"))
+
+        // when
+        val response = mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = ClusterFixture.DEFAULT_NAME, teamId = teamId).toJson()
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.insecure") { value(false) }
+        }.andReturn().response.contentAsString
+
+        // then
+        val stored = clusterRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.id")))!!
+        stored.caData shouldBe null
+        stored.insecure shouldBe false
+    }
+
+    @Test
     fun `kubeconfig 를 검사하는 동안 DB 연결을 잡지 않는다`() {
         // given
         val admin = loggedInUser()
@@ -192,6 +215,74 @@ class ClusterIntegrationTest : IntegrationTest() {
                 jsonPath("$.message") { value(containsString("사설")) }
             }
         }
+    }
+
+    @Test
+    fun `CA 가 없어도 사설 주소를 가리키면 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        fakeHostResolver.addresses = listOf(InetAddress.getByName("10.0.0.5"))
+
+        // when & then
+        for (serverUrl in listOf("https://10.0.0.5", "https://sneaky.gke.goog")) {
+            mockMvc.post("/clusters") {
+                authorization(me.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = RegisterClusterRequest(
+                    kubeconfig = kubeconfig(cluster = mapOf("server" to serverUrl)),
+                    name = "운영",
+                    teamId = teamId,
+                ).toJson()
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+                jsonPath("$.message") { value(containsString("사설")) }
+            }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `CA 가 없어도 외부 인증 프로그램을 쓰는 kubeconfig 는 등록할 수 없다`() {
+        // given: gcloud get-credentials --dns-endpoint 가 만드는 모양
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(
+            cluster = mapOf("server" to "https://gke-abc.asia-northeast3.gke.goog"),
+            user = mapOf("exec" to mapOf("command" to "gke-gcloud-auth-plugin")),
+        )
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = "운영", teamId = teamId).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+            jsonPath("$.message") { value(containsString("외부 인증 프로그램")) }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `CA 값이 비어 있으면 등록할 수 없다`() {
+        // given: 빈 값은 "CA 없음"이 아니라 잘못 만든 파일로 본다
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(ca = ""), name = "운영", teamId = teamId).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+            jsonPath("$.message") { value(containsString("certificate-authority-data")) }
+        }
+        clusterRepository.count() shouldBe 0
     }
 
     @Test
