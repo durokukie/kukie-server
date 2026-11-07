@@ -130,7 +130,7 @@ class ClusterIntegrationTest : IntegrationTest() {
 
     @Test
     fun `CA 가 없는 공인 주소 kubeconfig 는 기본 신뢰 저장소로 검증하도록 등록한다`() {
-        // given: GKE DNS 엔드포인트처럼 공인 인증서를 쓰는 서버는 kubeconfig 에 CA 를 넣지 않는다
+        // given
         val me = loggedInUser()
         val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
         val body = kubeconfig(cluster = mapOf("server" to "https://gke-abc.asia-northeast3.gke.goog"))
@@ -149,6 +149,29 @@ class ClusterIntegrationTest : IntegrationTest() {
         val stored = clusterRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.id")))!!
         stored.caData shouldBe null
         stored.insecure shouldBe false
+    }
+
+    @Test
+    fun `CA 대신 insecure-skip-tls-verify 를 쓴 kubeconfig 는 검증 없이 쓰도록 등록한다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(cluster = mapOf("server" to ClusterFixture.DEFAULT_SERVER, "insecure-skip-tls-verify" to true))
+
+        // when
+        val response = mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = ClusterFixture.DEFAULT_NAME, teamId = teamId).toJson()
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.insecure") { value(true) }
+        }.andReturn().response.contentAsString
+
+        // then
+        val stored = clusterRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.id")))!!
+        stored.caData shouldBe null
+        stored.insecure shouldBe true
     }
 
     @Test
@@ -245,7 +268,7 @@ class ClusterIntegrationTest : IntegrationTest() {
 
     @Test
     fun `CA 가 없어도 외부 인증 프로그램을 쓰는 kubeconfig 는 등록할 수 없다`() {
-        // given: gcloud get-credentials --dns-endpoint 가 만드는 모양
+        // given
         val me = loggedInUser()
         val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
         val body = kubeconfig(
@@ -268,7 +291,7 @@ class ClusterIntegrationTest : IntegrationTest() {
 
     @Test
     fun `CA 값이 비어 있으면 등록할 수 없다`() {
-        // given: 빈 값은 "CA 없음"이 아니라 잘못 만든 파일로 본다
+        // given
         val me = loggedInUser()
         val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
 
@@ -280,7 +303,33 @@ class ClusterIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
-            jsonPath("$.message") { value(containsString("certificate-authority-data")) }
+            jsonPath("$.message") { value(containsString("certificate-authority-data 값이 비어 있습니다")) }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `CA 와 insecure-skip-tls-verify 를 함께 쓴 kubeconfig 는 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(
+            cluster = mapOf(
+                "server" to ClusterFixture.DEFAULT_SERVER,
+                "certificate-authority-data" to ClusterFixture.CA,
+                "insecure-skip-tls-verify" to true,
+            ),
+        )
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = "운영", teamId = teamId).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+            jsonPath("$.message") { value(containsString("함께 쓸 수 없습니다")) }
         }
         clusterRepository.count() shouldBe 0
     }
