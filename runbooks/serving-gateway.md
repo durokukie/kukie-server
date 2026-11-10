@@ -4,7 +4,7 @@ Go 저장소: `durokukie/kukie-serving-gateway`. 계약은 해당 저장소 `doc
 
 - `KUKIE_GATEWAY_INTERNAL_TOKEN`을 전용 자격으로 설정한다. 기본값이 비어 있으면 전부 거절한다. 기존 `KUKIE_INTERNAL_TOKEN`과 별도로 관리한다.
 - 내부 ingress/네트워크에서 게이트웨이에만 HTTPS 접근을 허용한다. 기존 공용 API 라우팅에 `/internal`을 추가하지 않는다.
-- 자격 교체는 서버/게이트웨이에서 조율한다. 다중 키 무중단 회전은 후속이다.
+- 게이트웨이 전용 내부 자격 교체는 서버/게이트웨이에서 조율한다. 다중 키 무중단 회전은 후속이다.
 - `/authorize`는 개인 키를 확인하고 keyId/clusterId/허용 모델만 반환한다. 주소·카운터 자격을 반환하지 않는다.
 - `/requests`는 키 ID의 현재 상태와 허용 모델을 재확인하고 시작 기록을 확정한다. 반환에 실패하면 게이트웨이는 모델을 호출하지 않는다.
 - 완료 기록은 저장된 요청 ID로 본래 대상을 결정하며 기존 조건부 writer를 재사용한다. 키 폐기 전 시작된 요청도 완료 가능하다. 미완료 시작 행은 기존 유지 작업이 INTERRUPTED로 처리한다.
@@ -18,7 +18,18 @@ Go 저장소: `durokukie/kukie-serving-gateway`. 계약은 해당 저장소 `doc
 
 게이트웨이는 같은 전용 내부 자격으로 `POST /internal/serving-gateway/connector-bindings`를 조회해 활성 해시/만료 스냅샷만 받는다. 신규 발급은 활성 등록 256개 한계에서 429로 거절하며 기존 등록 회전은 허용한다. 내부 스냅샷이 이 한계를 넘는 비정상 상태는 500으로 거절한다. 조회/적용 실패 시 게이트웨이가 세션을 폐기하므로 control API 장애가 추론 중단으로 이어질 수 있다. 5초 조회 주기+5초 요청 제한으로 회전/폐기는 보통 최대 10초 내 반영하며 해당 커넥터의 진행 요청도 종료한다.
 
-커넥터 등록이 존재하면 새 Go 경로의 모델 허용 목록은 그 등록을 따른다. 만료/폐기 상태에서 기존 외부 endpoint로 묵시적 fallback하지 않는다. 기존 Kotlin 공개 중계 라우팅은 변경하지 않는다. 로컬 커넥터/카운터로 자격 파일을 안전하게 전달하고 만료 전 자동 갱신하는 설치 작업은 DURO-203에서 연결한다. 지금 상태를 원클릭/영구 연결 완료로 표현하지 않는다.
+커넥터 등록이 존재하면 새 Go 경로의 모델 허용 목록은 그 등록을 따른다. 만료/폐기 상태에서 기존 외부 endpoint로 묵시적 fallback하지 않는다. 기존 Kotlin 공개 중계 라우팅은 변경하지 않는다. 원클릭 설치는 DURO-203에서 연결한다.
+
+### 커넥터 자격 자동 갱신
+
+커넥터는 게이트웨이를 거쳐 `POST /internal/serving-gateway/connector-credential/renew`(`{clusterId, tokenSha256}`)로 자격을 스스로 바꾼다. 게이트웨이가 원문을 먼저 확인하고 해시만 넘긴다. 응답은 새 원문과 만료(`{token, expiresAt}`)뿐이며 `no-store`다.
+
+- 현재 자격으로 갱신하면 새 자격(수명 `serving.connector-credential.lifetime`, 기본 24시간)을 만들고, 현재 자격은 직전 자격이 되어 겹침 기간(`overlap`, 기본 30분, 원래 만료를 넘지 않음) 동안만 유효하다.
+- 겹침 안의 직전 자격으로 다시 오면 앞선 응답을 잃은 것으로 보고 새 자격을 다시 준다. 직전 자격 만료는 늘리지 않는다.
+- 클러스터마다 `renew-min-interval`(기본 30초) 안의 두 번째 회전은 429 `SERVING_CONNECTOR_RENEW_TOO_SOON`이다. 모르는·만료된 자격은 401 `SERVING_CONNECTOR_CREDENTIAL_INVALID`다.
+- 관리자 재발급과 폐기는 직전 자격도 지운다. `connector-bindings`는 겹침 안의 직전 해시·만료(`previousTokenSha256`, `previousExpiresAt`)도 준다. 구 게이트웨이는 이 필드를 무시한다.
+- V31이 `previous_token_hash`, `previous_expires_at`, `rotated_at`를 더한다. 로컬 시험은 `KUKIE_CONNECTOR_CREDENTIAL_LIFETIME`, `KUKIE_CONNECTOR_CREDENTIAL_OVERLAP`, `KUKIE_CONNECTOR_RENEW_MIN_INTERVAL`로 줄인다.
+- 배포 순서는 서버 → 게이트웨이 → 커넥터 → 설치 매니페스트다.
 
 
 ## 모델 상태 안내 (DURO-205)
