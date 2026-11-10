@@ -14,7 +14,7 @@ import java.util.UUID
 @GatewayApi
 @RestController
 @RequestMapping("/internal/serving-gateway")
-class GatewayControlController(private val authorize: AuthorizeGatewayService, private val begin: BeginGatewayUsageService, private val complete: CompleteGatewayUsageService, private val connectors: GetConnectorBindingsService, private val reportModels: ReportConnectorModelStatusService) {
+class GatewayControlController(private val authorize: AuthorizeGatewayService, private val begin: BeginGatewayUsageService, private val complete: CompleteGatewayUsageService, private val connectors: GetConnectorBindingsService, private val reportModels: ReportConnectorModelStatusService, private val renewConnector: RenewConnectorCredentialService) {
     @PostMapping("/model-status")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun modelStatus(@Valid @RequestBody request: GatewayModelStatusRequest) = reportModels(request)
@@ -23,6 +23,12 @@ class GatewayControlController(private val authorize: AuthorizeGatewayService, p
     fun connectorBindings(response: HttpServletResponse): Map<String, List<ConnectorBinding>> {
         response.setHeader("Cache-Control", "no-store")
         return connectors()
+    }
+
+    @PostMapping("/connector-credential/renew")
+    fun renewConnectorCredential(@Valid @RequestBody request: GatewayRenewConnectorCredentialRequest, response: HttpServletResponse): RenewedConnectorCredential {
+        response.setHeader("Cache-Control", "no-store")
+        return renewConnector(request.toCommand())
     }
 
     @PostMapping("/authorize")

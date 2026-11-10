@@ -23,6 +23,9 @@ import org.springframework.http.MediaType
 import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.post
+import java.security.MessageDigest
+import java.util.HexFormat
+import java.util.UUID
 
 @TestPropertySource(properties = ["internal.gateway-token=test-gateway-token"])
 class ConnectorCredentialIntegrationTest : IntegrationTest() {
@@ -113,4 +116,104 @@ class ConnectorCredentialIntegrationTest : IntegrationTest() {
         mockMvc.delete("/clusters/${cluster.id}") { authorization(admin.accessToken) }.andExpect { status { isNoContent() } }
         credentials.find(cluster.id) shouldBe null
     }
+
+    @Test
+    fun `게이트웨이가 현재 자격으로 갱신하면 새 자격을 주고 직전 자격은 겹침 기간만 목록에 남긴다`() {
+        // given
+        val admin = loggedInUser(UserFixture.user())
+        val team = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val cluster = clusters.save(ClusterFixture.cluster(admin.user.id, team))
+        val first = issue(IssueConnectorCredentialCommand(cluster.id, admin.user.id, listOf("shared")))
+        // when
+        val body = renew(cluster.id, sha256(first.token)).andExpect {
+            status { isOk() }; header { string("Cache-Control", "no-store") }; jsonPath("$.expiresAt") { isString() }; jsonPath("$.models") { doesNotExist() }
+        }.andReturn().response.contentAsString
+        // then
+        val second = Regex("\"token\":\"([0-9a-f]{64})\"").find(body)!!.groupValues[1]
+        val row = credentials.find(cluster.id)!!
+        row.tokenHash shouldBe sha256(second)
+        row.previousTokenHash shouldBe sha256(first.token)
+        row.models shouldBe listOf("shared")
+        (row.previousExpiresAt!! <= utcNow().plusMinutes(30)) shouldBe true
+        mockMvc.post("/internal/serving-gateway/connector-bindings") {
+            header("X-Kukie-Internal-Token", "test-gateway-token")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.bindings[0].tokenSha256") { value(sha256(second)) }
+            jsonPath("$.bindings[0].previousTokenSha256") { value(sha256(first.token)) }
+            jsonPath("$.bindings[0].previousExpiresAt") { isString() }
+        }
+    }
+
+    @Test
+    fun `응답을 잃고 직전 자격으로 다시 갱신하면 새 자격을 다시 주고 직전 자격 만료는 늘리지 않는다`() {
+        // given
+        val admin = loggedInUser(UserFixture.user())
+        val team = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val cluster = clusters.save(ClusterFixture.cluster(admin.user.id, team))
+        val first = issue(IssueConnectorCredentialCommand(cluster.id, admin.user.id, listOf("shared")))
+        renew(cluster.id, sha256(first.token)).andExpect { status { isOk() } }
+        val rotated = credentials.find(cluster.id)!!
+        credentials.save(rotated.copy(rotatedAt = utcNow().minusMinutes(1)))
+        // when
+        renew(cluster.id, sha256(first.token)).andExpect { status { isOk() } }
+        // then
+        val row = credentials.find(cluster.id)!!
+        row.tokenHash shouldNotBe rotated.tokenHash
+        row.previousTokenHash shouldBe sha256(first.token)
+        row.previousExpiresAt shouldBe rotated.previousExpiresAt
+    }
+
+    @Test
+    fun `갱신은 너무 잦으면 거절하고 모르는 자격과 만료된 직전 자격은 401이다`() {
+        // given
+        val admin = loggedInUser(UserFixture.user())
+        val team = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val cluster = clusters.save(ClusterFixture.cluster(admin.user.id, team))
+        val first = issue(IssueConnectorCredentialCommand(cluster.id, admin.user.id, listOf("shared")))
+        renew(cluster.id, sha256(first.token)).andExpect { status { isOk() } }
+        val rotated = credentials.find(cluster.id)!!
+        // when then
+        renew(cluster.id, rotated.tokenHash).andExpect { status { isTooManyRequests() }; jsonPath("$.code") { value("SERVING_CONNECTOR_RENEW_TOO_SOON") } }
+        renew(cluster.id, "b".repeat(64)).andExpect { status { isUnauthorized() }; jsonPath("$.code") { value("SERVING_CONNECTOR_CREDENTIAL_INVALID") } }
+        renew(UUID.randomUUID(), rotated.tokenHash).andExpect { status { isUnauthorized() } }
+        credentials.save(rotated.copy(previousExpiresAt = utcNow().minusSeconds(1), rotatedAt = utcNow().minusMinutes(1)))
+        renew(cluster.id, sha256(first.token)).andExpect { status { isUnauthorized() } }
+        renew(cluster.id, "NOT-HEX").andExpect { status { isBadRequest() } }
+        mockMvc.post("/internal/serving-gateway/connector-credential/renew") {
+            header("X-Kukie-Internal-Token", "test-internal-token"); contentType = MediaType.APPLICATION_JSON
+            content = mapOf("clusterId" to cluster.id, "tokenSha256" to rotated.tokenHash).toJson()
+        }.andExpect { status { isUnauthorized() } }
+        credentials.find(cluster.id)!!.tokenHash shouldBe rotated.tokenHash
+    }
+
+    @Test
+    fun `폐기와 관리자 재발급은 직전 자격도 지운다`() {
+        // given
+        val admin = loggedInUser(UserFixture.user())
+        val team = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val cluster = clusters.save(ClusterFixture.cluster(admin.user.id, team))
+        val command = IssueConnectorCredentialCommand(cluster.id, admin.user.id, listOf("shared"))
+        val first = issue(command)
+        renew(cluster.id, sha256(first.token)).andExpect { status { isOk() } }
+        // when
+        issue(command)
+        // then
+        credentials.find(cluster.id)!!.previousTokenHash shouldBe null
+        credentials.find(cluster.id)!!.rotatedAt shouldBe null
+        renew(cluster.id, sha256(first.token)).andExpect { status { isUnauthorized() } }
+        val second = credentials.find(cluster.id)!!
+        renew(cluster.id, second.tokenHash).andExpect { status { isOk() } }
+        revoke(cluster.id, admin.user.id)
+        credentials.find(cluster.id)!!.previousTokenHash shouldBe null
+        credentials.find(cluster.id)!!.rotatedAt shouldBe null
+        renew(cluster.id, second.tokenHash).andExpect { status { isUnauthorized() } }
+    }
+
+    private fun renew(clusterId: UUID, hash: String) = mockMvc.post("/internal/serving-gateway/connector-credential/renew") {
+        header("X-Kukie-Internal-Token", "test-gateway-token"); contentType = MediaType.APPLICATION_JSON
+        content = mapOf("clusterId" to clusterId, "tokenSha256" to hash).toJson()
+    }
+
+    private fun sha256(token: String) = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.toByteArray()))
 }

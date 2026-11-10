@@ -1,5 +1,6 @@
 package com.duro.kukie.serving.application
 
+import com.duro.kukie.global.config.properties.ConnectorCredentialProperties
 import com.duro.kukie.global.util.utcNow
 import com.duro.kukie.serving.domain.ConnectorCredential
 import com.duro.kukie.serving.domain.ConnectorCredentials
@@ -17,7 +18,12 @@ class IssuedConnectorCredential(val token: String, val expiresAt: Instant, val m
 }
 
 @Service
-class IssueConnectorCredentialService(private val permission: ServingAccessPermission, private val credentials: ConnectorCredentials, private val tokens: ConnectorTokens) {
+class IssueConnectorCredentialService(
+    private val permission: ServingAccessPermission,
+    private val credentials: ConnectorCredentials,
+    private val tokens: ConnectorTokens,
+    private val properties: ConnectorCredentialProperties,
+) {
     @Transactional
     operator fun invoke(command: IssueConnectorCredentialCommand): IssuedConnectorCredential {
         permission.requireAdmin(command.clusterId, command.userId)
@@ -28,7 +34,7 @@ class IssueConnectorCredentialService(private val permission: ServingAccessPermi
             throw ServingAccessException(ServingErrorCode.SERVING_CONNECTOR_LIMIT_REACHED)
         }
         val token = tokens.generate()
-        val expires = now.plusHours(24)
+        val expires = now.plus(properties.lifetime)
         val models = command.models.distinct()
         val hash = tokens.hash(token)
         credentials.save(ConnectorCredential(command.clusterId, hash, models, expires))

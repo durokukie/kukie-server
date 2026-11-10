@@ -41,6 +41,13 @@ internal:
   gateway-token: ${KUKIE_GATEWAY_INTERNAL_TOKEN:}
   token: ${KUKIE_INTERNAL_TOKEN}
 
+# 커넥터 자격 수명·회전 뒤 직전 자격 겹침 기간·클러스터별 최소 갱신 간격
+serving:
+  connector-credential:
+    lifetime: ${KUKIE_CONNECTOR_CREDENTIAL_LIFETIME:24h}
+    overlap: ${KUKIE_CONNECTOR_CREDENTIAL_OVERLAP:30m}
+    renew-min-interval: ${KUKIE_CONNECTOR_RENEW_MIN_INTERVAL:30s}
+
 # 매니페스트 레포에 PR 을 여는 GitHub App (kukie-gitops). 개인키는 서버에만 둔다
 github-app:
   id: ${GITHUB_APP_ID}
