@@ -206,7 +206,7 @@ class ConnectorCredentialIntegrationTest : IntegrationTest() {
         renew(cluster.id, second.tokenHash).andExpect { status { isOk() } }
         revoke(cluster.id, admin.user.id)
         credentials.find(cluster.id)!!.previousTokenHash shouldBe null
-        credentials.save(credentials.find(cluster.id)!!.copy(rotatedAt = utcNow().minusMinutes(1)))
+        credentials.find(cluster.id)!!.rotatedAt shouldBe null
         renew(cluster.id, second.tokenHash).andExpect { status { isUnauthorized() } }
     }
 

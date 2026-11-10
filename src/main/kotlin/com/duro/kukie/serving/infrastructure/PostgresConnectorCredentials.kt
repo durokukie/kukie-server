@@ -35,6 +35,6 @@ class PostgresConnectorCredentials(private val jdbc: JdbcTemplate) : ConnectorCr
             credential.previousTokenHash, credential.previousExpiresAt, credential.rotatedAt, now, now)
     }
     override fun revoke(clusterId: UUID, now: LocalDateTime) {
-        jdbc.update("update tbl_connector_credential set expires_at = ?, previous_token_hash = null, previous_expires_at = null, updated_at = ? where cluster_id = ?", now, now, clusterId)
+        jdbc.update("update tbl_connector_credential set expires_at = ?, previous_token_hash = null, previous_expires_at = null, rotated_at = null, updated_at = ? where cluster_id = ?", now, now, clusterId)
     }
 }
