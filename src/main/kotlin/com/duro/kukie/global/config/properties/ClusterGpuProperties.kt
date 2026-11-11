@@ -15,6 +15,10 @@ data class ClusterGpuProperties(
     val engineImage: String =
         "vllm/vllm-openai:v0.32.0@sha256:6ee133356d49ed24cee03dd0cda3d3980279a11c107ce3e752c89e76540f41c9",
     @field:NotEmpty val engineArgs: List<String> = listOf("--max-model-len", "16384", "--gpu-memory-utilization", "0.92"),
+    /** 사전 검사 Job 의 이미지. 고객 클러스터가 이 이미지를 받을 수 있는지도 같이 본다. */
+    @field:Pattern(regexp = ".*@sha256:[a-f0-9]{64}$")
+    val precheckImage: String =
+        "curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69",
     /** 대화 하나의 응답 전체 시간 상한. */
     val chatTimeout: Duration = Duration.ofMinutes(10),
     /** 말이 없는 동안 보내는 keep-alive 간격이자 브라우저가 끊은 것을 알아채는 데 걸리는 최대 시간. CloudFront origin_read_timeout(60초)보다 짧아야 한다. */

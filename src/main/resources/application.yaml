@@ -87,6 +87,8 @@ cluster:
       - "16384"
       - --gpu-memory-utilization
       - "0.92"
+    # 사전 검사 Job 의 이미지. 고객 클러스터가 받을 수 있는지도 같이 본다
+    precheck-image: curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
     # 모델 대화. keep-alive 간격은 CloudFront origin_read_timeout(60초)보다 짧아야 한다
     chat-timeout: PT10M
     chat-heartbeat: PT5S

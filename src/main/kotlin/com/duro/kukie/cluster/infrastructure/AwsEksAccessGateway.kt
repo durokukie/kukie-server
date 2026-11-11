@@ -10,6 +10,8 @@ import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
 import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EksSubnet
+import com.duro.kukie.cluster.application.port.out.PrecheckJobManifest
+import com.duro.kukie.cluster.application.port.out.PrecheckPodState
 import com.duro.kukie.cluster.application.port.out.ModelChatStream
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.application.port.out.ServedModelManifest
@@ -543,6 +545,48 @@ class AwsEksAccessGateway(
         )
     }
 
+    override fun createPrecheckJob(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        manifest: PrecheckJobManifest,
+    ) {
+        val body = jsonMapper.writeValueAsString(precheckJobBody(manifest))
+        val path = "/apis/batch/v1/namespaces/${manifest.namespace}/jobs"
+        val response = sendToKubernetes(target, region, clusterName, endpoint, path, HttpResponse.BodyHandlers.discarding()) {
+            header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
+        }
+        if (response.statusCode() == CONFLICT) return
+        requireServingSuccess(response.statusCode()) { throw GpuClusterApiFailedException() }
+    }
+
+    override fun getPrecheckPod(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        jobName: String,
+    ): PrecheckPodState? {
+        val path = "/api/v1/namespaces/$namespace/pods?labelSelector=batch.kubernetes.io%2Fjob-name%3D$jobName"
+        val response = sendToKubernetes(target, region, clusterName, endpoint, path, HttpResponse.BodyHandlers.ofString()) { GET() }
+        requireServingSuccess(response.statusCode()) { throw GpuClusterApiFailedException() }
+        val root = try {
+            jsonMapper.readTree(response.body())
+        } catch (_: JacksonException) {
+            throw GpuClusterApiFailedException()
+        }
+        val status = root.path("items").path(0).takeIf { it.isObject }?.path("status") ?: return null
+        val state = status.path("containerStatuses").path(0).path("state")
+        return PrecheckPodState(
+            phase = status.path("phase").textOrNull(),
+            waitingReason = state.path("waiting").path("reason").textOrNull(),
+            unschedulable = status.path("conditions").any { it.path("reason").textOrNull() == "Unschedulable" },
+            terminationMessage = state.path("terminated").path("message").textOrNull(),
+        )
+    }
+
     override fun keepServedModelUntil(
         target: AwsTarget,
         region: String,
@@ -727,6 +771,49 @@ class AwsEksAccessGateway(
 
     private fun servedModelsPath(namespace: String): String =
         "/apis/$SERVED_MODEL_API_VERSION/namespaces/$namespace/servedmodels"
+
+    private fun precheckJobBody(manifest: PrecheckJobManifest): Map<String, Any> = mapOf(
+        "apiVersion" to "batch/v1",
+        "kind" to "Job",
+        "metadata" to mapOf(
+            "name" to manifest.name,
+            "namespace" to manifest.namespace,
+            "labels" to mapOf("app.kubernetes.io/name" to "kukie-gpu-precheck", "app.kubernetes.io/managed-by" to "kukie"),
+        ),
+        "spec" to mapOf(
+            "backoffLimit" to 0,
+            "activeDeadlineSeconds" to PRECHECK_DEADLINE_SECONDS,
+            "ttlSecondsAfterFinished" to PRECHECK_TTL_SECONDS,
+            "template" to mapOf(
+                "metadata" to mapOf("labels" to mapOf("app.kubernetes.io/name" to "kukie-gpu-precheck")),
+                "spec" to mapOf(
+                    "restartPolicy" to "Never",
+                    "automountServiceAccountToken" to false,
+                    "securityContext" to mapOf(
+                        "runAsNonRoot" to true,
+                        "runAsUser" to PRECHECK_RUN_AS_USER,
+                        "seccompProfile" to mapOf("type" to "RuntimeDefault"),
+                    ),
+                    "containers" to listOf(
+                        mapOf(
+                            "name" to "precheck",
+                            "image" to manifest.image,
+                            "command" to listOf("/bin/sh", "-c", manifest.script),
+                            "securityContext" to mapOf(
+                                "allowPrivilegeEscalation" to false,
+                                "readOnlyRootFilesystem" to true,
+                                "capabilities" to mapOf("drop" to listOf("ALL")),
+                            ),
+                            "resources" to mapOf(
+                                "requests" to mapOf("cpu" to "10m", "memory" to "16Mi"),
+                                "limits" to mapOf("memory" to "64Mi"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
 
     private fun servedModelBody(manifest: ServedModelManifest): Map<String, Any> = mapOf(
         "apiVersion" to SERVED_MODEL_API_VERSION,
@@ -1022,6 +1109,9 @@ class AwsEksAccessGateway(
 
     companion object {
         private const val STANDARD_ENTRY = "STANDARD"
+        private const val PRECHECK_DEADLINE_SECONDS = 120
+        private const val PRECHECK_TTL_SECONDS = 600
+        private const val PRECHECK_RUN_AS_USER = 100
         private const val EDIT_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
         private const val CLUSTER_ADMIN_POLICY_ARN = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
         internal const val GPU_READ_GROUP = "kukie-gpu-reader"

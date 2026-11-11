@@ -98,6 +98,19 @@ interface EksAccessGateway {
      */
     fun createServedModel(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, manifest: ServedModelManifest)
 
+    /** 사전 검사 Job 을 만든다. 같은 이름이 이미 있으면(같은 초에 두 번 눌렀다) 그대로 둔다. 401·403 은 GpuServingDeniedException, 그 밖의 실패는 GpuClusterApiFailedException. */
+    fun createPrecheckJob(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, manifest: PrecheckJobManifest)
+
+    /** 사전 검사 Job 의 Pod 상태를 읽는다. Pod 가 없으면(시간이 지나 지워졌다) null. 실패는 createPrecheckJob 과 같다. */
+    fun getPrecheckPod(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        jobName: String,
+    ): PrecheckPodState?
+
     /** 쿠버네티스 API 로 ServedModel 을 지운다. 404 는 ServedModelNotFoundException, 나머지는 createServedModel 과 같다. */
     fun deleteServedModel(
         target: AwsTarget,
@@ -164,3 +177,21 @@ interface EksAccessGateway {
         timeout: Duration,
     ): ModelChatStream
 }
+
+/** 고객 클러스터에 잠깐 띄우는 네트워크 검사 Job. script 는 서버가 정한 값만 담는다. */
+data class PrecheckJobManifest(
+    val namespace: String,
+    val name: String,
+    val image: String,
+    val script: String,
+)
+
+data class PrecheckPodState(
+    val phase: String?,
+    /** 컨테이너가 시작하지 못한 이유. 이미지를 못 받으면 ErrImagePull·ImagePullBackOff. */
+    val waitingReason: String?,
+    /** 스케줄러가 Pod 를 놓지 못했다. */
+    val unschedulable: Boolean,
+    /** 컨테이너가 끝나며 남긴 검사 결과. 고객 클러스터에서 온 값이라 그대로 믿지 않는다. */
+    val terminationMessage: String?,
+)

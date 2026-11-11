@@ -4,6 +4,8 @@ import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
 import com.duro.kukie.cluster.application.port.out.EksAddon
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.PrecheckJobManifest
+import com.duro.kukie.cluster.application.port.out.PrecheckPodState
 import com.duro.kukie.cluster.application.port.out.EksClusterInventory
 import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
@@ -104,6 +106,11 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     /** keepServedModelUntil 이 이 횟수만큼 충돌(false)을 돌려준다. */
     var keepUntilConflicts: Int = 0
+
+    val precheckJobs = mutableListOf<PrecheckJobManifest>()
+
+    /** getPrecheckPod 이 돌려줄 값. null 이면 Pod 가 없다. */
+    var precheckPod: PrecheckPodState? = null
 
     val measureWrites = mutableListOf<MeasureWrite>()
 
@@ -303,6 +310,31 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         return true
     }
 
+    override fun createPrecheckJob(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        manifest: PrecheckJobManifest,
+    ) {
+        record(target)
+        servedModelFailure?.let { throw it }
+        precheckJobs += manifest
+    }
+
+    override fun getPrecheckPod(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        jobName: String,
+    ): PrecheckPodState? {
+        record(target)
+        servedModelFailure?.let { throw it }
+        return precheckPod
+    }
+
     override fun requestServedModelMeasure(
         target: AwsTarget,
         region: String,
@@ -376,6 +408,8 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         servedModelState = READY_MODEL
         keepUntilWrites.clear()
         keepUntilConflicts = 0
+        precheckJobs.clear()
+        precheckPod = null
         measureWrites.clear()
         measureConflicts = 0
         servedModelStateAfterMeasureConflict = null

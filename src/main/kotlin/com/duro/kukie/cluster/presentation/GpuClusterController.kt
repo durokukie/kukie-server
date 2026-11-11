@@ -5,7 +5,9 @@ import com.duro.kukie.cluster.application.CreateServedModelService
 import com.duro.kukie.cluster.application.DeleteServedModelService
 import com.duro.kukie.cluster.application.ExtendServedModelService
 import com.duro.kukie.cluster.application.GetGpuNodeGroupsService
+import com.duro.kukie.cluster.application.GetGpuPrecheckService
 import com.duro.kukie.cluster.application.MeasureServedModelService
+import com.duro.kukie.cluster.application.StartGpuPrecheckService
 import com.duro.kukie.cluster.application.UpdateGpuNodeGroupService
 import com.duro.kukie.cluster.presentation.dto.request.CreateServedModelRequest
 import com.duro.kukie.cluster.presentation.dto.request.ExtendServedModelRequest
@@ -14,6 +16,8 @@ import com.duro.kukie.cluster.presentation.dto.request.UpdateGpuNodeGroupRequest
 import com.duro.kukie.cluster.presentation.dto.response.ExtendServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupsResponse
+import com.duro.kukie.cluster.presentation.dto.response.GpuPrecheckResponse
+import com.duro.kukie.cluster.presentation.dto.response.GpuPrecheckStartResponse
 import com.duro.kukie.cluster.presentation.dto.response.MeasureServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.ServedModelResponse
 import com.duro.kukie.global.security.AuthUser
@@ -44,6 +48,8 @@ class GpuClusterController(
     private val chatWithServedModelService: ChatWithServedModelService,
     private val extendServedModelService: ExtendServedModelService,
     private val measureServedModelService: MeasureServedModelService,
+    private val startGpuPrecheckService: StartGpuPrecheckService,
+    private val getGpuPrecheckService: GetGpuPrecheckService,
 ) : GpuClusterControllerDocs {
 
     @GetMapping("/node-groups")
@@ -62,6 +68,23 @@ class GpuClusterController(
         @RequestBody @Valid request: UpdateGpuNodeGroupRequest,
     ): ResponseEntity<GpuNodeGroupResponse> {
         return ResponseEntity.ok(updateGpuNodeGroupService(request.toCommand(clusterId, userId, name)))
+    }
+
+    @PostMapping("/precheck")
+    override fun startGpuPrecheck(
+        @PathVariable clusterId: UUID,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<GpuPrecheckStartResponse> {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(startGpuPrecheckService(clusterId, userId))
+    }
+
+    @GetMapping("/precheck/{name}")
+    override fun getGpuPrecheck(
+        @PathVariable clusterId: UUID,
+        @PathVariable name: String,
+        @AuthUser userId: UUID,
+    ): ResponseEntity<GpuPrecheckResponse> {
+        return ResponseEntity.ok(getGpuPrecheckService(clusterId, userId, name))
     }
 
     @PostMapping("/served-models")

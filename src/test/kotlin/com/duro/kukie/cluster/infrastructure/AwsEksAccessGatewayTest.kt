@@ -2,6 +2,8 @@ package com.duro.kukie.cluster.infrastructure
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.PrecheckJobManifest
+import com.duro.kukie.cluster.application.port.out.PrecheckPodState
 import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EngineResources
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
@@ -325,6 +327,52 @@ class AwsEksAccessGatewayTest {
             contentType shouldBe "application/merge-patch+json"
             body shouldBe """{"metadata":{"resourceVersion":"42","annotations":{"serving.kukie.io/measure":"m-1793000000"}}}"""
         }
+    }
+
+    @Test
+    fun `사전 검사 Job 은 권한을 줄이고 시간 상한을 두고 만든다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(201, "", calls)
+
+        // when
+        gateway.createPrecheckJob(
+            target, "ap-northeast-2", "demo", endpoint,
+            PrecheckJobManifest("default", "kukie-gpu-precheck-1", "curl@sha256:a", "true"),
+        )
+
+        // then
+        calls.single().run {
+            method shouldBe "POST"
+            path shouldBe "/apis/batch/v1/namespaces/default/jobs"
+            body.contains(""""automountServiceAccountToken":false""") shouldBe true
+            body.contains(""""activeDeadlineSeconds":120""") shouldBe true
+            body.contains(""""ttlSecondsAfterFinished":600""") shouldBe true
+            body.contains(""""allowPrivilegeEscalation":false""") shouldBe true
+        }
+    }
+
+    @Test
+    fun `사전 검사 Pod 의 종료 메시지와 대기 이유를 읽고 없으면 null 이다`() {
+        // given
+        val done = kubernetesAnswering(
+            200,
+            """{"items":[{"status":{"phase":"Succeeded","containerStatuses":[{"state":{"terminated":{"message":"{}"}}}]}}]}""",
+        )
+        fun read(endpoint: EksClusterEndpoint) =
+            gateway.getPrecheckPod(target, "ap-northeast-2", "demo", endpoint, "default", "kukie-gpu-precheck-1")
+
+        // when & then
+        read(done) shouldBe PrecheckPodState("Succeeded", null, false, "{}")
+        kubernetes?.stop(0)
+        read(kubernetesAnswering(200, """{"items":[]}""")) shouldBe null
+        kubernetes?.stop(0)
+        read(
+            kubernetesAnswering(
+                200,
+                """{"items":[{"status":{"phase":"Pending","containerStatuses":[{"state":{"waiting":{"reason":"ErrImagePull"}}}]}}]}""",
+            ),
+        ) shouldBe PrecheckPodState("Pending", "ErrImagePull", false, null)
     }
 
     @Test
