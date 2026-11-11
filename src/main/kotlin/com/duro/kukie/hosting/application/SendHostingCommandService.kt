@@ -22,7 +22,12 @@ class SendHostingCommandService(
     operator fun invoke(userId: UUID, app: String, type: String): HostingCommandResponse {
         val command = HostingCommand.of(type, hostingApps.requireOwned(userId, app))
         if (!hostingCommandCooldown.tryStart(command)) throw HostingCommandTooSoonException()
-        hostingCommandQueue.send(command)
+        try {
+            hostingCommandQueue.send(command)
+        } catch (exception: RuntimeException) {
+            hostingCommandCooldown.release(command)
+            throw exception
+        }
         log.info("호스팅 명령을 보냈습니다: user={}, type={}, app={}/{}, command={}", userId, type, command.team, command.app, command.commandId)
 
         return HostingCommandResponse(command.commandId)

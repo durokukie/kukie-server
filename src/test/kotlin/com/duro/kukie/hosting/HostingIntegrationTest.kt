@@ -277,6 +277,27 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `명령을 보내지 못했으면 곧바로 다시 보낼 수 있다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        queue.shouldFail = true
+        mockMvc.post("/hosting/apps/shop/redeploy") {
+            authorization(member.accessToken)
+        }.andExpect {
+            jsonPath("$.code") { value("HOSTING_UNAVAILABLE") }
+        }
+        queue.shouldFail = false
+
+        // when & then
+        mockMvc.post("/hosting/apps/shop/redeploy") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isAccepted() }
+        }
+    }
+
+    @Test
     fun `같은 앱에 같은 명령을 곧바로 다시 보낼 수 없다`() {
         // given
         val member = linkedUser()

@@ -59,6 +59,7 @@ class HostingApps(
     fun deployments(app: HostingApp): List<HostingDeployment> =
         hostingStateStore.list(app.deploymentPrefix)
             .filter { it.endsWith(".json") }
+            // 배포 id가 시각(yyyyMMdd'T'HHmmss'Z')으로 시작해서 키 순서가 곧 시간 순서다
             .takeLast(MAX_DEPLOYMENTS)
             .reversed()
             .mapNotNull { read<HostingDeployment>(it) }
