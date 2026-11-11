@@ -21,6 +21,7 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.queryForObject
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.support.TransactionTemplate
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -73,6 +74,27 @@ class GitHubLinkConcurrencyTest : IntegrationTest() {
         // then
         logIn.isSuccess shouldBe true
         userRepository.findByIdOrNull(user.id).shouldNotBeNull().githubId shouldBe FIRST.id
+    }
+
+    @Test
+    fun `이름을 고치는 요청이 회원을 읽은 뒤에 연결한 계정은 그 요청이 저장해도 남는다`() {
+        // given
+        val user = userRepository.save(UserFixture.oAuthUser())
+        val outer = TransactionTemplate(transactionManager)
+        val inner = TransactionTemplate(transactionManager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
+
+        // when
+        outer.executeWithoutResult {
+            val stale = userRepository.findByIdOrNull(user.id).shouldNotBeNull()
+            inner.executeWithoutResult { userRepository.lockByIdOrThrow(user.id).linkGitHub(FIRST) }
+            stale.update("새 이름")
+        }
+
+        // then
+        with(userRepository.findByIdOrNull(user.id).shouldNotBeNull()) {
+            name shouldBe "새 이름"
+            githubId shouldBe FIRST.id
+        }
     }
 
     @Test

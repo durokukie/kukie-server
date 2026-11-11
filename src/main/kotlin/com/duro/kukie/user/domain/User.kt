@@ -7,9 +7,12 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import org.hibernate.annotations.DynamicUpdate
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.util.UUID
 
+// 바뀐 열만 쓴다. 이름·비밀번호를 고치는 요청이 먼저 읽어 둔 값으로 그사이 커밋된 GitHub 연결을 덮지 않게 한다
+@DynamicUpdate
 @Entity
 @Table(name = "tbl_user")
 class User private constructor(
