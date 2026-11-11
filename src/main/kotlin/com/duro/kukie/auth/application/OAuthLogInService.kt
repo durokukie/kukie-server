@@ -74,6 +74,7 @@ class OAuthLogInService(
         return try {
             userRepository.save(user)
         } catch (e: DataIntegrityViolationException) {
+            if ((e.cause as? ConstraintViolationException)?.constraintName != User.GITHUB_ID_UNIQUE_CONSTRAINT) throw e
             // 방금 다른 회원이 같은 GitHub 계정을 연결했다. 로그인은 막지 않는다
             userRepository.findByEmail(user.email) ?: throw e
         }

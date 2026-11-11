@@ -12,19 +12,23 @@ import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.GitHubAccount
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
-import com.duro.kukie.user.domain.findByIdOrThrow
+import com.duro.kukie.user.domain.lockByIdOrThrow
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.hibernate.exception.ConstraintViolationException
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.transaction.support.TransactionCallback
+import org.springframework.transaction.support.TransactionTemplate
 import java.sql.SQLException
 
 @ExtendWith(MockKExtension::class)
@@ -36,6 +40,9 @@ class LinkGitHubAccountServiceTest {
     @MockK
     private lateinit var userRepository: UserRepository
 
+    @MockK
+    private lateinit var transactionTemplate: TransactionTemplate
+
     @InjectMockKs
     private lateinit var linkGitHubAccountService: LinkGitHubAccountService
 
@@ -44,11 +51,18 @@ class LinkGitHubAccountServiceTest {
     private val gitHub = GitHubAccount(id = 583231, login = "octocat")
     private val profile = OAuthProfile(email = "other@example.com", name = "옥토캣", gitHub = gitHub)
 
+    @BeforeEach
+    fun setUp() {
+        every { transactionTemplate.execute(any<TransactionCallback<Any>>()) } answers {
+            firstArg<TransactionCallback<Any>>().doInTransaction(mockk())
+        }
+    }
+
     @Test
     fun `GitHub 계정을 회원에 연결한다`() {
         // given
         every { oAuthClient.fetchProfile(OAuthProvider.GITHUB, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByIdOrThrow(user.id) } returns user
+        every { userRepository.lockByIdOrThrow(user.id) } returns user
         every { userRepository.unlinkGitHubFromOthers(gitHub.id, user.id) } returns 0
         every { userRepository.saveAndFlush(user) } returns user
 
@@ -65,7 +79,7 @@ class LinkGitHubAccountServiceTest {
     fun `다른 회원에 연결돼 있던 GitHub 계정은 이 회원으로 옮긴다`() {
         // given
         every { oAuthClient.fetchProfile(OAuthProvider.GITHUB, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByIdOrThrow(user.id) } returns user
+        every { userRepository.lockByIdOrThrow(user.id) } returns user
         every { userRepository.unlinkGitHubFromOthers(gitHub.id, user.id) } returns 1
         every { userRepository.saveAndFlush(user) } returns user
 
@@ -85,7 +99,7 @@ class LinkGitHubAccountServiceTest {
         // given
         user.linkGitHub(gitHub.copy(login = "old-login"))
         every { oAuthClient.fetchProfile(OAuthProvider.GITHUB, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByIdOrThrow(user.id) } returns user
+        every { userRepository.lockByIdOrThrow(user.id) } returns user
         every { userRepository.unlinkGitHubFromOthers(gitHub.id, user.id) } returns 0
         every { userRepository.saveAndFlush(user) } returns user
 
@@ -101,7 +115,7 @@ class LinkGitHubAccountServiceTest {
         // given
         user.linkGitHub(GitHubAccount(id = 1, login = "old"))
         every { oAuthClient.fetchProfile(OAuthProvider.GITHUB, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByIdOrThrow(user.id) } returns user
+        every { userRepository.lockByIdOrThrow(user.id) } returns user
 
         // when & then
         shouldThrow<GitHubAlreadyLinkedException> { linkGitHubAccountService(command) }
@@ -114,7 +128,7 @@ class LinkGitHubAccountServiceTest {
     fun `옮기는 사이 다른 회원이 같은 GitHub 계정을 연결하면 연결할 수 없다`() {
         // given
         every { oAuthClient.fetchProfile(OAuthProvider.GITHUB, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByIdOrThrow(user.id) } returns user
+        every { userRepository.lockByIdOrThrow(user.id) } returns user
         every { userRepository.unlinkGitHubFromOthers(gitHub.id, user.id) } returns 0
         every { userRepository.saveAndFlush(user) } throws violation(User.GITHUB_ID_UNIQUE_CONSTRAINT)
 
@@ -126,7 +140,7 @@ class LinkGitHubAccountServiceTest {
     fun `GitHub 계정과 무관한 저장 오류는 그대로 던진다`() {
         // given
         every { oAuthClient.fetchProfile(OAuthProvider.GITHUB, command.code, command.redirectUri, command.codeVerifier) } returns profile
-        every { userRepository.findByIdOrThrow(user.id) } returns user
+        every { userRepository.lockByIdOrThrow(user.id) } returns user
         every { userRepository.unlinkGitHubFromOthers(gitHub.id, user.id) } returns 0
         every { userRepository.saveAndFlush(user) } throws violation(User.EMAIL_UNIQUE_CONSTRAINT)
 
