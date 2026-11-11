@@ -22,3 +22,7 @@ github-app:
 cluster:
   credential-key: dGVzdC1jcmVkZW50aWFsLWtleS0zMi1ieXRlcy1vayE=
   allow-local: false
+
+hosting:
+  state-bucket: test-hosting-state
+  commands-queue-url: http://localhost/test-hosting-commands
