@@ -606,10 +606,12 @@ class AwsEksAccessGateway(
         } catch (_: JacksonException) {
             throw GpuClusterApiFailedException()
         }
-        val failed = job.path("status").path("conditions").any {
-            it.path("type").textOrNull() == "Failed" && it.path("status").textOrNull() == "True"
+        fun finished(type: String) = job.path("status").path("conditions").any {
+            it.path("type").textOrNull() == type && it.path("status").textOrNull() == "True"
         }
-        return PrecheckPodState(if (failed) "Failed" else "Pending", null, false, null)
+        // 끝났는데 Pod 만 먼저 지워졌으면 결과를 읽을 곳이 없다. 지워진 것과 같다
+        if (finished("Complete")) return null
+        return PrecheckPodState(if (finished("Failed")) "Failed" else "Pending", null, false, null)
     }
 
     override fun keepServedModelUntil(

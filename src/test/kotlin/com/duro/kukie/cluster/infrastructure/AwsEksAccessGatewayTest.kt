@@ -387,6 +387,7 @@ class AwsEksAccessGatewayTest {
         read(answering(200 to """{"status":{}}""")) shouldBe PrecheckPodState("Pending", null, false, null)
         read(answering(200 to """{"status":{"conditions":[{"type":"Failed","status":"True"}]}}""")) shouldBe
             PrecheckPodState("Failed", null, false, null)
+        read(answering(200 to """{"status":{"conditions":[{"type":"Complete","status":"True"}]}}""")) shouldBe null
         read(answering(404 to "")) shouldBe null
     }
 
