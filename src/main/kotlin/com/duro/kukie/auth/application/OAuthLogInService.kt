@@ -9,9 +9,11 @@ import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
+import com.duro.kukie.user.domain.lockByIdOrThrow
 import org.hibernate.exception.ConstraintViolationException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionTemplate
 
 @Service
 class OAuthLogInService(
@@ -19,6 +21,7 @@ class OAuthLogInService(
     private val userRepository: UserRepository,
     private val jwtTokenProvider: JwtTokenProvider,
     private val refreshTokenRepository: RefreshTokenRepository,
+    private val transactionTemplate: TransactionTemplate,
 ) {
 
     // 외부 HTTP 호출을 트랜잭션 밖에서 수행하고, 동시 가입으로 유니크 제약이 충돌하면 재조회로 복구해야 하므로 @Transactional을 걸지 않는다
@@ -66,18 +69,25 @@ class OAuthLogInService(
         }
 
     private fun refreshed(user: User, profile: OAuthProfile): User {
-        val before = Triple(user.avatarUrl, user.githubId, user.githubLogin)
-        user.changeAvatar(profile.avatarUrl)
-        user.linkGitHubIfFree(profile)
-        if (before == Triple(user.avatarUrl, user.githubId, user.githubLogin)) return user
+        if (!user.refresh(profile)) return user
 
         return try {
-            userRepository.save(user)
+            // 연결 API 가 그사이 연결한 계정을 덮지 않게 회원 행을 잠그고 다시 판단한다
+            transactionTemplate.execute {
+                userRepository.saveAndFlush(userRepository.lockByIdOrThrow(user.id).apply { refresh(profile) })
+            }
         } catch (e: DataIntegrityViolationException) {
             if ((e.cause as? ConstraintViolationException)?.constraintName != User.GITHUB_ID_UNIQUE_CONSTRAINT) throw e
             // 방금 다른 회원이 같은 GitHub 계정을 연결했다. 로그인은 막지 않는다
             userRepository.findByEmail(user.email) ?: throw e
         }
+    }
+
+    private fun User.refresh(profile: OAuthProfile): Boolean {
+        val before = Triple(avatarUrl, githubId, githubLogin)
+        changeAvatar(profile.avatarUrl)
+        linkGitHubIfFree(profile)
+        return before != Triple(avatarUrl, githubId, githubLogin)
     }
 
     // 로그인은 있던 연결을 바꾸거나 다른 회원에게서 가져오지 않는다. 그것은 회원이 직접 하는 연결만 한다

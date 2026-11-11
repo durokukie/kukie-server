@@ -1,12 +1,16 @@
 package com.duro.kukie.auth
 
 import com.duro.kukie.auth.application.LinkGitHubAccountService
+import com.duro.kukie.auth.application.OAuthLogInService
 import com.duro.kukie.auth.application.port.`in`.LinkGitHubAccountCommand
+import com.duro.kukie.auth.application.port.`in`.OAuthLogInCommand
+import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.GitHubAlreadyLinkedException
 import com.duro.kukie.support.FakeOAuthClient
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.GitHubAccount
+import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.lockByIdOrThrow
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -28,6 +32,9 @@ class GitHubLinkConcurrencyTest : IntegrationTest() {
     private lateinit var linkGitHubAccountService: LinkGitHubAccountService
 
     @Autowired
+    private lateinit var oAuthLogInService: OAuthLogInService
+
+    @Autowired
     private lateinit var fakeOAuthClient: FakeOAuthClient
 
     @Autowired
@@ -40,36 +47,32 @@ class GitHubLinkConcurrencyTest : IntegrationTest() {
     fun `한 회원에 서로 다른 GitHub 계정을 동시에 연결하면 먼저 끝난 연결만 남는다`() {
         // given
         val user = userRepository.save(UserFixture.oAuthUser())
-        val first = GitHubAccount(id = 1, login = "first")
-        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GitHubAccount(id = 2, login = "second"))
-        val holding = CountDownLatch(1)
-        val proceed = CountDownLatch(1)
-        val executor = Executors.newFixedThreadPool(2)
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = SECOND)
 
         // when
-        val second = try {
-            val holder = executor.submit {
-                TransactionTemplate(transactionManager).executeWithoutResult {
-                    userRepository.lockByIdOrThrow(user.id).linkGitHub(first)
-                    holding.countDown()
-                    proceed.await(10, TimeUnit.SECONDS)
-                }
-            }
-            holding.await(5, TimeUnit.SECONDS) shouldBe true
-            val linking = executor.submit<Result<*>> {
-                runCatching { linkGitHubAccountService(LinkGitHubAccountCommand(user.id, "code", "http://127.0.0.1:3000/callback", "verifier")) }
-            }
-            awaitLockWait()
-            proceed.countDown()
-            holder.get(10, TimeUnit.SECONDS)
-            linking.get(10, TimeUnit.SECONDS)
-        } finally {
-            executor.shutdownNow()
+        val second = whileLinkingFirst(user) {
+            linkGitHubAccountService(LinkGitHubAccountCommand(user.id, "code", "http://127.0.0.1:3000/callback", "verifier"))
         }
 
         // then
         second.exceptionOrNull().shouldBeInstanceOf<GitHubAlreadyLinkedException>()
-        userRepository.findByIdOrNull(user.id).shouldNotBeNull().githubId shouldBe first.id
+        userRepository.findByIdOrNull(user.id).shouldNotBeNull().githubId shouldBe FIRST.id
+    }
+
+    @Test
+    fun `연결하는 중에 다른 GitHub 계정으로 로그인해도 연결한 계정이 남는다`() {
+        // given
+        val user = userRepository.save(UserFixture.oAuthUser())
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(email = user.email.value, gitHub = SECOND)
+
+        // when
+        val logIn = whileLinkingFirst(user) {
+            oAuthLogInService(OAuthLogInCommand(OAuthProvider.GITHUB, "code", "http://127.0.0.1:3000/callback", null))
+        }
+
+        // then
+        logIn.isSuccess shouldBe true
+        userRepository.findByIdOrNull(user.id).shouldNotBeNull().githubId shouldBe FIRST.id
     }
 
     @Test
@@ -96,6 +99,30 @@ class GitHubLinkConcurrencyTest : IntegrationTest() {
         userRepository.findByIdOrNull(user.id).shouldNotBeNull().githubId shouldBe null
     }
 
+    /** 다른 요청이 회원 행을 잠그고 첫 계정을 연결하는 동안 action 을 시작하고, 그 연결이 커밋된 뒤의 결과를 준다. */
+    private fun whileLinkingFirst(user: User, action: () -> Any): Result<Any> {
+        val holding = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val holder = executor.submit {
+                TransactionTemplate(transactionManager).executeWithoutResult {
+                    userRepository.lockByIdOrThrow(user.id).linkGitHub(FIRST)
+                    holding.countDown()
+                    proceed.await(10, TimeUnit.SECONDS)
+                }
+            }
+            holding.await(5, TimeUnit.SECONDS) shouldBe true
+            val acting = executor.submit<Result<Any>> { runCatching(action) }
+            awaitLockWait()
+            proceed.countDown()
+            holder.get(10, TimeUnit.SECONDS)
+            return acting.get(10, TimeUnit.SECONDS)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
     private fun awaitLockWait() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (System.nanoTime() < deadline) {
@@ -106,5 +133,10 @@ class GitHubLinkConcurrencyTest : IntegrationTest() {
             Thread.sleep(10)
         }
         error("연결 요청이 회원 잠금을 기다리지 않았다")
+    }
+
+    companion object {
+        private val FIRST = GitHubAccount(id = 1, login = "first")
+        private val SECOND = GitHubAccount(id = 2, login = "second")
     }
 }
