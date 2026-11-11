@@ -101,7 +101,7 @@ interface EksAccessGateway {
     /** 사전 검사 Job 을 만든다. 같은 이름이 이미 있으면(같은 초에 두 번 눌렀다) 그대로 둔다. 401·403 은 GpuServingDeniedException, 그 밖의 실패는 GpuClusterApiFailedException. */
     fun createPrecheckJob(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint, manifest: PrecheckJobManifest)
 
-    /** 사전 검사 Job 의 Pod 상태를 읽는다. Pod 가 없으면(시간이 지나 지워졌다) null. 실패는 createPrecheckJob 과 같다. */
+    /** 사전 검사 Job 의 Pod 상태를 읽는다. Job 까지 없으면(시간이 지나 지워졌다) null. 실패는 createPrecheckJob 과 같다. */
     fun getPrecheckPod(
         target: AwsTarget,
         region: String,

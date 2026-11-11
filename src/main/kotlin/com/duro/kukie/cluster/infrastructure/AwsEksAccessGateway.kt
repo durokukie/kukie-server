@@ -577,7 +577,8 @@ class AwsEksAccessGateway(
         } catch (_: JacksonException) {
             throw GpuClusterApiFailedException()
         }
-        val status = root.path("items").path(0).takeIf { it.isObject }?.path("status") ?: return null
+        val status = root.path("items").path(0).takeIf { it.isObject }?.path("status")
+            ?: return precheckJobWithoutPod(target, region, clusterName, endpoint, namespace, jobName)
         val state = status.path("containerStatuses").path(0).path("state")
         return PrecheckPodState(
             phase = status.path("phase").textOrNull(),
@@ -585,6 +586,30 @@ class AwsEksAccessGateway(
             unschedulable = status.path("conditions").any { it.path("reason").textOrNull() == "Unschedulable" },
             terminationMessage = state.path("terminated").path("message").textOrNull(),
         )
+    }
+
+    /** Pod 가 없을 때 Job 으로 구분한다. 막 만들어 Pod 가 아직 없으면 도는 중, 시간 상한에 걸렸으면 실패, Job 도 없으면 지워진 것이다. */
+    private fun precheckJobWithoutPod(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        jobName: String,
+    ): PrecheckPodState? {
+        val path = "/apis/batch/v1/namespaces/$namespace/jobs/$jobName"
+        val response = sendToKubernetes(target, region, clusterName, endpoint, path, HttpResponse.BodyHandlers.ofString()) { GET() }
+        if (response.statusCode() == NOT_FOUND) return null
+        requireServingSuccess(response.statusCode()) { throw GpuClusterApiFailedException() }
+        val job = try {
+            jsonMapper.readTree(response.body())
+        } catch (_: JacksonException) {
+            throw GpuClusterApiFailedException()
+        }
+        val failed = job.path("status").path("conditions").any {
+            it.path("type").textOrNull() == "Failed" && it.path("status").textOrNull() == "True"
+        }
+        return PrecheckPodState(if (failed) "Failed" else "Pending", null, false, null)
     }
 
     override fun keepServedModelUntil(

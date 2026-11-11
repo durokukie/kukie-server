@@ -365,14 +365,29 @@ class AwsEksAccessGatewayTest {
         // when & then
         read(done) shouldBe PrecheckPodState("Succeeded", null, false, "{}")
         kubernetes?.stop(0)
-        read(kubernetesAnswering(200, """{"items":[]}""")) shouldBe null
-        kubernetes?.stop(0)
         read(
             kubernetesAnswering(
                 200,
                 """{"items":[{"status":{"phase":"Pending","containerStatuses":[{"state":{"waiting":{"reason":"ErrImagePull"}}}]}}]}""",
             ),
         ) shouldBe PrecheckPodState("Pending", "ErrImagePull", false, null)
+    }
+
+    @Test
+    fun `사전 검사 Pod 가 없으면 Job 으로 도는 중과 실패와 지워짐을 나눈다`() {
+        // given
+        fun read(endpoint: EksClusterEndpoint) =
+            gateway.getPrecheckPod(target, "ap-northeast-2", "demo", endpoint, "default", "kukie-gpu-precheck-1")
+        fun answering(job: Pair<Int, String>): EksClusterEndpoint {
+            kubernetes?.stop(0)
+            return kubernetesRouting { path -> if (path.contains("/pods")) 200 to """{"items":[]}""" else job }
+        }
+
+        // when & then
+        read(answering(200 to """{"status":{}}""")) shouldBe PrecheckPodState("Pending", null, false, null)
+        read(answering(200 to """{"status":{"conditions":[{"type":"Failed","status":"True"}]}}""")) shouldBe
+            PrecheckPodState("Failed", null, false, null)
+        read(answering(404 to "")) shouldBe null
     }
 
     @Test
@@ -1470,6 +1485,20 @@ class AwsEksAccessGatewayTest {
                 contentType = exchange.requestHeaders.getFirst("Content-Type"),
                 body = exchange.requestBody.readAllBytes().toString(Charsets.UTF_8),
             )
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
+            if (bytes.isNotEmpty()) exchange.responseBody.write(bytes)
+            exchange.close()
+        }
+        server.start()
+        kubernetes = server
+        return EksClusterEndpoint(endpoint = "http://127.0.0.1:${server.address.port}", caData = "")
+    }
+
+    private fun kubernetesRouting(answer: (String) -> Pair<Int, String>): EksClusterEndpoint {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val (status, body) = answer(exchange.requestURI.toString())
             val bytes = body.toByteArray()
             exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
             if (bytes.isNotEmpty()) exchange.responseBody.write(bytes)
