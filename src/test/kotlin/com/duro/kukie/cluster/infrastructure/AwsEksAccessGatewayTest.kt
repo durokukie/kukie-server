@@ -2,6 +2,8 @@ package com.duro.kukie.cluster.infrastructure
 
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.PrecheckJobManifest
+import com.duro.kukie.cluster.application.port.out.PrecheckPodState
 import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EngineResources
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
@@ -325,6 +327,68 @@ class AwsEksAccessGatewayTest {
             contentType shouldBe "application/merge-patch+json"
             body shouldBe """{"metadata":{"resourceVersion":"42","annotations":{"serving.kukie.io/measure":"m-1793000000"}}}"""
         }
+    }
+
+    @Test
+    fun `사전 검사 Job 은 권한을 줄이고 시간 상한을 두고 만든다`() {
+        // given
+        val calls = mutableListOf<KubernetesCall>()
+        val endpoint = kubernetesAnswering(201, "", calls)
+
+        // when
+        gateway.createPrecheckJob(
+            target, "ap-northeast-2", "demo", endpoint,
+            PrecheckJobManifest("default", "kukie-gpu-precheck-1", "curl@sha256:a", "true"),
+        )
+
+        // then
+        calls.single().run {
+            method shouldBe "POST"
+            path shouldBe "/apis/batch/v1/namespaces/default/jobs"
+            body.contains(""""automountServiceAccountToken":false""") shouldBe true
+            body.contains(""""activeDeadlineSeconds":120""") shouldBe true
+            body.contains(""""ttlSecondsAfterFinished":600""") shouldBe true
+            body.contains(""""allowPrivilegeEscalation":false""") shouldBe true
+        }
+    }
+
+    @Test
+    fun `사전 검사 Pod 의 종료 메시지와 대기 이유를 읽고 없으면 null 이다`() {
+        // given
+        val done = kubernetesAnswering(
+            200,
+            """{"items":[{"status":{"phase":"Succeeded","containerStatuses":[{"state":{"terminated":{"message":"{}"}}}]}}]}""",
+        )
+        fun read(endpoint: EksClusterEndpoint) =
+            gateway.getPrecheckPod(target, "ap-northeast-2", "demo", endpoint, "default", "kukie-gpu-precheck-1")
+
+        // when & then
+        read(done) shouldBe PrecheckPodState("Succeeded", null, false, "{}")
+        kubernetes?.stop(0)
+        read(
+            kubernetesAnswering(
+                200,
+                """{"items":[{"status":{"phase":"Pending","containerStatuses":[{"state":{"waiting":{"reason":"ErrImagePull"}}}]}}]}""",
+            ),
+        ) shouldBe PrecheckPodState("Pending", "ErrImagePull", false, null)
+    }
+
+    @Test
+    fun `사전 검사 Pod 가 없으면 Job 으로 도는 중과 실패와 지워짐을 나눈다`() {
+        // given
+        fun read(endpoint: EksClusterEndpoint) =
+            gateway.getPrecheckPod(target, "ap-northeast-2", "demo", endpoint, "default", "kukie-gpu-precheck-1")
+        fun answering(job: Pair<Int, String>): EksClusterEndpoint {
+            kubernetes?.stop(0)
+            return kubernetesRouting { path -> if (path.contains("/pods")) 200 to """{"items":[]}""" else job }
+        }
+
+        // when & then
+        read(answering(200 to """{"status":{}}""")) shouldBe PrecheckPodState("Pending", null, false, null)
+        read(answering(200 to """{"status":{"conditions":[{"type":"Failed","status":"True"}]}}""")) shouldBe
+            PrecheckPodState("Failed", null, false, null)
+        read(answering(200 to """{"status":{"conditions":[{"type":"Complete","status":"True"}]}}""")) shouldBe null
+        read(answering(404 to "")) shouldBe null
     }
 
     @Test
@@ -1422,6 +1486,20 @@ class AwsEksAccessGatewayTest {
                 contentType = exchange.requestHeaders.getFirst("Content-Type"),
                 body = exchange.requestBody.readAllBytes().toString(Charsets.UTF_8),
             )
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
+            if (bytes.isNotEmpty()) exchange.responseBody.write(bytes)
+            exchange.close()
+        }
+        server.start()
+        kubernetes = server
+        return EksClusterEndpoint(endpoint = "http://127.0.0.1:${server.address.port}", caData = "")
+    }
+
+    private fun kubernetesRouting(answer: (String) -> Pair<Int, String>): EksClusterEndpoint {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val (status, body) = answer(exchange.requestURI.toString())
             val bytes = body.toByteArray()
             exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
             if (bytes.isNotEmpty()) exchange.responseBody.write(bytes)

@@ -20,6 +20,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.duro.kukie.cluster.application.GpuAuditLog
 import com.duro.kukie.cluster.application.port.out.EngineResources
+import com.duro.kukie.cluster.application.port.out.PrecheckPodState
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.exception.ServedModelNotFoundException
@@ -1087,6 +1088,112 @@ class GpuClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `사전 검사를 시작하면 기본 namespace 에 고정 이미지의 Job 을 만들고 감사 로그에 남긴다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        val logger = LoggerFactory.getLogger(GpuAuditLog::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+
+        // when
+        try {
+            postPrecheck(setup).andExpect { status { isAccepted() } }
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        // then
+        val job = fakeEksAccessGateway.precheckJobs.single()
+        job.name.startsWith("kukie-gpu-precheck-") shouldBe true
+        job.image.contains("@sha256:") shouldBe true
+        job.script.contains("/connector/v1/connect") shouldBe true
+        appender.list.single().formattedMessage.substringAfter("action=") shouldBe
+            "precheck-start namespace=${job.namespace} name=${job.name}"
+    }
+
+    @Test
+    fun `팀 관리자가 아니면 사전 검사를 시작할 수 없다`() {
+        // given
+        val setup = eksCluster(TeamRole.MEMBER, AccessLevel.FULL)
+
+        // when & then
+        postPrecheck(setup).andExpect { status { isForbidden() } }
+        fakeEksAccessGateway.precheckJobs.shouldBeEmpty()
+    }
+
+    @Test
+    fun `AccessLevel 이 limited 면 사전 검사를 시작할 수 없다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.LIMITED)
+
+        // when & then
+        postPrecheck(setup).andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(ClusterErrorCode.GPU_SERVING_DENIED.code) }
+        }
+        fakeEksAccessGateway.precheckJobs.shouldBeEmpty()
+    }
+
+    @Test
+    fun `사전 검사가 끝나면 curl 종료 코드를 대상별 결과로 바꾼다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.precheckPod = PrecheckPodState(
+            "Succeeded", null, false, """{"gateway":0,"huggingface":6,"registry":28}""",
+        )
+
+        // when & then
+        getPrecheck(setup).andExpect {
+            status { isOk() }
+            jsonPath("$.state") { value("DONE") }
+            jsonPath("$.checks[0].target") { value("gateway") }
+            jsonPath("$.checks[0].status") { value("PASS") }
+            jsonPath("$.checks[1].status") { value("FAIL") }
+            jsonPath("$.checks[1].reason") { value("DNS") }
+            jsonPath("$.checks[2].reason") { value("TIMEOUT") }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["""{"gateway":"<script>"}""", "not json", """{"gateway":0}"""])
+    fun `사전 검사 결과가 약속과 다르면 믿지 않고 FAILED 다`(message: String) {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.precheckPod = PrecheckPodState("Succeeded", null, false, message)
+
+        // when & then
+        getPrecheck(setup).andExpect { jsonPath("$.state") { value("FAILED") } }
+    }
+
+    @Test
+    fun `사전 검사 Pod 의 상태를 화면이 쓸 상태로 바꾼다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fun stateOf(pod: PrecheckPodState?): String {
+            fakeEksAccessGateway.precheckPod = pod
+            val body = getPrecheck(setup).andReturn().response.contentAsString
+            return body.substringAfter("\"state\":\"").substringBefore("\"")
+        }
+
+        // when & then
+        stateOf(PrecheckPodState("Pending", "ImagePullBackOff", false, null)) shouldBe "IMAGE_PULL_FAILED"
+        stateOf(PrecheckPodState("Pending", null, true, null)) shouldBe "UNSCHEDULABLE"
+        stateOf(PrecheckPodState("Running", null, false, null)) shouldBe "RUNNING"
+        stateOf(PrecheckPodState("Failed", null, false, null)) shouldBe "FAILED"
+        stateOf(null) shouldBe "EXPIRED"
+    }
+
+    @Test
+    fun `사전 검사 이름이 형식에 안 맞으면 쿠버네티스를 부르지 않고 EXPIRED 다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+        fakeEksAccessGateway.precheckPod = PrecheckPodState("Running", null, false, null)
+
+        // when & then
+        getPrecheck(setup, "other-job").andExpect { jsonPath("$.state") { value("EXPIRED") } }
+    }
+
+    @Test
     fun `측정을 요청하면 m-epoch초 값을 annotation 에 읽은 버전과 함께 쓴다`() {
         // given
         val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
@@ -1256,6 +1363,16 @@ class GpuClusterIntegrationTest : IntegrationTest() {
             authorization(setup.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = """{"hours":$hours}"""
+        }
+
+    private fun postPrecheck(setup: Setup): ResultActionsDsl =
+        mockMvc.post("/clusters/${setup.clusterId}/gpu/precheck") {
+            authorization(setup.accessToken)
+        }
+
+    private fun getPrecheck(setup: Setup, name: String = "kukie-gpu-precheck-1793000000"): ResultActionsDsl =
+        mockMvc.get("/clusters/${setup.clusterId}/gpu/precheck/$name") {
+            authorization(setup.accessToken)
         }
 
     private fun postMeasure(setup: Setup, name: String): ResultActionsDsl =

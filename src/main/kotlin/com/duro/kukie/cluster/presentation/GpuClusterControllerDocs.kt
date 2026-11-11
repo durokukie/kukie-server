@@ -24,6 +24,8 @@ import com.duro.kukie.cluster.presentation.dto.request.UpdateGpuNodeGroupRequest
 import com.duro.kukie.cluster.presentation.dto.response.ExtendServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupResponse
 import com.duro.kukie.cluster.presentation.dto.response.GpuNodeGroupsResponse
+import com.duro.kukie.cluster.presentation.dto.response.GpuPrecheckResponse
+import com.duro.kukie.cluster.presentation.dto.response.GpuPrecheckStartResponse
 import com.duro.kukie.cluster.presentation.dto.response.MeasureServedModelResponse
 import com.duro.kukie.cluster.presentation.dto.response.ServedModelResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
@@ -95,6 +97,37 @@ interface GpuClusterControllerDocs {
         AwsRoleNotAssumableException::class,
     )
     fun createServedModel(clusterId: UUID, userId: UUID, request: CreateServedModelRequest): ResponseEntity<ServedModelResponse>
+
+    @Operation(
+        summary = "사전 검사 시작",
+        description = "기본 namespace 에 네트워크 검사 Job 을 하나 만듭니다. 게이트웨이, 허깅페이스, 이미지 저장소로 나갈 수 있는지 보고 끝나면 10분 뒤 지워집니다. GPU 는 켜지 않습니다. " +
+            "팀 관리자만 할 수 있고 스택의 AccessLevel 이 full 이어야 합니다.",
+    )
+    @ApiResponse(responseCode = "202", description = "Accepted")
+    @ApiErrorResponses(
+        GpuNotSupportedException::class,
+        GpuServingDeniedException::class,
+        NotTeamAdminException::class,
+        ClusterNotFoundException::class,
+        GpuClusterApiFailedException::class,
+        AwsRoleNotAssumableException::class,
+    )
+    fun startGpuPrecheck(clusterId: UUID, userId: UUID): ResponseEntity<GpuPrecheckStartResponse>
+
+    @Operation(
+        summary = "사전 검사 결과",
+        description = "state 는 RUNNING, DONE, FAILED, EXPIRED(Pod 가 이미 지워짐), IMAGE_PULL_FAILED, UNSCHEDULABLE 입니다. DONE 일 때만 checks 가 있습니다.",
+    )
+    @ApiResponse(responseCode = "200", description = "OK")
+    @ApiErrorResponses(
+        GpuNotSupportedException::class,
+        GpuServingDeniedException::class,
+        NotTeamAdminException::class,
+        ClusterNotFoundException::class,
+        GpuClusterApiFailedException::class,
+        AwsRoleNotAssumableException::class,
+    )
+    fun getGpuPrecheck(clusterId: UUID, name: String, userId: UUID): ResponseEntity<GpuPrecheckResponse>
 
     @Operation(
         summary = "모델 중지",
