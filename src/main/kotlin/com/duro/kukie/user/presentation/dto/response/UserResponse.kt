@@ -8,6 +8,7 @@ data class UserResponse(
     val name: String,
     val email: String,
     val hasPassword: Boolean,
+    val githubLogin: String?,
 ) {
     companion object {
         fun from(user: User) = UserResponse(
@@ -15,6 +16,7 @@ data class UserResponse(
             name = user.name,
             email = user.email.value,
             hasPassword = user.hasPassword,
+            githubLogin = user.githubLogin,
         )
     }
 }

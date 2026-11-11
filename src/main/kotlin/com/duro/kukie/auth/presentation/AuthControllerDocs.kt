@@ -2,6 +2,9 @@ package com.duro.kukie.auth.presentation
 
 import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.ExpiredTokenException
+import com.duro.kukie.auth.exception.GitHubAccountTakenException
+import com.duro.kukie.auth.exception.GitHubAlreadyLinkedException
+import com.duro.kukie.auth.exception.GitHubLinkFailedException
 import com.duro.kukie.auth.exception.InvalidCredentialsException
 import com.duro.kukie.auth.exception.InvalidHandoffCodeException
 import com.duro.kukie.auth.exception.InvalidTokenException
@@ -9,6 +12,7 @@ import com.duro.kukie.auth.exception.OAuthLogInFailedException
 import com.duro.kukie.auth.exception.UnauthorizedException
 import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.LinkGitHubAccountRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
@@ -18,6 +22,8 @@ import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
+import com.duro.kukie.user.exception.UserNotFoundException
+import com.duro.kukie.user.presentation.dto.response.UserResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import jakarta.servlet.http.HttpServletRequest
@@ -41,6 +47,31 @@ interface AuthControllerDocs {
     )
     @ApiErrorResponses(OAuthLogInFailedException::class)
     fun oAuthLogIn(provider: OAuthProvider, request: OAuthLogInRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
+
+    @Operation(
+        summary = "GitHub 계정 연결",
+        description = "로그인한 회원에 GitHub 계정을 연결합니다. 호스팅 앱의 주인은 GitHub 계정이라, Google 이나 이메일로 가입한 회원은 " +
+            "한 번 연결해야 자기 앱을 볼 수 있습니다. GitHub 로 로그인하는 회원은 로그인할 때 자동으로 연결됩니다. " +
+            "GitHub OAuth 인가 코드를 로그인과 같은 방식으로 받아 넘기되 PKCE code verifier 가 필수입니다. " +
+            "그 GitHub 계정이 다른 회원에 연결돼 있었다면 이 회원으로 옮깁니다. " +
+            "이 회원에 이미 다른 GitHub 계정이 연결돼 있으면 409 이고, 연결을 끊은 뒤 다시 연결해야 합니다.",
+    )
+    @ApiErrorResponses(
+        GitHubLinkFailedException::class,
+        GitHubAlreadyLinkedException::class,
+        GitHubAccountTakenException::class,
+        UserNotFoundException::class,
+    )
+    fun linkGitHubAccount(userId: UUID, request: LinkGitHubAccountRequest): ResponseEntity<UserResponse>
+
+    @Operation(
+        summary = "GitHub 계정 연결 끊기",
+        description = "회원에 연결된 GitHub 계정을 끊습니다. 그 계정의 호스팅 앱은 지워지지 않고, 이 회원에게 더 보이지 않을 뿐입니다. " +
+            "연결된 계정이 없어도 204 입니다.",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(UserNotFoundException::class)
+    fun unlinkGitHubAccount(userId: UUID): ResponseEntity<Unit>
 
     @Operation(
         summary = "토큰 재발급",

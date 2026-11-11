@@ -2,16 +2,19 @@ package com.duro.kukie.auth.presentation
 
 import com.duro.kukie.auth.application.ExchangeHandoffCodeService
 import com.duro.kukie.auth.application.IssueHandoffCodeService
+import com.duro.kukie.auth.application.LinkGitHubAccountService
 import com.duro.kukie.auth.application.LogInService
 import com.duro.kukie.auth.application.LogOutService
 import com.duro.kukie.auth.application.OAuthLogInService
 import com.duro.kukie.auth.application.RefreshTokenService
 import com.duro.kukie.auth.application.ResetPasswordService
 import com.duro.kukie.auth.application.SendPasswordResetCodeService
+import com.duro.kukie.auth.application.UnlinkGitHubAccountService
 import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.UnauthorizedException
 import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.LinkGitHubAccountRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
@@ -23,6 +26,7 @@ import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.AuthCookies
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.user.presentation.dto.response.UserResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
@@ -41,6 +45,8 @@ import java.util.UUID
 class AuthController(
     private val logInService: LogInService,
     private val oAuthLogInService: OAuthLogInService,
+    private val linkGitHubAccountService: LinkGitHubAccountService,
+    private val unlinkGitHubAccountService: UnlinkGitHubAccountService,
     private val logOutService: LogOutService,
     private val refreshTokenService: RefreshTokenService,
     private val issueHandoffCodeService: IssueHandoffCodeService,
@@ -65,6 +71,25 @@ class AuthController(
         response: HttpServletResponse,
     ): ResponseEntity<TokenResponse> {
         return ResponseEntity.ok(oAuthLogInService(request.toCommand(provider)).alsoIssueCookies(response))
+    }
+
+    @Authenticated
+    @PostMapping("/oauth/github/link")
+    override fun linkGitHubAccount(
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: LinkGitHubAccountRequest,
+    ): ResponseEntity<UserResponse> {
+        return ResponseEntity.ok(linkGitHubAccountService(request.toCommand(userId)))
+    }
+
+    @Authenticated
+    @DeleteMapping("/oauth/github/link")
+    override fun unlinkGitHubAccount(
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        unlinkGitHubAccountService(userId)
+
+        return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/refresh")

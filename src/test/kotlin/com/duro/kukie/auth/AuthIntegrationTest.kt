@@ -1,9 +1,11 @@
 package com.duro.kukie.auth
 
+import com.duro.kukie.auth.application.port.out.OAuthProfile
 import com.duro.kukie.auth.exception.AuthErrorCode
 import com.duro.kukie.auth.domain.PkceS256
 import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.LinkGitHubAccountRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
@@ -16,6 +18,7 @@ import com.duro.kukie.support.FakeOAuthClient
 import com.duro.kukie.support.FakePasswordResetCodeSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.UserFixture
+import com.duro.kukie.user.domain.GitHubAccount
 import com.duro.kukie.user.domain.VerificationCodeRepository
 import com.duro.kukie.user.domain.VerificationType
 import com.duro.kukie.user.exception.UserErrorCode
@@ -108,6 +111,153 @@ class AuthIntegrationTest : IntegrationTest() {
         val user = userRepository.findByEmail(Email(FakeOAuthClient.DEFAULT_PROFILE.email)).shouldNotBeNull()
         user.name shouldBe FakeOAuthClient.DEFAULT_PROFILE.name
         user.password shouldBe null
+    }
+
+    @Test
+    fun `GitHub 로 로그인하면 GitHub 계정을 회원에 저장한다`() {
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+        val request = OAuthLogInRequest("code", "http://127.0.0.1:3000/callback")
+
+        mockMvc.post("/auth/oauth/github") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect {
+            status { isOk() }
+        }
+
+        val user = userRepository.findByEmail(Email(FakeOAuthClient.DEFAULT_PROFILE.email)).shouldNotBeNull()
+        user.githubId shouldBe 583231L
+        user.githubLogin shouldBe "octocat"
+    }
+
+    @Test
+    fun `다른 회원이 쓰는 GitHub 계정으로 로그인해도 로그인은 되고 연결은 하지 않는다`() {
+        userRepository.save(UserFixture.oAuthUser(email = "owner@example.com").apply { linkGitHub(GITHUB) })
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+        val request = OAuthLogInRequest("code", "http://127.0.0.1:3000/callback")
+
+        mockMvc.post("/auth/oauth/github") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect {
+            status { isOk() }
+        }
+
+        userRepository.findByEmail(Email(FakeOAuthClient.DEFAULT_PROFILE.email)).shouldNotBeNull().githubId shouldBe null
+    }
+
+    @Test
+    fun `로그인한 회원이 GitHub 계정을 연결한다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.profile = OAuthProfile(email = "github-only@example.com", name = "옥토캣", gitHub = GITHUB)
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(user.user.id.toString()) }
+            jsonPath("$.githubLogin") { value("octocat") }
+            jsonPath("$.email") { value(user.user.email.value) }
+        }
+
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect {
+            jsonPath("$.githubLogin") { value("octocat") }
+        }
+        userRepository.count() shouldBe 1
+    }
+
+    @Test
+    fun `다른 회원에 연결돼 있던 GitHub 계정을 연결하면 이 회원으로 옮긴다`() {
+        val previous = userRepository.save(UserFixture.oAuthUser(email = "previous@example.com").apply { linkGitHub(GITHUB) })
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.githubLogin") { value("octocat") }
+        }
+
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe GITHUB.id
+        with(userRepository.findByEmail(previous.email).shouldNotBeNull()) {
+            githubId shouldBe null
+            githubLogin shouldBe null
+        }
+    }
+
+    @Test
+    fun `이미 다른 GitHub 계정이 연결된 회원은 연결을 끊은 뒤에 다시 연결할 수 있다`() {
+        val user = loggedInUser(UserFixture.oAuthUser().apply { linkGitHub(GitHubAccount(id = 1, login = "old")) })
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(AuthErrorCode.GITHUB_ALREADY_LINKED.code) }
+        }
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe 1L
+
+        mockMvc.delete("/auth/oauth/github/link") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isNoContent() }
+        }
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe null
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.githubLogin") { value("octocat") }
+        }
+    }
+
+    @Test
+    fun `연결된 GitHub 계정이 없어도 연결 끊기는 성공한다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+
+        mockMvc.delete("/auth/oauth/github/link") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isNoContent() }
+        }
+    }
+
+    @Test
+    fun `인가 코드가 유효하지 않으면 GitHub 계정을 연결할 수 없다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.shouldFail = true
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(AuthErrorCode.GITHUB_LINK_FAILED.code) }
+        }
+    }
+
+    @Test
+    fun `PKCE code verifier 없이는 GitHub 계정을 연결할 수 없다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+
+        mockMvc.post("/auth/oauth/github/link") {
+            authorization(user.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = LinkGitHubAccountRequest("code", "http://127.0.0.1:3000/callback", " ").toJson()
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe null
+    }
+
+    @Test
+    fun `로그인하지 않으면 GitHub 계정을 연결하거나 끊을 수 없다`() {
+        mockMvc.post("/auth/oauth/github/link") {
+            contentType = MediaType.APPLICATION_JSON
+            content = LinkGitHubAccountRequest("code", "http://127.0.0.1:3000/callback", "verifier").toJson()
+        }.andExpect {
+            status { isUnauthorized() }
+        }
+
+        mockMvc.delete("/auth/oauth/github/link").andExpect {
+            status { isUnauthorized() }
+        }
     }
 
     @Test
@@ -661,6 +811,13 @@ class AuthIntegrationTest : IntegrationTest() {
         return JsonPath.read(body, "$.code")
     }
 
+    private fun linkGitHub(accessToken: String): ResultActionsDsl =
+        mockMvc.post("/auth/oauth/github/link") {
+            authorization(accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = LinkGitHubAccountRequest("code", "http://127.0.0.1:3000/callback", "verifier").toJson()
+        }
+
     private fun exchange(code: String, verifier: String) = mockMvc.post("/auth/exchange") {
         contentType = MediaType.APPLICATION_JSON
         content = ExchangeHandoffCodeRequest(code, verifier).toJson()
@@ -697,4 +854,8 @@ class AuthIntegrationTest : IntegrationTest() {
             contentType = MediaType.APPLICATION_JSON
             content = LogInRequest(resetEmail, password).toJson()
         }
+
+    companion object {
+        private val GITHUB = GitHubAccount(id = 583231, login = "octocat")
+    }
 }
