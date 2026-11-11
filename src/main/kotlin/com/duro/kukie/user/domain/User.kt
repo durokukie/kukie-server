@@ -7,9 +7,12 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import org.hibernate.annotations.DynamicUpdate
 import org.springframework.security.crypto.password.PasswordEncoder
 import java.util.UUID
 
+// 바뀐 열만 쓴다. 이름·비밀번호를 고치는 요청이 먼저 읽어 둔 값으로 그사이 커밋된 GitHub 연결을 덮지 않게 한다
+@DynamicUpdate
 @Entity
 @Table(name = "tbl_user")
 class User private constructor(
@@ -50,6 +53,15 @@ class User private constructor(
     var avatarUrl: String? = null
         protected set
 
+    // 호스팅 앱의 주인은 이 숫자 id 로 가린다. 계정명은 바뀌고 다른 사람이 다시 쓸 수 있다
+    @Column(name = "github_id", unique = true)
+    var githubId: Long? = null
+        protected set
+
+    @Column(name = "github_login", length = GITHUB_LOGIN_MAX_LENGTH)
+    var githubLogin: String? = null
+        protected set
+
     val hasPassword: Boolean
         get() = password != null
 
@@ -69,8 +81,20 @@ class User private constructor(
         if (url != null && url.startsWith("https://") && url.length <= AVATAR_URL_MAX_LENGTH) avatarUrl = url
     }
 
+    fun linkGitHub(account: GitHubAccount) {
+        githubId = account.id
+        githubLogin = account.login.take(GITHUB_LOGIN_MAX_LENGTH)
+    }
+
+    fun unlinkGitHub() {
+        githubId = null
+        githubLogin = null
+    }
+
     companion object {
         const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
+        const val GITHUB_ID_UNIQUE_CONSTRAINT = "tbl_user_github_id_key"
         private const val AVATAR_URL_MAX_LENGTH = 500
+        private const val GITHUB_LOGIN_MAX_LENGTH = 39
     }
 }
