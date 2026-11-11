@@ -55,6 +55,7 @@ dependencies {
     implementation("software.amazon.awssdk:eks:2.55.11")
     implementation("software.amazon.awssdk:ec2:2.55.11")
     implementation("software.amazon.awssdk:sqs:2.55.11")
+    implementation("software.amazon.awssdk:s3:2.55.11")
 
     // UUID
     implementation("com.github.f4b6a3:uuid-creator:6.1.1")

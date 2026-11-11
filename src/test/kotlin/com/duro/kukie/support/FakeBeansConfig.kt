@@ -42,4 +42,12 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeHuggingFaceClient(): FakeHuggingFaceClient = FakeHuggingFaceClient()
+
+    @Bean
+    @Primary
+    fun fakeHostingStateStore(): FakeHostingStateStore = FakeHostingStateStore()
+
+    @Bean
+    @Primary
+    fun fakeHostingCommandQueue(): FakeHostingCommandQueue = FakeHostingCommandQueue()
 }
