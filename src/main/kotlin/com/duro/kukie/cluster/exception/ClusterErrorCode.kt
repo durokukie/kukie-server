@@ -50,6 +50,11 @@ enum class ClusterErrorCode(
         "Kukie 권한이 아직 클러스터에 반영되지 않아 네임스페이스를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요. " +
             "몇 분이 지나도 같으면 EKS 콘솔의 접근 항목에서 KukieAccess 항목을 지운 뒤 다시 시도해 주세요.",
     ),
+    NAMESPACE_LIST_NOT_SUPPORTED(
+        HttpStatus.BAD_REQUEST,
+        "제한된 권한(limited)으로 연결한 AWS 계정은 네임스페이스 목록을 볼 수 없습니다. 스택에서 허용한 네임스페이스 이름을 직접 입력해 주세요.",
+    ),
+    NAMESPACE_LIST_FAILED(HttpStatus.BAD_GATEWAY, "클러스터에서 네임스페이스 목록을 읽지 못했습니다. 이름을 직접 입력하거나 잠시 뒤 다시 시도해 주세요."),
     GPU_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "AWS 역할로 연결한 EKS 클러스터에서만 할 수 있는 작업입니다."),
     GPU_NODE_CONTROL_DENIED(
         HttpStatus.FORBIDDEN,

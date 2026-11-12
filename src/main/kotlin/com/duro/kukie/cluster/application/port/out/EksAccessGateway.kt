@@ -72,6 +72,12 @@ interface EksAccessGateway {
         waitForGrant: Boolean,
     ): NamespaceStatus
 
+    /**
+     * 쿠버네티스 API 로 namespace 를 모두 읽어 이름을 준다. 지우는 중(Terminating)인 것은 뺀다. 막 붙인 권한이 퍼질 때까지 401·403 을 몇 번
+     * 다시 묻고, 끝내 거부되면 NamespaceGrantPendingException. 그 밖의 실패(네트워크·다른 응답·읽지 못하는 본문)는 NamespaceListFailedException.
+     */
+    fun listNamespaces(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint): List<String>
+
     /** 버전·엔드포인트와 애드온·노드 그룹·서브넷을 읽는다. v3 권한이 없으면 inventory 를 비워 돌려준다. */
     fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup
 

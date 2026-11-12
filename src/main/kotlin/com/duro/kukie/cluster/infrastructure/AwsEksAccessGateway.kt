@@ -31,6 +31,8 @@ import com.duro.kukie.cluster.exception.InvalidNodeCountException
 import com.duro.kukie.cluster.exception.ModelChatBusyException
 import com.duro.kukie.cluster.exception.ModelChatRejectedException
 import com.duro.kukie.cluster.exception.ModelNotReadyException
+import com.duro.kukie.cluster.exception.NamespaceGrantPendingException
+import com.duro.kukie.cluster.exception.NamespaceListFailedException
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.exception.ServedModelNotFoundException
@@ -375,6 +377,77 @@ class AwsEksAccessGateway(
                     http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode()
                 }
             }
+    }
+
+    override fun listNamespaces(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint): List<String> {
+        val sslContext = runCatching { trusting(endpoint.caData) }.getOrElse { throw NamespaceListFailedException() }
+        return HttpClient.newBuilder()
+            .sslContext(sslContext)
+            .connectTimeout(PROBE_TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build()
+            .use { http ->
+                readNamespaces(attempts = NAMESPACE_LIST_ATTEMPTS) {
+                    val request = HttpRequest.newBuilder(URI("${endpoint.endpoint}/api/v1/namespaces"))
+                        .timeout(KUBERNETES_WRITE_TIMEOUT)
+                        .header("Authorization", "Bearer ${issueToken(target, region, clusterName)}")
+                        .GET()
+                        .build()
+                    val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+                    response.statusCode() to response.body()
+                }
+            }
+    }
+
+    /** 401·403 이면 막 붙인 권한이 퍼지는 중으로 보고 delay 마다 다시 묻는다. fetch 는 (상태 코드, 본문) 이다. */
+    internal fun readNamespaces(
+        attempts: Int,
+        delay: Duration = GRANT_DELAY,
+        fetch: () -> Pair<Int, String>,
+    ): List<String> {
+        try {
+            repeat(attempts) { attempt ->
+                val (status, body) = try {
+                    fetch()
+                } catch (exception: IOException) {
+                    throw namespaceListFailed(exception.javaClass.simpleName)
+                } catch (exception: SdkException) {
+                    throw namespaceListFailed(exception.javaClass.simpleName)
+                } catch (exception: URISyntaxException) {
+                    throw namespaceListFailed(exception.javaClass.simpleName)
+                } catch (exception: IllegalArgumentException) {
+                    throw namespaceListFailed(exception.javaClass.simpleName)
+                }
+                when (status) {
+                    OK -> return namespaceNamesOf(body)
+                    UNAUTHORIZED, FORBIDDEN -> if (attempt < attempts - 1) Thread.sleep(delay)
+                    else -> throw namespaceListFailed("status $status")
+                }
+            }
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw namespaceListFailed("interrupted")
+        }
+        throw NamespaceGrantPendingException()
+    }
+
+    /** NamespaceList 의 이름들. 지우는 중(Terminating)인 것은 고를 수 없으므로 뺀다. */
+    internal fun namespaceNamesOf(body: String): List<String> {
+        val items = try {
+            jsonMapper.readTree(body).path("items")
+        } catch (_: JacksonException) {
+            throw namespaceListFailed("unreadable body")
+        }
+        if (!items.isArray) throw namespaceListFailed("no items")
+        return items.mapNotNull { item ->
+            val name = item.path("metadata").path("name").textOrNull() ?: return@mapNotNull null
+            name.takeUnless { item.path("status").path("phase").textOrNull() == TERMINATING }
+        }
+    }
+
+    private fun namespaceListFailed(reason: String): NamespaceListFailedException {
+        log.warn("namespace 목록을 읽지 못했습니다: reason={}", reason)
+        return NamespaceListFailedException()
     }
 
     override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup = withSession(target) { credentials ->
@@ -1174,6 +1247,10 @@ class AwsEksAccessGateway(
         // 막 붙인 access policy 가 퍼지기를 잠깐만 기다린다. 더 걸리면 앱이 등록을 다시 부른다
         private const val GRANT_ATTEMPTS = 3
         private val GRANT_DELAY: Duration = Duration.ofSeconds(2)
+
+        // 목록은 entry 를 붙였다가 바로 떼므로 다시 부르면 전파가 처음부터 다시 시작된다. 등록보다 길게 기다린다
+        private const val NAMESPACE_LIST_ATTEMPTS = 8
+        private const val TERMINATING = "Terminating"
 
         // 퍼지는 중인 새 entry 를 옛 entry 로 오해해 지우면 전파가 처음부터 다시 시작되므로 넉넉히 둔다
         private val ENTRY_SETTLE_TIME: Duration = Duration.ofMinutes(5)
