@@ -16,8 +16,7 @@ data class CreateChatRequest(
 
     val shared: Boolean? = null,
 
-    /** 이 대화가 쓸 namespace (DURO-228). 비우면 클러스터에 등록한 namespace 다 */
-    @field:Size(max = 63)
+    /** 이 대화가 쓸 namespace (DURO-228). 비우면 클러스터에 등록한 namespace 다. 길이·꼴은 앞뒤 공백을 지운 뒤 NamespaceName 이 본다 */
     val namespace: String? = null,
 ) {
     fun toCommand(userId: UUID) = CreateChatCommand(
