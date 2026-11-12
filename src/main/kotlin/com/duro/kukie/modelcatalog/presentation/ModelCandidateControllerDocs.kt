@@ -23,7 +23,7 @@ interface ModelCandidateControllerDocs {
 
     @Operation(
         summary = "모델 후보 갱신",
-        description = "허깅페이스 트렌딩 목록을 받아 거른 뒤 DB 를 덮어쓰고 새 목록을 줍니다. 어느 팀이든 관리자면 부를 수 있습니다. " +
+        description = "허깅페이스 텍스트 생성 모델을 최근 30일 다운로드 순으로 받아 거른 뒤 DB 를 덮어쓰고 새 목록을 줍니다. 어느 팀이든 관리자면 부를 수 있습니다. " +
             "실패하면 저장된 목록은 그대로이고 바로 다시 시도할 수 있습니다. 갱신이 도는 동안과 성공한 뒤 60초 안에는 다시 갱신할 수 없습니다.",
     )
     @ApiErrorResponses(

@@ -24,7 +24,7 @@ data class ModelSelection(
     val dropped: Map<String, String>,
 )
 
-/** 허깅페이스 트렌딩 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
+/** 허깅페이스 다운로드 순 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
 object ModelCandidateRules {
 
     const val MIN_PARAMS_B = 20.0

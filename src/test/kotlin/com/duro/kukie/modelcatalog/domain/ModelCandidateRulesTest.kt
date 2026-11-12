@@ -299,6 +299,6 @@ class ModelCandidateRulesTest {
             .expect(ExpectedCount.once(), anything())
             .andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
 
-        return RestHuggingFaceClient(builder.build(), HuggingFaceProperties()).fetchTrending(50)
+        return RestHuggingFaceClient(builder.build(), HuggingFaceProperties()).fetchPopular(50)
     }
 }
