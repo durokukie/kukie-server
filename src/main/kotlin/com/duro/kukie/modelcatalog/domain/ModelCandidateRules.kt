@@ -25,7 +25,7 @@ data class ModelSelection(
     val dropped: Map<String, String>,
 )
 
-/** 회사별 허깅페이스 다운로드 순 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않고 vLLM 이 띄울 수 있는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
+/** 허깅페이스 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않고 vLLM 이 띄울 수 있는 원작자 모델만 남긴다. select 는 목록 순서를 지키고 spreadAuthors 가 회사별로 섞는다. */
 object ModelCandidateRules {
 
     const val MIN_PARAMS_B = 20.0
@@ -70,14 +70,14 @@ object ModelCandidateRules {
     }
 
     /**
-     * 한 회사가 목록을 채우지 않게 회사마다 다운로드가 많은 앞 perAuthor 개만 남긴다. pinned(검증·즐겨찾기 모델)는 수에 넣지 않고 늘 남긴다.
-     * 순서는 회사별 1등끼리, 2등끼리… 로 묶고 같은 등수 안에서는 다운로드가 많은 쪽이 앞이다.
+     * 회사마다 다운로드가 많은 앞 perAuthor 개만 남기고 회사별 1등끼리, 2등끼리… 다운로드 순으로 섞는다.
+     * pinned(검증·즐겨찾기)는 수에도 등수에도 넣지 않고 늘 남기며, 다운로드 수로 끼어드는 자리의 등수를 받는다.
      */
     fun spreadAuthors(models: List<CollectedModel>, perAuthor: Int, pinned: Set<String>): List<CollectedModel> {
         val ranked = models.groupBy { it.id.substringBefore("/").lowercase() }.values.flatMap { sameAuthor ->
-            val byDownloads = sameAuthor.sortedByDescending { it.downloads }
-            val capped = byDownloads.filterNot { it.id in pinned }.take(perAuthor).map { it.id }.toSet()
-            byDownloads.filter { it.id in pinned || it.id in capped }.mapIndexed { rank, model -> rank to model }
+            val capped = sameAuthor.filterNot { it.id in pinned }.sortedByDescending { it.downloads }.take(perAuthor)
+            capped.mapIndexed { rank, model -> rank to model } +
+                sameAuthor.filter { it.id in pinned }.map { model -> capped.count { it.downloads > model.downloads } to model }
         }
         return ranked.sortedWith(compareBy<Pair<Int, CollectedModel>> { it.first }.thenByDescending { it.second.downloads })
             .map { it.second }

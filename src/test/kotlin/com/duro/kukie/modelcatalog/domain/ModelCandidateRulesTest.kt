@@ -348,6 +348,24 @@ class ModelCandidateRulesTest {
     }
 
     @Test
+    fun `다운로드 1등이 즐겨찾기여도 다른 후보의 등수를 밀어내지 않는다`() {
+        // given
+        val models = ModelCandidateRules.select(
+            listOf(
+                model("Qwen/q-favorite", downloads = 900),
+                model("Qwen/q-a", downloads = 800),
+                model("upstage/u-a", downloads = 100),
+            ),
+        ).kept
+
+        // when
+        val spread = ModelCandidateRules.spreadAuthors(models, perAuthor = 1, pinned = setOf("Qwen/q-favorite"))
+
+        // then
+        spread.map { it.id }.shouldContainExactly("Qwen/q-favorite", "Qwen/q-a", "upstage/u-a")
+    }
+
+    @Test
     fun `회사 계정 대소문자가 달라도 한 회사로 센다`() {
         // given
         val models = ModelCandidateRules.select(listOf(model("Qwen/q-a", downloads = 9), model("qwen/q-b", downloads = 1))).kept

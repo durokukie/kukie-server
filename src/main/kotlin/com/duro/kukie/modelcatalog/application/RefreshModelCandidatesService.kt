@@ -71,8 +71,12 @@ class RefreshModelCandidatesService(
     }
 
     private fun collect(): List<CollectedModel> {
-        // 회사마다 따로 받는다 — 전체 다운로드 순으로 받으면 상위가 몇 회사 모델로 채워져 나머지 회사가 목록에 들지 못한다
-        val listing = ModelCandidateRules.AUTHOR_ACCOUNTS.flatMap { huggingFaceClient.fetchPopular(it, PER_AUTHOR_LIMIT) }
+        // 전체 다운로드 순으로 한 번에 받으면 몇 회사가 자리를 다 차지해 나머지 회사가 목록에 들지 못한다
+        val listing = ModelCandidateRules.AUTHOR_ACCOUNTS.flatMap { author ->
+            huggingFaceClient.fetchPopular(author, PER_AUTHOR_LIMIT).also {
+                if (it.isEmpty()) log.warn("허깅페이스가 {} 계정의 모델을 하나도 주지 않았습니다. 계정 이름이 바뀌었는지 확인하세요", author)
+            }
+        }
         if (listing.isEmpty()) throw refreshFailed("허깅페이스가 빈 목록을 돌려줬습니다")
 
         val favoriteIds = modelFavoriteRepository.findAllModelIds()
@@ -140,13 +144,10 @@ class RefreshModelCandidatesService(
     }
 
     companion object {
-        /**
-         * 회사마다 받는 다운로드 순 목록 수. 회사 목록 상위도 소형 모델이 많아 크기 규칙(20~130B)에서 많이 빠진다.
-         * 2026-11-13 실제 목록에서 50개면 29곳 중 25곳이 1개 이상 남았다.
-         */
+        /** 회사 목록 상위도 소형 모델이 많다. 2026-11-13(KST) 실제 목록에서 50개면 29곳 중 25곳이 크기 규칙을 지나 1개 이상 남았다 */
         private const val PER_AUTHOR_LIMIT = 50
 
-        /** 회사마다 남기는 후보 수. 남은 후보마다 단건 API 를 한 번씩 더 부르므로 29곳 × 3 = 87번 안쪽으로 묶는다. */
+        /** 남은 후보마다 단건 API 를 더 부르므로 29곳 × 3 = 87번 안쪽으로 묶는다(한 번 약 0.3초) */
         private const val PER_AUTHOR = 3
 
         /** 순위 밖 즐겨찾기를 따로 받는 수 상한. 넘으면 최근에 넣은 것부터 남기고 경고를 남긴다 */

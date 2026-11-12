@@ -158,8 +158,8 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
 
         // then
         modelCandidateRepository.findAllByOrderByDisplayOrder().map { it.modelId }.shouldContainExactly(
-            "Qwen/q-1", "upstage/solar", "openai/gpt-oss-20b",
-            "Qwen/q-2", "openai/gpt-oss-120b",
+            "Qwen/q-1", "upstage/solar", "openai/gpt-oss-20b", "openai/gpt-oss-120b",
+            "Qwen/q-2",
             "Qwen/q-3",
             "Qwen/q-favorite",
         )
