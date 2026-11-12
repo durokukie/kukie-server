@@ -52,6 +52,9 @@ object ModelCandidateRules {
         "GGUF", "MLX", "AWQ", "GPTQ", "EXL2", "EXL3", "uncensored", "abliterated", "obliterated", "heretic",
     )
 
+    // 채팅 템플릿을 두고도 지시를 따르게 학습하지 않은 사전학습 모델이 있다
+    private val BASE_MODEL_NAME = Regex("(^|[-_.])(base|pretrained)([-_.]|$)", RegexOption.IGNORE_CASE)
+
     private val OK_LICENSES = setOf("apache-2.0", "mit", "bsd", "bsd-2-clause", "bsd-3-clause", "isc", "unlicense", "cc0-1.0")
     private val NON_COMMERCIAL = listOf(Regex("(^|-)nc(-|$)"), Regex("exaone"), Regex("research"))
     private const val NOTE_CONDITIONAL = "조건 있음"
@@ -114,6 +117,9 @@ object ModelCandidateRules {
         // 오븐은 vLLM 으로만 띄운다 — 공식 vLLM 에도 포크 표에도 없는 구조는 시작해도 뜨지 않는다
         val architecture = model.architectures.firstOrNull()
         if (vllmSupport(architecture) == VllmSupport.UNKNOWN) return "vLLM 지원 목록에 없는 구조 (${architecture ?: "모름"})"
+        // 오븐 대화와 키 발급 API 는 chat.completions 로 묻는다 — 템플릿이 없으면 vLLM 이 대화를 거부한다
+        if (!model.hasChatTemplate) return "채팅 템플릿 없음"
+        BASE_MODEL_NAME.find(name)?.let { return "사전학습 모델 이름 (${it.value.trim('-', '_', '.')})" }
         return null
     }
 

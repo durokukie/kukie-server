@@ -14,4 +14,6 @@ data class HuggingFaceModel(
     val createdAt: String?,
     /** 최근 30일 다운로드 수. 회사가 다른 후보끼리 순서를 정할 때만 쓴다. */
     val downloads: Long = 0,
+    /** tokenizer_config.json 의 chat_template 이나 루트의 chat_template 파일이 있는지. 없으면 chat.completions 로 물을 수 없다. */
+    val hasChatTemplate: Boolean = true,
 )

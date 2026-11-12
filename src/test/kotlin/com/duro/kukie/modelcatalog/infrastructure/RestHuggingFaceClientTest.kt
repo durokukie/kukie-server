@@ -44,6 +44,7 @@ class RestHuggingFaceClientTest {
             .andExpect(queryParam("limit", "50"))
             .andExpect(requestTo(containsString("safetensors")))
             .andExpect(requestTo(not(containsString("usedStorage"))))
+            .andExpect(requestTo(containsString("siblings")))
             .andExpect(headerDoesNotExist(HttpHeaders.AUTHORIZATION))
             .andRespond(withSuccess(listing(), MediaType.APPLICATION_JSON))
 
@@ -67,6 +68,9 @@ class RestHuggingFaceClientTest {
         open.usedStorageBytes shouldBe null
         open.architectures shouldBe emptyList()
         open.likes shouldBe 0
+        auto.hasChatTemplate shouldBe true
+        manual.hasChatTemplate shouldBe true
+        open.hasChatTemplate shouldBe false
         open.downloads shouldBe 0
         server.verify()
     }
@@ -230,10 +234,10 @@ class RestHuggingFaceClientTest {
             "tags": ["license:apache-2.0", "transformers"],
             "usedStorage": 60000000000,
             "safetensors": {"parameters": {"BF16": 28800000000}, "total": 28800000000},
-            "config": {"architectures": ["Raon1MiniForCausalLM"], "model_type": "raon"},
+            "config": {"architectures": ["Raon1MiniForCausalLM"], "model_type": "raon", "tokenizer_config": {"chat_template": [{"name": "default", "template": "{{ x }}"}]}},
             "trendingScore": 3
           },
-          {"id": "meta-llama/Llama-3.3-70B", "gated": "manual"},
+          {"id": "meta-llama/Llama-3.3-70B", "gated": "manual", "siblings": [{"rfilename": "chat_template.jinja"}, {"rfilename": "model.safetensors"}]},
           {"id": "openai/no-metadata", "gated": false}
         ]
     """.trimIndent()

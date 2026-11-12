@@ -263,6 +263,38 @@ class ModelCandidateRulesTest {
     }
 
     @Test
+    fun `채팅 템플릿이 없는 모델은 뺀다`() {
+        // when
+        val selection = ModelCandidateRules.select(listOf(model("meta-llama/Meta-Llama-3-70B").copy(hasChatTemplate = false)))
+
+        // then
+        selection.kept.shouldBeEmpty()
+        selection.dropped shouldBe mapOf("meta-llama/Meta-Llama-3-70B" to "채팅 템플릿 없음")
+    }
+
+    @Test
+    fun `이름에 Base 나 pretrained 가 붙은 사전학습 모델은 템플릿이 있어도 뺀다`() {
+        // when
+        val selection = ModelCandidateRules.select(
+            listOf(
+                model("baidu/ERNIE-4.5-21B-A3B-Base-PT"),
+                model("moonshotai/Kimi-Linear-48B-A3B-Base"),
+                model("upstage/solar-pro-preview-pretrained"),
+                model("Qwen/Qwen3-32B"),
+                model("openai/database-chat"),
+            ),
+        )
+
+        // then
+        selection.kept.map { it.id }.shouldContainExactly("Qwen/Qwen3-32B", "openai/database-chat")
+        selection.dropped shouldBe mapOf(
+            "baidu/ERNIE-4.5-21B-A3B-Base-PT" to "사전학습 모델 이름 (Base)",
+            "moonshotai/Kimi-Linear-48B-A3B-Base" to "사전학습 모델 이름 (Base)",
+            "upstage/solar-pro-preview-pretrained" to "사전학습 모델 이름 (pretrained)",
+        )
+    }
+
+    @Test
     fun `gated 를 그대로 담는다`() {
         // when
         val candidate = keptOne(model("KRAFTON/Raon-1-mini-preview", gated = GatedAccess.MANUAL))
@@ -386,6 +418,8 @@ class ModelCandidateRulesTest {
             .expect(ExpectedCount.once(), anything())
             .andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
 
+        // 2026-11-03 에는 템플릿 칸을 받지 않아 픽스처에 없다. 템플릿 규칙은 따로 본다
         return RestHuggingFaceClient(builder.build(), HuggingFaceProperties()).fetchPopular("any", 50)
+            .map { it.copy(hasChatTemplate = true) }
     }
 }
