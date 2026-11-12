@@ -4,6 +4,8 @@ import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingConfig
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingLatest
+import com.duro.kukie.hosting.domain.HostingRepoItem
+import com.duro.kukie.hosting.domain.HostingRepoList
 import com.duro.kukie.hosting.domain.SkippedPush
 import com.duro.kukie.user.domain.GitHubAccount
 import java.time.Instant
@@ -13,18 +15,32 @@ data class HostingAppsResponse(
     val githubLogin: String?,
     val appLimit: Int,
     val apps: List<HostingAppResponse>,
-    /** 배포를 시작하지 못한 마지막 push. 없으면 null. */
+    /** 배포를 시작하지 못한 마지막 요청이나 push. 없으면 null. */
     val skippedPush: SkippedPushResponse?,
+    /** GitHub App 설치. null 이면 App 을 아직 설치하지 않았다. */
+    val installation: HostingInstallationResponse?,
 ) {
     companion object {
         private const val APP_LIMIT = 3
 
-        fun notLinked() = HostingAppsResponse(null, APP_LIMIT, emptyList(), null)
+        fun notLinked() = HostingAppsResponse(null, APP_LIMIT, emptyList(), null, null)
 
-        fun of(account: GitHubAccount, apps: List<HostingApp>, skipped: SkippedPush?) =
-            HostingAppsResponse(account.login, APP_LIMIT, apps.map(HostingAppResponse::from), skipped?.let(SkippedPushResponse::from))
+        fun of(account: GitHubAccount, apps: List<HostingApp>, skipped: SkippedPush?, repos: HostingRepoList?) = HostingAppsResponse(
+            githubLogin = account.login,
+            appLimit = APP_LIMIT,
+            apps = apps.map(HostingAppResponse::from),
+            skippedPush = skipped?.let(SkippedPushResponse::from),
+            installation = repos?.let { HostingInstallationResponse(it.allowed, it.repos) },
+        )
     }
 }
+
+data class HostingInstallationResponse(
+    /** false 면 아직 호스팅을 쓸 수 없는 계정이다. 배포를 시작할 수 없다. */
+    val allowed: Boolean,
+    /** App 에 읽기를 허용한 레포. 이 가운데서 골라 배포를 시작한다. */
+    val repositories: List<HostingRepoItem>,
+)
 
 data class HostingAppResponse(
     val app: String,
@@ -63,6 +79,6 @@ data class HostingAppDetailResponse(
 }
 
 data class HostingCommandResponse(
-    /** 재배포는 앱의 latest.commandId 가 이 값이 되면 시작된 것이다. */
+    /** 배포 시작과 재배포는 앱의 latest.commandId 가 이 값이 되면 시작된 것이다. */
     val commandId: String,
 )

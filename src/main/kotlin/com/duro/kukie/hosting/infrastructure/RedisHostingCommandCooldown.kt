@@ -19,7 +19,7 @@ class RedisHostingCommandCooldown(
         redisTemplate.delete(key(command))
     }
 
-    private fun key(command: HostingCommand) = "hosting:command:${command.team}:${command.app}:${command.type}"
+    private fun key(command: HostingCommand) = "hosting:command:${command.team}:${command.target}:${command.type}"
 
     companion object {
         // 배포기는 명령을 하나씩 처리한다. 한 앱의 연타가 다른 팀의 명령을 밀어내지 않게 한다

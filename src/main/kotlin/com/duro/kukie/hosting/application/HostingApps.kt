@@ -6,6 +6,7 @@ import com.duro.kukie.hosting.application.port.out.HostingStateStore
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFile
+import com.duro.kukie.hosting.domain.HostingRepoList
 import com.duro.kukie.hosting.domain.SkippedPush
 import com.duro.kukie.hosting.exception.HostingAppNotFoundException
 import com.duro.kukie.hosting.exception.HostingDisabledException
@@ -46,6 +47,10 @@ class HostingApps(
         return read<HostingApp>("apps/${account.team}/$app.json")?.takeIf { it.owner.id == account.id }
             ?: throw HostingAppNotFoundException()
     }
+
+    /** 계정이 GitHub App 에 허용한 레포. App 을 설치하지 않았으면 null. */
+    fun repoList(account: GitHubAccount): HostingRepoList? =
+        read<HostingRepoList>("apps/_repos/${account.team}.json")?.takeIf { it.owner.id == account.id }
 
     /** 배포를 시작하지 못한 마지막 push. 그 뒤 같은 레포의 앱이 배포됐으면 지난 일이라 주지 않는다. */
     fun skippedPush(account: GitHubAccount, apps: List<HostingApp>): SkippedPush? =

@@ -7,15 +7,18 @@ import com.duro.kukie.hosting.application.GetHostingAppsService
 import com.duro.kukie.hosting.application.GetHostingBuildLogService
 import com.duro.kukie.hosting.application.SendHostingCommandService
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppsResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingCommandResponse
+import jakarta.validation.Valid
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
@@ -33,6 +36,11 @@ class HostingController(
     @GetMapping
     override fun getApps(@AuthUser userId: UUID): ResponseEntity<HostingAppsResponse> {
         return ResponseEntity.ok(getHostingAppsService(userId))
+    }
+
+    @PostMapping
+    override fun start(@AuthUser userId: UUID, @RequestBody @Valid request: StartHostingAppRequest): ResponseEntity<HostingCommandResponse> {
+        return ResponseEntity.accepted().body(sendHostingCommandService.deploy(userId, request.repository))
     }
 
     @GetMapping("/{app}")

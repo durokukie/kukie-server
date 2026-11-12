@@ -11,6 +11,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -237,6 +238,141 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `App 에 허용한 레포를 목록과 함께 준다`() {
+        // given
+        val member = linkedUser()
+        putRepos("Recklehs/shop", "Recklehs/blog")
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.installation.allowed") { value(true) }
+            jsonPath("$.installation.repositories.length()") { value(2) }
+            jsonPath("$.installation.repositories[0].fullName") { value("Recklehs/shop") }
+            jsonPath("$.installation.repositories[0].private") { value(true) }
+        }
+    }
+
+    @Test
+    fun `App 을 설치하지 않았거나 다른 계정의 목록이면 설치가 없다고 한다`() {
+        // given
+        val member = linkedUser()
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            jsonPath("$.installation") { value(null) }
+        }
+
+        putRepos("Recklehs/shop", ownerId = 999)
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            jsonPath("$.installation") { value(null) }
+        }
+    }
+
+    @Test
+    fun `허용한 레포를 고르면 배포기에 배포 시작 명령을 보낸다`() {
+        // given
+        val member = linkedUser()
+        putRepos("Recklehs/shop")
+
+        // when & then
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "recklehs/SHOP"}"""
+        }.andExpect {
+            status { isAccepted() }
+            jsonPath("$.commandId") { value(queue.commands.single().commandId) }
+        }
+
+        with(queue.commands.single()) {
+            type shouldBe HostingCommand.DEPLOY
+            repo.fullName shouldBe "Recklehs/shop"
+            team shouldBe "recklehs"
+            app shouldBe null
+            generation shouldBe null
+            owner.id shouldBe GITHUB.id
+        }
+    }
+
+    @Test
+    fun `허용하지 않은 레포나 다른 계정의 목록으로는 배포를 시작하지 않는다`() {
+        // given
+        val member = linkedUser()
+        putRepos("Recklehs/shop")
+
+        // when & then
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/secret"}"""
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("HOSTING_REPOSITORY_NOT_FOUND") }
+        }
+
+        putRepos("Recklehs/shop", ownerId = 999)
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/shop"}"""
+        }.andExpect {
+            status { isNotFound() }
+        }
+
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `아직 호스팅을 쓸 수 없는 계정은 배포를 시작할 수 없다`() {
+        // given
+        val member = linkedUser()
+        putRepos("Recklehs/shop", allowed = false)
+
+        // when & then
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/shop"}"""
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("HOSTING_NOT_ALLOWED") }
+        }
+
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `같은 레포의 배포 시작을 곧바로 다시 보낼 수 없다`() {
+        // given
+        val member = linkedUser()
+        putRepos("Recklehs/shop", "Recklehs/blog")
+
+        // when & then
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/shop"}"""
+        }.andExpect { status { isAccepted() } }
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/shop"}"""
+        }.andExpect { status { isTooManyRequests() } }
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/blog"}"""
+        }.andExpect { status { isAccepted() } }
+    }
+
+    @Test
     fun `삭제를 요청하면 앱의 세대를 넣은 명령을 보낸다`() {
         // given
         val member = linkedUser()
@@ -449,6 +585,12 @@ class HostingIntegrationTest : IntegrationTest() {
               "updatedAt": "2026-11-10T01:17:51Z"
             }
         """.trimIndent()
+    }
+
+    private fun putRepos(vararg repos: String, ownerId: Long = GITHUB.id, allowed: Boolean = true) {
+        val items = repos.joinToString(",") { """{ "id": 1, "fullName": "$it", "private": true }""" }
+        store.files["apps/_repos/recklehs.json"] =
+            """{ "version": 1, "owner": { "id": $ownerId, "login": "Recklehs", "type": "User" }, "allowed": $allowed, "repos": [$items], "at": "2026-11-12T01:17:44Z" }"""
     }
 
     private fun putSkipped(repo: String, at: String, senderId: Long = GITHUB.id) {

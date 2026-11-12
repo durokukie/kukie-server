@@ -1,5 +1,6 @@
 package com.duro.kukie.hosting.domain
 
+import com.duro.kukie.user.domain.GitHubAccount
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldMatch
 import org.junit.jupiter.api.Test
@@ -36,5 +37,21 @@ class HostingCommandTest {
         json.path("team").stringValue() shouldBe "recklehs"
         json.path("app").stringValue() shouldBe "shop"
         json.path("generation").stringValue() shouldBe "20261101T031500Z"
+        json.has("target") shouldBe false
+    }
+
+    @Test
+    fun `배포 시작 명령에는 앱 이름과 세대가 없다`() {
+        // when
+        val command = HostingCommand.deploy(GitHubAccount(127021195, "Recklehs"), "Recklehs/Shop")
+        val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(command))
+
+        // then
+        json.path("type").stringValue() shouldBe "deploy"
+        json.path("repo").path("fullName").stringValue() shouldBe "Recklehs/Shop"
+        json.path("team").stringValue() shouldBe "recklehs"
+        json.has("app") shouldBe false
+        json.has("generation") shouldBe false
+        command.target shouldBe "recklehs/shop"
     }
 }
