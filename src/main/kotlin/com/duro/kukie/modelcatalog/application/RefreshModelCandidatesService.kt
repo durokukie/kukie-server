@@ -103,7 +103,12 @@ class RefreshModelCandidatesService(
      */
     private fun favoritesOffTheList(listing: List<HuggingFaceModel>): List<HuggingFaceModel> {
         val listed = listing.map { it.id }.toSet()
-        return modelFavoriteRepository.findAllModelIds().filter { it !in listed }.mapNotNull { modelId ->
+        val offTheList = modelFavoriteRepository.findAllModelIds().filter { it !in listed }
+        if (offTheList.size > MAX_FAVORITES_OFF_THE_LIST) {
+            log.warn("순위 밖 즐겨찾기가 {}개라 앞 {}개만 받습니다", offTheList.size, MAX_FAVORITES_OFF_THE_LIST)
+        }
+        // 갱신은 잠금을 쥔 채 하나씩 부른다 — 수를 묶어 허깅페이스가 느려도 갱신이 끝없이 길어지지 않게 (kukie-server#150 리뷰)
+        return offTheList.take(MAX_FAVORITES_OFF_THE_LIST).mapNotNull { modelId ->
             try {
                 huggingFaceClient.fetchModel(modelId).takeIf { it.id == modelId }
                     ?: null.also { log.warn("즐겨찾기 모델의 이름이 달라 후보에서 뺍니다: {}", modelId) }
@@ -137,5 +142,8 @@ class RefreshModelCandidatesService(
          * 200개면 19개, 500개면 26개가 남았다. 남은 후보마다 단건 API 를 한 번씩 더 부르므로 200 에 둔다.
          */
         private const val POPULAR_LIMIT = 200
+
+        /** 순위 밖 즐겨찾기를 따로 받는 수 상한. 넘으면 모델 id 순으로 앞에서 자르고 경고를 남긴다 */
+        private const val MAX_FAVORITES_OFF_THE_LIST = 30
     }
 }

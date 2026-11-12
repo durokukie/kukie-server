@@ -10,8 +10,6 @@ interface ModelFavoriteRepository : JpaRepository<ModelFavorite, UUID> {
 
     fun findAllByClusterIdOrderByCreatedAt(clusterId: UUID): List<ModelFavorite>
 
-    fun existsByClusterIdAndModelId(clusterId: UUID, modelId: String): Boolean
-
     /** 어느 클러스터든 즐겨찾기한 모델 — 후보 목록 갱신이 순위 밖이어도 따로 받는다. */
     @Query("select distinct f.modelId from ModelFavorite f order by f.modelId")
     fun findAllModelIds(): List<String>

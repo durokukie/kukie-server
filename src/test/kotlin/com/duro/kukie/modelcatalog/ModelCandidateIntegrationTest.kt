@@ -160,6 +160,20 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `순위 밖 즐겨찾기는 30개까지만 따로 받는다`() {
+        // given
+        val user = teamAdmin()
+        (1..31).forEach { favorite(user, "gone/model-%02d".format(it)) }
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
+
+        // when
+        refresh(user.accessToken).andExpect { status { isOk() } }
+
+        // then
+        fakeHuggingFaceClient.fetched.count { it.startsWith("gone/") } shouldBe 30
+    }
+
+    @Test
     fun `허깅페이스에서 사라진 즐겨찾기 모델은 빼고 갱신은 성공한다`() {
         // given
         val user = teamAdmin()
