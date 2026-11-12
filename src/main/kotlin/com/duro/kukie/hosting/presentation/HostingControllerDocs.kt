@@ -51,7 +51,8 @@ interface HostingControllerDocs {
             "마지막 배포를 보여 줄 수 있습니다. 진행 중인 배포의 updatedAt 이 30분 넘게 지났으면 응답 없음으로 봅니다. " +
             "배포의 build 는 어떻게 빌드됐는지입니다. method 가 auto 면 레포에 Dockerfile 이 없어 배포기가 언어와 시작 명령(build.start)을 " +
             "알아낸 것이고, 틀렸으면 레포의 kukie.json 에 start 를 적어 고칩니다. failure.code 에 not_detected(무슨 앱인지 알아내지 못함), " +
-            "no_start(시작 명령을 찾지 못함)가 더해졌습니다.",
+            "no_start(시작 명령을 찾지 못함)가 더해졌습니다. config.manual 이 true 면 레포의 kukie.json 이 자동 배포를 꺼서 " +
+            "push 는 배포되지 않고 다시 배포를 요청할 때만 배포됩니다.",
     )
     @ApiErrorResponses(HostingAppNotFoundException::class, HostingUnavailableException::class, HostingDisabledException::class)
     fun getApp(userId: UUID, app: String): ResponseEntity<HostingAppDetailResponse>
