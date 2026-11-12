@@ -152,6 +152,38 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `자동으로 알아내 빌드한 배포는 알아낸 것과 시작 명령을 준다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        store.files["deployments/recklehs/shop/$GENERATION/20261112T011744Z-0123456.json"] = """
+            {
+              "version": 1, "deploymentId": "20261112T011744Z-0123456", "phase": "succeeded", "trigger": "deploy",
+              "commit": { "sha": "0123456789abcdef" },
+              "config": { "port": 3000, "size": "S", "source": "file", "start": "gunicorn app:app" },
+              "build": { "method": "auto", "providers": ["python"], "versions": { "python": "3.13.18" }, "start": "gunicorn app:app" },
+              "imageReused": false, "hasLog": true, "failure": null,
+              "startedAt": "2026-11-12T01:17:44Z", "updatedAt": "2026-11-12T01:21:51Z"
+            }
+        """.trimIndent()
+        putDeployment("shop", GENERATION, "20261111T011744Z-0123456", "succeeded")
+
+        // when & then
+        mockMvc.get("/hosting/apps/shop") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.deployments[0].build.method") { value("auto") }
+            jsonPath("$.deployments[0].build.providers[0]") { value("python") }
+            jsonPath("$.deployments[0].build.versions.python") { value("3.13.18") }
+            jsonPath("$.deployments[0].build.start") { value("gunicorn app:app") }
+            jsonPath("$.deployments[0].config.start") { value("gunicorn app:app") }
+            // 배포기가 build 를 적기 전의 기록에는 없다
+            jsonPath("$.deployments[1].build") { value(null) }
+        }
+    }
+
+    @Test
     fun `다른 계정이 주인인 앱은 찾을 수 없다`() {
         // given
         val member = linkedUser()
