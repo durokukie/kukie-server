@@ -20,8 +20,6 @@ import com.duro.kukie.cluster.exception.InvalidNodeCountException
 import com.duro.kukie.cluster.exception.ModelChatBusyException
 import com.duro.kukie.cluster.exception.ModelChatRejectedException
 import com.duro.kukie.cluster.exception.ModelNotReadyException
-import com.duro.kukie.cluster.exception.NamespaceGrantPendingException
-import com.duro.kukie.cluster.exception.NamespaceListFailedException
 import com.duro.kukie.cluster.exception.NodeGroupBusyException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.exception.ServedModelNotFoundException
@@ -954,77 +952,6 @@ class AwsEksAccessGatewayTest {
 
         // then
         result shouldBe NamespaceStatus.UNKNOWN
-        Thread.interrupted() shouldBe true
-    }
-
-    @Test
-    fun `namespace 목록에서 이름을 읽고 지우는 중인 것은 뺀다`() {
-        // given
-        val body = """
-            {"kind":"NamespaceList","items":[
-              {"metadata":{"name":"default"},"status":{"phase":"Active"}},
-              {"metadata":{"name":"old-app"},"status":{"phase":"Terminating"}},
-              {"metadata":{"name":"llm"}},
-              {"metadata":{}}
-            ]}
-        """.trimIndent()
-
-        // when & then
-        gateway.namespaceNamesOf(body) shouldBe listOf("default", "llm")
-    }
-
-    @Test
-    fun `읽지 못하는 namespace 목록은 실패로 알린다`() {
-        shouldThrow<NamespaceListFailedException> { gateway.namespaceNamesOf("not json") }
-        shouldThrow<NamespaceListFailedException> { gateway.namespaceNamesOf("""{"kind":"Status"}""") }
-    }
-
-    @Test
-    fun `namespace 목록은 권한이 퍼질 때까지 401·403 을 다시 묻는다`() {
-        // given
-        val responses = ArrayDeque(listOf(401, 403, 200))
-        val ok = """{"items":[{"metadata":{"name":"llm"}}]}"""
-
-        // when & then
-        gateway.readNamespaces(attempts = 5, delay = Duration.ZERO) {
-            val status = responses.removeFirst()
-            status to if (status == 200) ok else ""
-        } shouldBe listOf("llm")
-        responses.shouldBeEmpty()
-    }
-
-    @Test
-    fun `끝내 권한이 퍼지지 않으면 권한 대기로 알린다`() {
-        // given
-        var attempts = 0
-
-        // when & then
-        shouldThrow<NamespaceGrantPendingException> {
-            gateway.readNamespaces(attempts = 3, delay = Duration.ZERO) { attempts++; 403 to "" }
-        }
-        attempts shouldBe 3
-    }
-
-    @Test
-    fun `namespace 목록에서 그 밖의 응답이나 네트워크 오류는 다시 묻지 않고 실패로 알린다`() {
-        // given
-        var attempts = 0
-
-        // when & then
-        shouldThrow<NamespaceListFailedException> {
-            gateway.readNamespaces(attempts = 3, delay = Duration.ZERO) { attempts++; 500 to "" }
-        }
-        attempts shouldBe 1
-        shouldThrow<NamespaceListFailedException> {
-            gateway.readNamespaces(attempts = 3, delay = Duration.ZERO) { throw IOException("timeout") }
-        }
-    }
-
-    @Test
-    fun `namespace 목록을 기다리다 인터럽트되면 실패로 알리고 인터럽트 표시를 남긴다`() {
-        shouldThrow<NamespaceListFailedException> {
-            gateway.readNamespaces(attempts = 3, delay = Duration.ZERO) { throw InterruptedException() }
-        }
         Thread.interrupted() shouldBe true
     }
 

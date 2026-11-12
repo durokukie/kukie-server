@@ -3,18 +3,15 @@ package com.duro.kukie.cluster.presentation
 import com.duro.kukie.cluster.application.DisconnectAwsConnectionService
 import com.duro.kukie.cluster.application.GetAwsConnectionsService
 import com.duro.kukie.cluster.application.GetEksCandidatesService
-import com.duro.kukie.cluster.application.ListEksNamespacesService
 import com.duro.kukie.cluster.application.RegisterEksClusterService
 import com.duro.kukie.cluster.application.StartAwsConnectionService
 import com.duro.kukie.cluster.presentation.dto.request.GetEksCandidatesRequest
-import com.duro.kukie.cluster.presentation.dto.request.ListEksNamespacesRequest
 import com.duro.kukie.cluster.presentation.dto.request.RegisterEksClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.StartAwsConnectionRequest
 import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.AwsDisconnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.cluster.presentation.dto.response.EksClusterCandidateResponse
-import com.duro.kukie.cluster.presentation.dto.response.EksNamespacesResponse
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
 import jakarta.validation.Valid
@@ -38,7 +35,6 @@ class AwsClusterController(
     private val getAwsConnectionsService: GetAwsConnectionsService,
     private val disconnectAwsConnectionService: DisconnectAwsConnectionService,
     private val getEksCandidatesService: GetEksCandidatesService,
-    private val listEksNamespacesService: ListEksNamespacesService,
     private val registerEksClusterService: RegisterEksClusterService,
 ) : AwsClusterControllerDocs {
 
@@ -72,14 +68,6 @@ class AwsClusterController(
         @RequestBody @Valid request: GetEksCandidatesRequest,
     ): ResponseEntity<List<EksClusterCandidateResponse>> {
         return ResponseEntity.ok(getEksCandidatesService(request.toCommand(userId)))
-    }
-
-    @PostMapping("/namespaces")
-    override fun listEksNamespaces(
-        @AuthUser userId: UUID,
-        @RequestBody @Valid request: ListEksNamespacesRequest,
-    ): ResponseEntity<EksNamespacesResponse> {
-        return ResponseEntity.ok(listEksNamespacesService(request.toCommand(userId)))
     }
 
     @PostMapping

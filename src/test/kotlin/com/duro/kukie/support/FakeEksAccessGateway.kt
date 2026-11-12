@@ -61,12 +61,6 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     val levelChanges = mutableListOf<LevelChange>()
 
-    /** listNamespaces 가 돌려줄 값. */
-    var namespaces: List<String> = listOf("default", "kube-system", "kukie-demo")
-
-    /** 설정하면 listNamespaces 가 이 예외로 실패한다. */
-    var namespaceListFailure: RuntimeException? = null
-
     /** namespaceStatus 가 돌려줄 값. */
     var namespaceStatus: NamespaceStatus = NamespaceStatus.EXISTS
 
@@ -200,13 +194,6 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         namespaceChecks += NamespaceCheck(namespace, waitForGrant)
         accessChanges += NamespaceCheck(namespace, waitForGrant)
         return namespaceStatuses.removeFirstOrNull() ?: namespaceStatus
-    }
-
-    override fun listNamespaces(target: AwsTarget, region: String, clusterName: String, endpoint: EksClusterEndpoint): List<String> {
-        record(target)
-        accessChanges += NamespaceList(clusterName)
-        namespaceListFailure?.let { throw it }
-        return namespaces
     }
 
     override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
@@ -406,8 +393,6 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         levelChanges.clear()
         namespaceStatus = NamespaceStatus.EXISTS
         namespaceStatuses.clear()
-        namespaces = listOf("default", "kube-system", "kukie-demo")
-        namespaceListFailure = null
         namespaceChecks.clear()
         accessChanges.clear()
         nodegroupStates = DEFAULT_NODEGROUP_STATES
@@ -479,8 +464,6 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         val keepNamespaces: Set<String>,
         val accessLevel: AccessLevel = AccessLevel.LIMITED,
     )
-
-    data class NamespaceList(val clusterName: String)
 
     data class Registration(
         val target: AwsTarget,
