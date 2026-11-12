@@ -107,7 +107,7 @@ class RefreshModelCandidatesService(
         if (offTheList.size > MAX_FAVORITES_OFF_THE_LIST) {
             log.warn("순위 밖 즐겨찾기가 {}개라 앞 {}개만 받습니다", offTheList.size, MAX_FAVORITES_OFF_THE_LIST)
         }
-        // 갱신은 잠금을 쥔 채 하나씩 부른다 — 수를 묶어 허깅페이스가 느려도 갱신이 끝없이 길어지지 않게 (kukie-server#150 리뷰)
+        // 갱신은 잠금을 쥔 채 하나씩 부른다 — 수를 묶어 허깅페이스가 느려도 갱신이 끝없이 길어지지 않게
         return offTheList.take(MAX_FAVORITES_OFF_THE_LIST).mapNotNull { modelId ->
             try {
                 huggingFaceClient.fetchModel(modelId).takeIf { it.id == modelId }
@@ -143,7 +143,7 @@ class RefreshModelCandidatesService(
          */
         private const val POPULAR_LIMIT = 200
 
-        /** 순위 밖 즐겨찾기를 따로 받는 수 상한. 넘으면 모델 id 순으로 앞에서 자르고 경고를 남긴다 */
+        /** 순위 밖 즐겨찾기를 따로 받는 수 상한. 넘으면 최근에 넣은 것부터 남기고 경고를 남긴다 */
         private const val MAX_FAVORITES_OFF_THE_LIST = 30
     }
 }
