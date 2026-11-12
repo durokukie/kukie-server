@@ -6,6 +6,7 @@ import com.duro.kukie.serving.domain.ConnectorModelStatus
 import com.duro.kukie.serving.domain.ConnectorModelStatuses
 import com.duro.kukie.serving.domain.DisabledServingModels
 import com.duro.kukie.serving.presentation.dto.request.GatewayModelStatusRequest
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -18,6 +19,8 @@ class ReportConnectorModelStatusService(
     private val credentials: ConnectorCredentials,
     private val disabled: DisabledServingModels,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     @Transactional
     operator fun invoke(request: GatewayModelStatusRequest) {
         val now = utcNow()
@@ -33,11 +36,14 @@ class ReportConnectorModelStatusService(
     // 클러스터에 새로 뜬 모델을 공개 설정 목록에 올린다. 관리자가 켜기 전까지는 API 요청을 막는다.
     private fun addDiscovered(clusterId: UUID, tokenHash: String, ready: List<String>, now: LocalDateTime) {
         if (ready.isEmpty()) return
+        // 대부분의 보고는 새 모델이 없다. 잠그지 않고 먼저 보고, 새 모델이 있을 때만 행을 잠근다.
         val known = credentials.find(clusterId) ?: return
         if (ready.all { it in known.models }) return
         val credential = credentials.findForUpdate(clusterId) ?: return
         if (credential.tokenHash != tokenHash || !credential.expiresAt.isAfter(now)) return
-        val added = ready.filterNot { it in credential.models }.take((MAX_MODELS - credential.models.size).coerceAtLeast(0))
+        val fresh = ready.filterNot { it in credential.models }
+        val added = fresh.take((MAX_MODELS - credential.models.size).coerceAtLeast(0))
+        if (added.size < fresh.size) log.warn("connector model list is full; {} new models were not added (cluster={})", fresh.size - added.size, clusterId)
         if (added.isEmpty()) return
         added.forEach { disabled.setEnabled(clusterId, it, false) }
         credentials.save(credential.copy(models = credential.models + added))
