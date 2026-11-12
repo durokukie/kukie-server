@@ -41,7 +41,7 @@ interface ChatControllerDocs {
 
     @Operation(
         summary = "대화 목록 조회",
-        description = "볼 수 있는 대화를 최근에 바뀐 순으로 조회합니다. clusterId 를 주면 그 클러스터의 대화만 봅니다.",
+        description = "볼 수 있는 대화를 최근에 바뀐 순으로 조회합니다. clusterId 를 주면 그 클러스터의 대화만 봅니다. 대화마다 namespace 가 실려 앱이 namespace 별로 묶습니다.",
     )
     fun getChats(userId: UUID, clusterId: UUID?): ResponseEntity<List<ChatResponse>>
 
