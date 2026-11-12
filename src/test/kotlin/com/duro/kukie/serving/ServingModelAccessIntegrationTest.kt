@@ -43,12 +43,12 @@ class ServingModelAccessIntegrationTest : IntegrationTest() {
         credentials.find(cluster.id)!!.tokenHash shouldBe hash
         info.of(cluster.id).models shouldBe listOf("model-b")
         info.of(cluster.id, true).modelStatuses.first().enabled shouldBe false
-        mockMvc.post("/internal/serving-gateway/authorize") {
-            header("X-Kukie-Internal-Token", "test-gateway-token"); contentType = MediaType.APPLICATION_JSON; content = mapOf("token" to key.token).toJson()
-        }.andExpect { status { isOk() }; jsonPath("$.models[0]") { value("model-b") }; jsonPath("$.models.length()") { value(1) } }
-        mockMvc.post("/internal/serving-gateway/requests") {
-            header("X-Kukie-Internal-Token", "test-gateway-token"); contentType = MediaType.APPLICATION_JSON; content = mapOf("keyId" to key.key.id, "model" to "model-a").toJson()
-        }.andExpect { status { isForbidden() } }
+        mockMvc.post("/internal/serving-gateway/key-snapshot") {
+            header("X-Kukie-Internal-Token", "test-gateway-token"); contentType = MediaType.APPLICATION_JSON; content = "{}"
+        }.andExpect {
+            status { isOk() }; jsonPath("$.keys[0].keyId") { value(key.key.id.toString()) }
+            jsonPath("$.clusterModels.${cluster.id}[0]") { value("model-b") }; jsonPath("$.clusterModels.${cluster.id}.length()") { value(1) }
+        }
         issue(IssueConnectorCredentialCommand(cluster.id, admin.user.id, listOf("model-a", "model-b")))
         info.of(cluster.id).models shouldBe listOf("model-b")
         mockMvc.patch(path) { authorization(admin.accessToken); contentType = MediaType.APPLICATION_JSON; content = """{"model":"model-a","enabled":true}""" }.andExpect { status { isNoContent() } }
