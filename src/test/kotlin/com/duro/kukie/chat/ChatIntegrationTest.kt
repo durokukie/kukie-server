@@ -106,6 +106,7 @@ class ChatIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isCreated() }
             jsonPath("$.session.namespace") { value("llm") }
+            jsonPath("$.conversation.namespace") { value("llm") }
         }.andReturn().response.contentAsString
 
         // then
@@ -527,6 +528,7 @@ class ChatIntegrationTest : IntegrationTest() {
         }.andExpect {
             jsonPath("$[*].id") { value(contains(newer.id.toString(), older.id.toString())) }
             jsonPath("$[1].title") { value("배포 점검") }
+            jsonPath("$[1].namespace") { value(ChatFixture.DEFAULT_NAMESPACE) }
         }
     }
 

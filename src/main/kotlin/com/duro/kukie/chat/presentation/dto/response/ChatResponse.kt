@@ -8,6 +8,8 @@ import java.util.UUID
 data class ChatResponse(
     val id: UUID,
     val clusterId: UUID,
+    /** 대화가 쓰는 namespace. 만들 때 고른 값이고 바뀌지 않는다 */
+    val namespace: String,
     val teamId: UUID,
     val userId: UUID,
     val title: String,
@@ -21,6 +23,7 @@ data class ChatResponse(
         fun of(session: ChatSession, teamId: UUID, running: Boolean) = ChatResponse(
             id = session.id,
             clusterId = session.clusterId,
+            namespace = session.namespace,
             teamId = teamId,
             userId = session.userId,
             title = session.title,
