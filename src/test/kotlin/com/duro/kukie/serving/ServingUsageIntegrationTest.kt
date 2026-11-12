@@ -11,12 +11,17 @@ import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.user.UserFixture
+import com.duro.kukie.serving.presentation.dto.response.*
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.get
 import java.time.Instant
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 class ServingUsageIntegrationTest : IntegrationTest() {
@@ -28,6 +33,7 @@ class ServingUsageIntegrationTest : IntegrationTest() {
     @Autowired private lateinit var finish: CompleteServingUsageService
     @Autowired private lateinit var mine: GetMyServingUsageService
     @Autowired private lateinit var admin: GetAdminServingUsageService
+    @Autowired private lateinit var overview: GetAdminServingUsageOverviewService
     @Autowired private lateinit var clean: ServingUsageMaintenance
     @Autowired private lateinit var jdbc: JdbcTemplate
 
@@ -139,6 +145,75 @@ class ServingUsageIntegrationTest : IntegrationTest() {
         usage.findById(id).get().outcome shouldBe "IN_PROGRESS"
     }
 
+    @Test
+    fun `관리자 요약은 최근 24시간의 합계 분위수 시간별 거절 최근 기록을 준다`() {
+        // given
+        val s = setup("a")
+        val hour = utcNow().truncatedTo(ChronoUnit.HOURS)
+        row(s, "shared", hour, "COMPLETED", 100, 10, 3, 7)
+        row(s, "shared", hour.minusHours(2), "FAILED", 300, 30)
+        row(s, "other", hour, "COMPLETED", 200, null, 1, 2)
+        row(s, "shared", hour.minusHours(1), "IN_PROGRESS", null, null, deadline = utcNow().minusSeconds(1))
+        row(s, "shared", hour.minusHours(24), "COMPLETED", 50, 5)
+        rejection(s, "shared", "concurrency_limit", hour.plusMinutes(1), 4)
+        rejection(s, "other", "model_not_allowed", hour.minusHours(2), 1)
+        rejection(s, null, "connector_busy", hour.minusHours(30), 2)
+        // when
+        val all = overview(s.identity.clusterId, s.admin.user.id, null)
+        val shared = overview(s.identity.clusterId, s.admin.user.id, "shared")
+        // then
+        all.from shouldBe hour.minusHours(23); all.model shouldBe null; all.models shouldBe listOf("other", "shared")
+        all.totals shouldBe ServingUsageOverviewTotals(4, 2, 2, 0, 5, 200, 290, 20, 29, 4, 9)
+        all.rejectedByReason shouldBe listOf(ServingRejectionCount("concurrency_limit", 4), ServingRejectionCount("model_not_allowed", 1))
+        all.hourly.size shouldBe 24
+        all.hourly.first() shouldBe ServingUsageHour(hour.minusHours(23), 0, 0, 0, null)
+        all.hourly[21] shouldBe ServingUsageHour(hour.minusHours(2), 1, 1, 1, 30)
+        all.hourly[22] shouldBe ServingUsageHour(hour.minusHours(1), 1, 1, 0, null)
+        all.hourly[23] shouldBe ServingUsageHour(hour, 2, 0, 4, 10)
+        all.recent.map { it.outcome } shouldBe listOf("COMPLETED", "COMPLETED", "INTERRUPTED", "FAILED")
+        all.recent.last().let { it.status shouldBe 500; it.durationMs shouldBe 300; it.ttfbMs shouldBe 30; it.userEmail shouldBe s.user.user.email.value; it.inputTokens shouldBe null }
+        shared.model shouldBe "shared"; shared.models shouldBe listOf("other", "shared")
+        shared.totals.requests shouldBe 3; shared.totals.rejected shouldBe 4; shared.recent.size shouldBe 3
+        shared.rejectedByReason shouldBe listOf(ServingRejectionCount("concurrency_limit", 4))
+        // 기존 사용량 조회는 거절을 요청으로 세지 않는다
+        admin(s.identity.clusterId, s.admin.user.id, null, hour.toLocalDate().minusDays(1), null).totals.requests shouldBe 5
+        mockMvc.get("/clusters/${s.identity.clusterId}/serving/usage/overview?model=other") { authorization(s.admin.accessToken) }.andExpect {
+            status { isOk() }
+            jsonPath("$.model") { value("other") }; jsonPath("$.totals.requests") { value(1) }; jsonPath("$.totals.rejected") { value(1) }
+            jsonPath("$.totals.ttfbP50Ms") { value(nullValue()) }; jsonPath("$.hourly.length()") { value(24) }; jsonPath("$.recent[0].userEmail") { value(s.user.user.email.value) }
+        }
+    }
+
+    @Test
+    fun `기록이 없으면 분위수는 비우고 시간별은 0으로 채우며 관리자만 볼 수 있다`() {
+        // given
+        val a = setup("a")
+        val b = setup("b")
+        // when
+        val result = overview(a.identity.clusterId, a.admin.user.id, null)
+        // then
+        result.totals shouldBe ServingUsageOverviewTotals(0, 0, 0, 0, 0, null, null, null, null, 0, 0)
+        result.hourly.size shouldBe 24; result.hourly.all { it.requests == 0L && it.rejected == 0L } shouldBe true
+        result.recent shouldBe emptyList(); result.models shouldBe emptyList()
+        for (token in listOf(a.user.accessToken, b.admin.accessToken)) {
+            val expected = mockMvc.get("/clusters/${a.identity.clusterId}/serving/usage") { authorization(token) }.andReturn().response.status
+            expected shouldNotBe 200
+            mockMvc.get("/clusters/${a.identity.clusterId}/serving/usage/overview") { authorization(token) }.andExpect { status { isEqualTo(expected) } }
+        }
+    }
+
+    private fun row(s: Setup, model: String?, startedAt: LocalDateTime, outcome: String, duration: Long?, ttfb: Long?, input: Long? = null, output: Long? = null,
+        deadline: LocalDateTime = startedAt.plusMinutes(10)) {
+        jdbc.update("""insert into tbl_serving_usage(id, key_id, access_id, cluster_id, user_id, model, started_at, deadline_at, finished_at, duration_millis,
+            http_status, outcome, input_tokens, output_tokens, usage_missing, created_at, updated_at, ttfb_millis) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            UUID.randomUUID(), s.identity.keyId, s.identity.accessId, s.identity.clusterId, s.identity.userId, model, startedAt, deadline,
+            duration?.let { startedAt.plusNanos(it * 1_000_000) }, duration, if (outcome == "FAILED") 500 else if (duration != null) 200 else null,
+            outcome, input, output, input == null, utcNow(), utcNow(), ttfb)
+    }
+    private fun rejection(s: Setup, model: String?, reason: String, minute: LocalDateTime, count: Int) {
+        jdbc.update("insert into tbl_serving_rejection(id, key_id, access_id, cluster_id, user_id, model, reason, minute, count, created_at) values (?,?,?,?,?,?,?,?,?,?)",
+            UUID.randomUUID(), s.identity.keyId, s.identity.accessId, s.identity.clusterId, s.identity.userId, model, reason, minute, count, utcNow())
+    }
     private fun event(s: Setup, id: UUID) = ServingUsageObservation(s.identity, "shared", Instant.now(), 100, 200, "completed", 3, 7, false, id, 200)
     private fun setup(label: String, client: LoggedInUser? = null): Setup {
         val admin = loggedInUser(UserFixture.user(email = "$label-admin@example.com"))

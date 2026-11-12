@@ -44,4 +44,6 @@ class ServingUsage(keyId: UUID, accessId: UUID, clusterId: UUID, userId: UUID, m
         protected set
     @Column(name = "usage_missing", nullable = false) var usageMissing = model != null
         protected set
+    @Column(name = "ttfb_millis") var ttfbMillis: Long? = null
+        protected set
 }

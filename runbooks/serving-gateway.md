@@ -7,7 +7,11 @@ Go 저장소: `durokukie/kukie-serving-gateway`. 계약은 해당 저장소 `doc
 - 게이트웨이 전용 내부 자격 교체는 서버/게이트웨이에서 조율한다. 다중 키 무중단 회전은 후속이다.
 - 옛 키별 API `/authorize`·`/requests`·`/requests/{requestId}/finish`는 삭제됐다(DURO-223). 게이트웨이는 아래 `/key-snapshot`과 `/usage`만 쓴다.
 - `/key-snapshot`(DURO-223)은 지금 쓸 수 있는 키(폐기·만료되지 않고 이용 권한이 ACTIVE인 키)의 해시·keyId·clusterId·만료와 클러스터별 허용 모델을 한 번에 준다. 키 원문은 저장하지 않으므로 응답에도 없다. 50,000개를 넘으면 500(`SERVING_KEY_SNAPSHOT_TOO_LARGE`)으로 거절한다.
-- `/usage`(DURO-223)는 끝난 요청 1~500건을 한 번에 받는다. requestId가 행 ID라 재전송해도 한 행만 남는다. 폐기·만료된 키의 기록도 저장하며, 키가 없거나 시작 시각이 1일 전보다 오래됐거나 5분 넘게 미래면 그 건만 건너뛴다.
+- `/usage`(DURO-223)는 끝난 요청 `records`를 최대 500건 한 번에 받는다. requestId가 행 ID라 재전송해도 한 행만 남는다. 폐기·만료된 키의 기록도 저장하며, 키가 없거나 시작 시각이 1일 전보다 오래됐거나 5분 넘게 미래면 그 건만 건너뛴다.
+  - 레코드의 `ttfbMillis`(DURO-226)는 첫 바이트까지 걸린 밀리초다. 0 이상 정수 또는 null이며, 옛 게이트웨이처럼 빠져도 받는다.
+  - 같은 본문의 `rejections`(DURO-226)는 게이트웨이가 중계 전에 거절한 요청을 키·모델·사유·분 단위로 센 것이다. 각 항목은 `{id, keyId, model(문자열 또는 null, 최대 200자), reason, minute(RFC3339 UTC), count(1 이상)}`이고 최대 500건이다. 없으면 빠져도 된다. 거절만 보낼 때는 `records`를 빈 배열로 보낸다. 둘 다 비면 400이다.
+  - reason은 `concurrency_limit`·`connector_busy`·`model_not_allowed`·`invalid_request`·`request_too_large`·`upstream_unavailable` 중 하나다. 그 밖의 값이 하나라도 있으면 배치 전체를 400으로 거절한다. minute는 서버가 분 단위로 자른다.
+  - 거절도 id가 행 ID라 재전송해도 한 행만 남고, 키가 없거나 minute가 사용량과 같은 허용 시간 밖이면 그 건만 건너뛴다.
 - 현재 모델 목록은 기존 ServingEndpoint 설정만 사용한다. 커넥터의 모델 등록과 EKS 자동 발견 통합은 이 변경에 포함하지 않는다.
 
 기존 Kotlin 중계·EKS 작업과 분리된 내부 계약 추가다. 이 API를 배포하는 것만으로 Go 게이트웨이·커넥터가 실행되거나 공통 URL 라우팅이 바뀌지 않는다. 실제 GPU와 운영 변경은 수행하지 않았다.

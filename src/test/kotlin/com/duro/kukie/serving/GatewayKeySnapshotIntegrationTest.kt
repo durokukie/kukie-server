@@ -154,6 +154,63 @@ class GatewayKeySnapshotIntegrationTest : IntegrationTest() {
         usage.count() shouldBe 500
     }
 
+    @Test
+    fun `첫 바이트 시간은 있으면 저장하고 옛 게이트웨이처럼 빠지면 비운다`() {
+        // given
+        val s = setup("a")
+        val key = issue(IssueServingApiKeyCommand(s.first.id, s.second, "test", 90)).key
+        val withTtfb = UUID.randomUUID(); val without = UUID.randomUUID()
+        // when
+        post("/usage", mapOf("records" to listOf(record(key.id, withTtfb) + ("ttfbMillis" to 250), record(key.id, without)))).andExpect { status { isNoContent() } }
+        // then
+        usage.findById(withTtfb).get().ttfbMillis shouldBe 250
+        usage.findById(without).get().ttfbMillis shouldBe null
+    }
+
+    @Test
+    fun `거절 집계를 저장하고 같은 id를 다시 보내도 한 행만 남긴다`() {
+        // given
+        val s = setup("a")
+        val key = issue(IssueServingApiKeyCommand(s.first.id, s.second, "test", 90)).key
+        val id = UUID.randomUUID()
+        val minute = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+        val body = mapOf("records" to emptyList<Any>(), "rejections" to listOf(rejection(key.id, id, minute.plusSeconds(17)), rejection(UUID.randomUUID())))
+        // when
+        post("/usage", body).andExpect { status { isNoContent() } }
+        post("/usage", body).andExpect { status { isNoContent() } }
+        // then
+        jdbc.queryForMap("select key_id, access_id, cluster_id, user_id, model, reason, minute, count from tbl_serving_rejection").let {
+            it["key_id"] shouldBe key.id; it["access_id"] shouldBe s.first.id; it["cluster_id"] shouldBe s.first.clusterId; it["user_id"] shouldBe s.second
+            it["model"] shouldBe "shared"; it["reason"] shouldBe "concurrency_limit"; it["count"] shouldBe 3
+            (it["minute"] as java.sql.Timestamp).toLocalDateTime() shouldBe java.time.LocalDateTime.ofInstant(minute, java.time.ZoneOffset.UTC)
+        }
+        jdbc.queryForObject("select count(*) from tbl_serving_rejection where id = ?", Long::class.java, id) shouldBe 1
+        usage.count() shouldBe 0
+    }
+
+    @Test
+    fun `잘못된 거절 집계와 500건을 넘는 거절 배치는 400으로 거절한다`() {
+        // given
+        val s = setup("a")
+        val key = issue(IssueServingApiKeyCommand(s.first.id, s.second, "test", 90)).key
+        // when then
+        for (bad in listOf(
+            rejection(key.id) + ("reason" to "rate_limit"),
+            rejection(key.id) + ("count" to 0),
+            rejection(key.id) + ("model" to "m".repeat(201)),
+            rejection(key.id) - "id",
+        )) post("/usage", mapOf("records" to listOf(record(key.id)), "rejections" to listOf(bad))).andExpect { status { isBadRequest() } }
+        post("/usage", mapOf("records" to listOf(record(key.id) + ("ttfbMillis" to -1)))).andExpect { status { isBadRequest() } }
+        post("/usage", mapOf("records" to emptyList<Any>(), "rejections" to listOf(null))).andExpect { status { isBadRequest() } }
+        post("/usage", mapOf("records" to emptyList<Any>(), "rejections" to (1..501).map { rejection(key.id) })).andExpect { status { isBadRequest() } }
+        usage.count() shouldBe 0
+        jdbc.queryForObject("select count(*) from tbl_serving_rejection", Long::class.java) shouldBe 0
+    }
+
+    private fun rejection(keyId: UUID, id: UUID = UUID.randomUUID(), minute: Instant = Instant.now()): Map<String, Any?> = mapOf(
+        "id" to id.toString(), "keyId" to keyId.toString(), "model" to "shared", "reason" to "concurrency_limit", "minute" to minute.toString(), "count" to 3,
+    )
+
     private fun post(path: String, body: Any, serviceToken: String = "test-gateway-token") = mockMvc.post("/internal/serving-gateway$path") {
         header("X-Kukie-Internal-Token", serviceToken); contentType = MediaType.APPLICATION_JSON; content = body.toJson()
     }

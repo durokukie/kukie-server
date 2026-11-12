@@ -20,12 +20,25 @@ usage가 없거나 스트림/요청이 정상 완료되지 않았으면 `usageMi
 | --- | --- |
 | GET `/serving/accesses/{accessId}/usage?from=YYYY-MM-DD&to=YYYY-MM-DD` | 본인이 소유한 해당 고객 클러스터의 사용 기록. 타 사용자·타 회사 제외 |
 | GET `/clusters/{clusterId}/serving/usage?from=YYYY-MM-DD&to=YYYY-MM-DD&user={userId}` | 해당 팀 ADMIN만 전체 또는 사용자별 필터 |
+| GET `/clusters/{clusterId}/serving/usage/overview?model={model}` | 해당 팀 ADMIN만. 최근 24시간 요약(아래) |
 | GET `/serving/accesses/{accessId}/info` | 본인 ACTIVE 권한의 연결 설정 여부·공개 API 주소·허용 모델·현재 운영 제한 |
 | GET `/clusters/{clusterId}/serving/info` | 해당 ADMIN용 동일 공개 정보. 내부 카운터 주소/서비스 키 없음 |
 
 기본 최근 7일, 최대 최근 90개 UTC 날짜(오늘 포함), 양 끝 날짜를 포함한다. 미래·역순·보관 범위 이전은 400이다. 응답은 `from,to,asOf,lastRecordedAt,retentionDays,totals,daily,byKey,byModel,byUser`다. totals는 요청·완료·오류/미완료·처리 중·확인된 입력/출력 토큰·집계 누락 건수다. 사용자 응답의 byUser는 빈 배열이다. 다중 집계는 REPEATABLE_READ의 같은 DB 스냅샷에서 읽는다. 갱신은 요청 종료 기록 커밋 후이며 화면의 새로고침으로 다시 조회한다.
 
 기본 90일(오늘 및 이전 89일)을 보관하고 UTC 정시 작업으로 이전 기록을 제거한다. 재초대 시 같은 계정·같은 클러스터의 보관 기간 내 과거 사용량을 계속 조회한다. 취소된 과거 권한의 본인 기록 조회는 허용하되 새 호출·키 발급은 거절한다. 클러스터·사용자·키/이용 권한의 물리 삭제는 FK cascade로 관련 기록도 제거한다. 단순 키 폐기/권한 취소는 기록을 삭제하지 않는다.
+
+## 최근 24시간 요약 (DURO-226)
+
+V33은 `tbl_serving_usage.ttfb_millis`(첫 바이트까지 밀리초, 옛 기록과 옛 게이트웨이 기록은 비어 있음)와 `tbl_serving_rejection`을 더한다. 거절 표는 게이트웨이가 중계 전에 거절한 요청을 키·모델·사유·UTC 분 단위로 센 것이다. 거절은 사용량 행이 아니므로 `/serving/usage`의 requests와 요약의 `totals.requests`에 더하지 않고 `rejected`로 따로 센다. 키·이용 권한·클러스터·사용자를 지우면 FK cascade로 함께 지운다. 같은 90일 정리 작업이 minute 기준으로 지운다.
+
+`/clusters/{clusterId}/serving/usage/overview`는 현재 시를 포함한 최근 24개 UTC 시간(시작은 현재 정시−23시간)을 본다. `model`을 주면 사용량과 거절을 그 모델로 좁힌다. 응답은 `asOf,from,model,models,totals,rejectedByReason,hourly,recent`다.
+
+- `models`는 이 기간에 사용량이나 거절에 나온 모델 이름이다. model 필터와 관계없이 정렬해서 준다.
+- `totals`는 requests·completed·failed·inProgress(기존 조회와 같은 규칙. deadline이 지난 IN_PROGRESS는 INTERRUPTED로 보고 실패로 센다), rejected, durationP50Ms·durationP95Ms(끝난 요청), ttfbP50Ms·ttfbP95Ms(ttfb가 있는 요청), inputTokens·outputTokens다. 분위수는 `percentile_cont`를 반올림한 밀리초이고 대상이 없으면 null이다.
+- `rejectedByReason`은 사유별 거절 수를 많은 순으로 준다.
+- `hourly`는 오래된 시간부터 정확히 24개이며 비는 시간은 0(ttfbP95Ms는 null)으로 채운다.
+- `recent`는 이 기간의 최근 20건을 시작 시각 역순으로 준다. 상태는 위와 같은 실제 상태, status는 http_status, 사용자는 이메일이다.
 
 ## 공개 주소·한도
 
