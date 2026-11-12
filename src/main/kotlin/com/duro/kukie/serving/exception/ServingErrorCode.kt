@@ -15,6 +15,7 @@ enum class ServingErrorCode(override val status: HttpStatus, override val messag
     SERVING_DESTINATION_REJECTED(HttpStatus.BAD_REQUEST, "허용된 공개 HTTPS 카운터 주소가 아닙니다."),
     SERVING_ENDPOINT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "API 제공 대상이 연결되지 않았습니다."),
     SERVING_CONNECTOR_REGISTRY_INVALID(HttpStatus.INTERNAL_SERVER_ERROR, "커넥터 등록 정보를 확인할 수 없습니다."),
+    SERVING_KEY_SNAPSHOT_TOO_LARGE(HttpStatus.INTERNAL_SERVER_ERROR, "게이트웨이 키 목록이 허용 크기를 넘었습니다."),
     SERVING_CONNECTOR_CREDENTIAL_INVALID(HttpStatus.UNAUTHORIZED, "만료되었거나 폐기된 커넥터 자격입니다."),
     SERVING_CONNECTOR_RENEW_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "커넥터 자격을 너무 자주 갱신했습니다."),
     SERVING_CONNECTOR_LIMIT_REACHED(HttpStatus.TOO_MANY_REQUESTS, "등록 가능한 커넥터 수를 초과했습니다."),
