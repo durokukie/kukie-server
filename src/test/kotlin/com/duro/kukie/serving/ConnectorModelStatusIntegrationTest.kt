@@ -4,6 +4,7 @@ import com.duro.kukie.cluster.ClusterFixture
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.serving.application.*
 import com.duro.kukie.serving.application.port.`in`.IssueConnectorCredentialCommand
+import com.duro.kukie.serving.application.port.`in`.UpdateServingModelAccessCommand
 import com.duro.kukie.serving.domain.ConnectorModelStatuses
 import com.duro.kukie.serving.domain.ConnectorCredentials
 import com.duro.kukie.support.IntegrationTest
@@ -27,11 +28,14 @@ class ConnectorModelStatusIntegrationTest : IntegrationTest() {
     @Autowired private lateinit var info: ServingInfo
     @Autowired private lateinit var statuses: ConnectorModelStatuses
 
-    private fun report(cluster: UUID, hash: String, checked: Instant?, connected: Boolean = true) =
+    @Autowired private lateinit var modelAccess: GetServingModelAccessService
+    @Autowired private lateinit var setModelAccess: UpdateServingModelAccessService
+
+    private fun report(cluster: UUID, hash: String, checked: Instant?, connected: Boolean = true, ready: List<String> = listOf("ready", "not-allowed")) =
         mockMvc.post("/internal/serving-gateway/model-status") {
             header("X-Kukie-Internal-Token", "test-gateway-token")
             contentType = MediaType.APPLICATION_JSON
-            content = mapOf("statuses" to listOf(mapOf("clusterId" to cluster, "tokenSha256" to hash, "connected" to connected, "checkedAt" to checked?.toString(), "readyModels" to listOf("ready", "not-allowed")))).toJson()
+            content = mapOf("statuses" to listOf(mapOf("clusterId" to cluster, "tokenSha256" to hash, "connected" to connected, "checkedAt" to checked?.toString(), "readyModels" to ready))).toJson()
         }.andExpect { status { isNoContent() } }
 
     @Test
@@ -76,5 +80,27 @@ class ConnectorModelStatusIntegrationTest : IntegrationTest() {
                 contentType = MediaType.APPLICATION_JSON; content = body
             }.andExpect { status { isBadRequest() } }
         }
+    }
+
+    @Test
+    fun `새로 뜬 모델은 공개 설정 목록에 차단 상태로 올라오고 켜면 쓸 수 있다`() {
+        val admin = loggedInUser(UserFixture.user())
+        val team = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val cluster = clusters.save(ClusterFixture.cluster(admin.user.id, team, name = "discover"))
+        issue(IssueConnectorCredentialCommand(cluster.id, admin.user.id, listOf("old")))
+        val hash = credentials.find(cluster.id)!!.tokenHash
+
+        report(cluster.id, "b".repeat(64), Instant.now(), ready = listOf("old", "spoofed"))
+        report(cluster.id, hash, null, ready = listOf("old", "stale"))
+        report(cluster.id, hash, Instant.now(), connected = false, ready = listOf("old", "offline"))
+        credentials.find(cluster.id)!!.models shouldBe listOf("old")
+
+        report(cluster.id, hash, Instant.now(), ready = listOf("old", "Qwen/Qwen3-32B"))
+        modelAccess(cluster.id, admin.user.id) shouldBe listOf(ServingModelAccess("old", true), ServingModelAccess("Qwen/Qwen3-32B", false))
+        info.of(cluster.id).models shouldBe listOf("old")
+
+        setModelAccess(UpdateServingModelAccessCommand(cluster.id, admin.user.id, "Qwen/Qwen3-32B", true))
+        report(cluster.id, hash, Instant.now(), ready = listOf("old", "Qwen/Qwen3-32B"))
+        info.of(cluster.id).modelStatuses.map { it.id to it.state } shouldBe listOf("old" to "AVAILABLE", "Qwen/Qwen3-32B" to "AVAILABLE")
     }
 }
