@@ -6,6 +6,7 @@ import com.duro.kukie.modelcatalog.ModelCatalogFixture.model
 import com.duro.kukie.modelcatalog.domain.GatedAccess
 import com.duro.kukie.modelcatalog.domain.ModelCandidate
 import com.duro.kukie.modelcatalog.domain.ModelCandidateRepository
+import com.duro.kukie.modelcatalog.domain.ModelCandidateRules
 import com.duro.kukie.modelcatalog.domain.ModelFavorite
 import com.duro.kukie.modelcatalog.domain.ModelFavoriteRepository
 import com.duro.kukie.cluster.ClusterFixture
@@ -59,10 +60,10 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         val user = teamAdmin()
         fakeHuggingFaceClient.popular = listOf(
             model("OBLITERATUS/gpt-oss-20b-obliterated"),
-            model("Qwen/Qwen3-32B", paramsB = 32.8, usedStorageGb = 66.0, weightGb = 66.0, license = "llama3.1"),
-            model("KRAFTON/Raon-1-mini-preview", paramsB = 28.8, architecture = "Raon1MiniForCausalLM", gated = GatedAccess.AUTO),
-            gptOss120b(),
-            gptOss20b(),
+            model("Qwen/Qwen3-32B", paramsB = 32.8, usedStorageGb = 66.0, weightGb = 66.0, license = "llama3.1", downloads = 500),
+            model("KRAFTON/Raon-1-mini-preview", paramsB = 28.8, architecture = "Raon1MiniForCausalLM", gated = GatedAccess.AUTO, downloads = 10),
+            gptOss120b().copy(downloads = 900),
+            gptOss20b().copy(downloads = 800),
         )
 
         // when & then
@@ -131,7 +132,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `갱신은 다운로드 순 목록을 200개 받는다`() {
+    fun `갱신은 원작자 회사마다 다운로드 순 목록을 50개씩 받는다`() {
         // given
         val user = teamAdmin()
         fakeHuggingFaceClient.popular = listOf(gptOss20b())
@@ -140,7 +141,28 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         refresh(user.accessToken)
 
         // then
-        fakeHuggingFaceClient.lastLimit shouldBe 200
+        fakeHuggingFaceClient.authors shouldContainExactly ModelCandidateRules.AUTHOR_ACCOUNTS
+        fakeHuggingFaceClient.lastLimit shouldBe 50
+    }
+
+    @Test
+    fun `한 회사 모델은 3개까지만 남기고 검증·즐겨찾기 모델은 따로 남긴다`() {
+        // given
+        val user = teamAdmin()
+        favorite(user, "Qwen/q-favorite")
+        fakeHuggingFaceClient.popular = (1..5).map { model("Qwen/q-$it", downloads = 100L - it) } +
+            model("Qwen/q-favorite", downloads = 1) + model("upstage/solar", downloads = 50) + gptOss20b()
+
+        // when
+        refresh(user.accessToken).andExpect { status { isOk() } }
+
+        // then
+        modelCandidateRepository.findAllByOrderByDisplayOrder().map { it.modelId }.shouldContainExactly(
+            "Qwen/q-1", "upstage/solar", "openai/gpt-oss-20b",
+            "Qwen/q-2", "openai/gpt-oss-120b",
+            "Qwen/q-3",
+            "Qwen/q-favorite",
+        )
     }
 
     @Test
@@ -241,7 +263,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         fakeHuggingFaceClient.popular = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
         refresh(user.accessToken)
         val firstCollectedAt = saved("openai/gpt-oss-20b").collectedAt
-        fakeHuggingFaceClient.popular = listOf(model("google/g-30B", paramsB = 30.0), gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(model("google/g-30B", paramsB = 30.0, downloads = 2), gptOss20b())
         redisTemplate.delete(REFRESH_LOCK_KEY)
 
         // when

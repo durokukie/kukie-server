@@ -16,6 +16,7 @@ data class CollectedModel(
     val fitsGpus: List<String> = emptyList(),
     val likes: Int,
     val registeredOn: LocalDate?,
+    val downloads: Long = 0,
 )
 
 data class ModelSelection(
@@ -24,7 +25,7 @@ data class ModelSelection(
     val dropped: Map<String, String>,
 )
 
-/** 허깅페이스 다운로드 순 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않고 vLLM 이 띄울 수 있는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
+/** 회사별 허깅페이스 다운로드 순 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않고 vLLM 이 띄울 수 있는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
 object ModelCandidateRules {
 
     const val MIN_PARAMS_B = 20.0
@@ -36,13 +37,16 @@ object ModelCandidateRules {
      */
     val GPU_MAX_WEIGHT_GB: Map<String, Double> = linkedMapOf("l40s" to 35.0, "pro6000" to 73.0)
 
-    val AUTHORS: Set<String> = listOf(
+    /** 허깅페이스 계정 이름 그대로. 갱신 때 이 계정마다 목록을 따로 받는다. */
+    val AUTHOR_ACCOUNTS: List<String> = listOf(
         "Qwen", "deepseek-ai", "zai-org", "KRAFTON", "openai", "google", "mistralai", "meta-llama",
         "naver-hyperclovax", "LGAI-EXAONE", "kakaocorp", "skt", "upstage",
         "XiaomiMiMo", "MiniMaxAI", "moonshotai", "inclusionAI", "stepfun-ai", "baidu", "tencent",
         "nvidia", "microsoft", "ibm-granite", "allenai", "CohereLabs",
         "LiquidAI", "Nanbeige", "RecursiveSI", "reflection",
-    ).map(String::lowercase).toSet()
+    )
+
+    val AUTHORS: Set<String> = AUTHOR_ACCOUNTS.map(String::lowercase).toSet()
 
     private val VARIANT_PATTERNS = listOf(
         "GGUF", "MLX", "AWQ", "GPTQ", "EXL2", "EXL3", "uncensored", "abliterated", "obliterated", "heretic",
@@ -63,6 +67,20 @@ object ModelCandidateRules {
             if (reason == null) kept += collected(model) else dropped[model.id] = reason
         }
         return ModelSelection(kept, dropped)
+    }
+
+    /**
+     * 한 회사가 목록을 채우지 않게 회사마다 다운로드가 많은 앞 perAuthor 개만 남긴다. pinned(검증·즐겨찾기 모델)는 수에 넣지 않고 늘 남긴다.
+     * 순서는 회사별 1등끼리, 2등끼리… 로 묶고 같은 등수 안에서는 다운로드가 많은 쪽이 앞이다.
+     */
+    fun spreadAuthors(models: List<CollectedModel>, perAuthor: Int, pinned: Set<String>): List<CollectedModel> {
+        val ranked = models.groupBy { it.id.substringBefore("/").lowercase() }.values.flatMap { sameAuthor ->
+            val byDownloads = sameAuthor.sortedByDescending { it.downloads }
+            val capped = byDownloads.filterNot { it.id in pinned }.take(perAuthor).map { it.id }.toSet()
+            byDownloads.filter { it.id in pinned || it.id in capped }.mapIndexed { rank, model -> rank to model }
+        }
+        return ranked.sortedWith(compareBy<Pair<Int, CollectedModel>> { it.first }.thenByDescending { it.second.downloads })
+            .map { it.second }
     }
 
     /** 모델별로 받은 파일 크기로 내려받을 크기와 들어가는 GPU 를 채운다. 가중치 크기를 모르면 들어가는 GPU 가 없다고 본다. */
@@ -117,6 +135,7 @@ object ModelCandidateRules {
             gated = model.gated,
             likes = model.likes,
             registeredOn = registeredOn(model.createdAt),
+            downloads = model.downloads,
         )
     }
 

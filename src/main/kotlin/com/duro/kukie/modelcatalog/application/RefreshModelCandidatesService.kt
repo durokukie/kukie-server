@@ -71,17 +71,20 @@ class RefreshModelCandidatesService(
     }
 
     private fun collect(): List<CollectedModel> {
-        val listing = huggingFaceClient.fetchPopular(POPULAR_LIMIT)
+        // 회사마다 따로 받는다 — 전체 다운로드 순으로 받으면 상위가 몇 회사 모델로 채워져 나머지 회사가 목록에 들지 못한다
+        val listing = ModelCandidateRules.AUTHOR_ACCOUNTS.flatMap { huggingFaceClient.fetchPopular(it, PER_AUTHOR_LIMIT) }
         if (listing.isEmpty()) throw refreshFailed("허깅페이스가 빈 목록을 돌려줬습니다")
 
+        val favoriteIds = modelFavoriteRepository.findAllModelIds()
         val verified = verifiedModelsOffTheList(listing)
-        val selection = ModelCandidateRules.select(listing + verified + favoritesOffTheList(listing + verified))
+        val selection = ModelCandidateRules.select(listing + verified + favoritesOffTheList(favoriteIds, listing + verified))
         VerifiedModels.MODELS.keys.firstOrNull { it in selection.dropped }?.let {
             throw refreshFailed("검증된 모델이 규칙에 걸렸습니다: $it: ${selection.dropped[it]}")
         }
-        log.info("모델 후보를 모았습니다: 후보={}, 걸러짐={}", selection.kept.size, selection.dropped.size)
+        val spread = ModelCandidateRules.spreadAuthors(selection.kept, PER_AUTHOR, VerifiedModels.MODELS.keys + favoriteIds)
+        log.info("모델 후보를 모았습니다: 후보={}, 걸러짐={}, 회사별 수 넘김={}", spread.size, selection.dropped.size, selection.kept.size - spread.size)
 
-        val collected = selection.kept.map { ModelCandidateRules.withRepoFiles(it, huggingFaceClient.fetchModel(it.id)) }
+        val collected = spread.map { ModelCandidateRules.withRepoFiles(it, huggingFaceClient.fetchModel(it.id)) }
         collected.firstOrNull { VerifiedModels.MODELS[it.id]?.let { verified -> !ModelCandidateRules.fitsMeasured(it, verified) } == true }?.let {
             throw refreshFailed("검증된 모델이 실측한 GPU 에 들어가지 않는다고 나옵니다: ${it.id}, 가중치 ${it.weightGb}GB")
         }
@@ -101,9 +104,9 @@ class RefreshModelCandidatesService(
      * 어느 클러스터든 즐겨찾기한 모델 중 목록에 없는 것을 따로 받는다. 검증 모델과 달리 하나를 못 읽어도(허깅페이스에서
      * 지워짐·이름 바뀜) 갱신을 실패시키지 않고 그 모델만 뺀다. 규칙에 걸리면 다른 후보처럼 빠진다.
      */
-    private fun favoritesOffTheList(listing: List<HuggingFaceModel>): List<HuggingFaceModel> {
+    private fun favoritesOffTheList(favoriteIds: List<String>, listing: List<HuggingFaceModel>): List<HuggingFaceModel> {
         val listed = listing.map { it.id }.toSet()
-        val offTheList = modelFavoriteRepository.findAllModelIds().filter { it !in listed }
+        val offTheList = favoriteIds.filter { it !in listed }
         if (offTheList.size > MAX_FAVORITES_OFF_THE_LIST) {
             log.warn("순위 밖 즐겨찾기가 {}개라 앞 {}개만 받습니다", offTheList.size, MAX_FAVORITES_OFF_THE_LIST)
         }
@@ -138,10 +141,13 @@ class RefreshModelCandidatesService(
 
     companion object {
         /**
-         * 다운로드 상위는 1~14B 소형 모델이 대부분이라 크기 규칙(20~130B)에서 많이 빠진다. 2026-11-12 실제 목록에서 100개면 14개,
-         * 200개면 19개, 500개면 26개가 남았다. 남은 후보마다 단건 API 를 한 번씩 더 부르므로 200 에 둔다.
+         * 회사마다 받는 다운로드 순 목록 수. 회사 목록 상위도 소형 모델이 많아 크기 규칙(20~130B)에서 많이 빠진다.
+         * 2026-11-13 실제 목록에서 50개면 29곳 중 25곳이 1개 이상 남았다.
          */
-        private const val POPULAR_LIMIT = 200
+        private const val PER_AUTHOR_LIMIT = 50
+
+        /** 회사마다 남기는 후보 수. 남은 후보마다 단건 API 를 한 번씩 더 부르므로 29곳 × 3 = 87번 안쪽으로 묶는다. */
+        private const val PER_AUTHOR = 3
 
         /** 순위 밖 즐겨찾기를 따로 받는 수 상한. 넘으면 최근에 넣은 것부터 남기고 경고를 남긴다 */
         private const val MAX_FAVORITES_OFF_THE_LIST = 30
