@@ -48,7 +48,10 @@ interface HostingControllerDocs {
     @Operation(
         summary = "호스팅 앱 상세",
         description = "앱과 지금 세대의 배포 이력(최신순 20건)을 줍니다. 배포 기록은 30일 뒤 지워지므로 이력이 비어 있어도 app.latest 로 " +
-            "마지막 배포를 보여 줄 수 있습니다. 진행 중인 배포의 updatedAt 이 30분 넘게 지났으면 응답 없음으로 봅니다.",
+            "마지막 배포를 보여 줄 수 있습니다. 진행 중인 배포의 updatedAt 이 30분 넘게 지났으면 응답 없음으로 봅니다. " +
+            "배포의 build 는 어떻게 빌드됐는지입니다. method 가 auto 면 레포에 Dockerfile 이 없어 배포기가 언어와 시작 명령(build.start)을 " +
+            "알아낸 것이고, 틀렸으면 레포의 kukie.json 에 start 를 적어 고칩니다. failure.code 에 not_detected(무슨 앱인지 알아내지 못함), " +
+            "no_start(시작 명령을 찾지 못함)가 더해졌습니다.",
     )
     @ApiErrorResponses(HostingAppNotFoundException::class, HostingUnavailableException::class, HostingDisabledException::class)
     fun getApp(userId: UUID, app: String): ResponseEntity<HostingAppDetailResponse>

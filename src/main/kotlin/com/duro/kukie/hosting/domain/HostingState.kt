@@ -17,7 +17,19 @@ data class HostingRepo(val id: Long? = null, val fullName: String)
 
 data class HostingCommit(val sha: String, val message: String? = null)
 
-data class HostingConfig(val port: Int, val size: String, val source: String)
+/** start 는 레포의 kukie.json 이 정한 시작 명령. Dockerfile 이 없는 레포에서만 쓴다. */
+data class HostingConfig(val port: Int, val size: String, val source: String, val start: String? = null)
+
+/**
+ * 커밋이 어떻게 빌드됐는지. method 는 dockerfile(레포의 Dockerfile) 또는 auto(Dockerfile 이 없어 배포기가 알아냄).
+ * 나머지는 auto 일 때 알아낸 언어·버전과 앱을 시작하는 명령이다. 레포가 정할 수 있는 값이라 보여 주기만 한다.
+ */
+data class HostingBuild(
+    val method: String,
+    val providers: List<String>? = null,
+    val versions: Map<String, String>? = null,
+    val start: String? = null,
+)
 
 data class HostingFailure(val code: String, val message: String)
 
@@ -49,6 +61,8 @@ data class HostingDeployment(
     val commandId: String? = null,
     val commit: HostingCommit,
     val config: HostingConfig,
+    /** 지금 빌드한 배포에만 있다. 이미 빌드한 커밋을 다시 쓴 배포(imageReused)에는 없다. */
+    val build: HostingBuild? = null,
     val imageReused: Boolean,
     val hasLog: Boolean,
     val failure: HostingFailure? = null,
