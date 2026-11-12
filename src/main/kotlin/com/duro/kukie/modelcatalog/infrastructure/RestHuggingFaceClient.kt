@@ -6,6 +6,7 @@ import com.duro.kukie.modelcatalog.application.port.out.HuggingFaceClient
 import com.duro.kukie.modelcatalog.domain.GatedAccess
 import com.duro.kukie.modelcatalog.domain.HuggingFaceModel
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshFailedException
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.client.JdkClientHttpRequestFactory
@@ -112,6 +113,8 @@ class RestHuggingFaceClient internal constructor(
             likes = likes ?: 0,
             createdAt = createdAt,
             downloads = downloads ?: 0,
+            hasChatTemplate = config?.tokenizerConfig?.chatTemplate != null ||
+                siblings.orEmpty().any { it.rfilename in CHAT_TEMPLATE_FILES },
         )
 
         // Mistral 레포는 같은 가중치를 consolidated 와 model 두 벌로 올린다. 둘 다 더하면 두 배가 된다
@@ -132,13 +135,24 @@ class RestHuggingFaceClient internal constructor(
 
     private class ConfigEntry(
         val architectures: List<String>?,
+        @JsonProperty("tokenizer_config")
+        val tokenizerConfig: TokenizerConfigEntry?,
+    )
+
+    private class TokenizerConfigEntry(
+        // 문자열이거나 이름 붙은 템플릿 목록이다. 있는지만 본다
+        @JsonProperty("chat_template")
+        val chatTemplate: Any?,
     )
 
     companion object {
-        private val LIST_EXPAND = arrayOf<Any>("safetensors", "config", "gated", "createdAt", "likes", "downloads", "tags")
+        private val LIST_EXPAND = arrayOf<Any>("safetensors", "config", "gated", "createdAt", "likes", "downloads", "tags", "siblings")
 
         // usedStorage 는 hf download 가 받는 레포 전체 크기고 목록 API 는 이 값을 400 으로 거부한다. 파일 크기는 blobs 로 받는다
-        private val MODEL_EXPAND = arrayOf<Any>(*LIST_EXPAND, "usedStorage", "siblings")
+        private val MODEL_EXPAND = arrayOf<Any>(*LIST_EXPAND, "usedStorage")
+
+        // 요즘 레포는 템플릿을 tokenizer_config.json 대신 루트의 이 파일로 둔다(gpt-oss, EXAONE 4, kanana 2 등)
+        private val CHAT_TEMPLATE_FILES = setOf("chat_template.jinja", "chat_template.json")
         private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
         private val READ_TIMEOUT: Duration = Duration.ofSeconds(15)
 
