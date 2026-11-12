@@ -1,6 +1,7 @@
 package com.duro.kukie.chat.presentation
 
 import com.duro.kukie.chat.exception.ActiveRunExistsException
+import com.duro.kukie.chat.exception.ChatNamespaceNotAllowedException
 import com.duro.kukie.chat.exception.ChatNotFoundException
 import com.duro.kukie.chat.exception.ClusterRequiredException
 import com.duro.kukie.chat.exception.ClusterTeamMismatchException
@@ -11,6 +12,7 @@ import com.duro.kukie.chat.presentation.dto.response.ChatResponse
 import com.duro.kukie.chat.presentation.dto.response.CreateChatResponse
 import com.duro.kukie.chat.presentation.dto.response.WorklogResponse
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
+import com.duro.kukie.cluster.exception.InvalidNamespaceException
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.team.exception.NotTeamAdminException
 import io.swagger.v3.oas.annotations.Operation
@@ -22,11 +24,19 @@ interface ChatControllerDocs {
 
     @Operation(
         summary = "대화 생성",
-        description = "볼 수 있는 클러스터를 골라 대화를 만듭니다. 접속 대상(context·namespace·지문)은 클러스터에서 복사합니다. " +
-            "다른 namespace 를 쓰려면 그 namespace 로 클러스터를 따로 등록합니다. 제목을 비우면 \"새 대화\" 이고 첫 마디로 지어집니다.",
+        description = "볼 수 있는 클러스터를 골라 대화를 만듭니다. 접속 대상(context·지문)은 클러스터에서 복사합니다. " +
+            "namespace 는 고를 수 있고 비우면 클러스터에 등록한 namespace 입니다. 이름 꼴이 아니거나 kube- 로 시작하면 400 " +
+            "INVALID_NAMESPACE, limited 로 연결한 EKS 에서 등록한 것과 다르면 400 NAMESPACE_NOT_ALLOWED 입니다(권한이 그 하나에만 있습니다). " +
+            "제목을 비우면 \"새 대화\" 이고 첫 마디로 지어집니다.",
     )
     @ApiResponse(responseCode = "201", description = "Created")
-    @ApiErrorResponses(ClusterRequiredException::class, ClusterTeamMismatchException::class, ClusterNotFoundException::class)
+    @ApiErrorResponses(
+        ClusterRequiredException::class,
+        ClusterTeamMismatchException::class,
+        ClusterNotFoundException::class,
+        InvalidNamespaceException::class,
+        ChatNamespaceNotAllowedException::class,
+    )
     fun createChat(userId: UUID, request: CreateChatRequest): ResponseEntity<CreateChatResponse>
 
     @Operation(

@@ -10,6 +10,7 @@ import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.cluster.domain.NamespaceName
 import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
 import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
@@ -43,7 +44,7 @@ class RegisterEksClusterService(
         val connection = clusterPermission.requireWritableAwsConnection(command.connectionId, command.userId)
         connection.requireAccount(command.accountId)
         if (command.region !in clusterAwsProperties.regions) throw AwsRegionNotSupportedException()
-        if (!isAllowedNamespace(command.namespace)) throw InvalidNamespaceException()
+        if (!NamespaceName.isAllowed(command.namespace)) throw InvalidNamespaceException()
         // 고객 계정에 권한을 붙인 뒤 이름 중복으로 저장이 실패하면 권한만 남으므로 먼저 확인한다.
         // 동시 등록이 이 검사를 함께 통과하는 경우는 아래 저장의 unique 제약이 막는다.
         if (clusterRepository.existsByTeamIdAndName(connection.teamId, command.name)) throw ClusterNameTakenException()
@@ -151,15 +152,5 @@ class RegisterEksClusterService(
         } catch (exception: RuntimeException) {
             log.warn("없는 namespace 의 권한을 거두지 못했습니다: team={} reason={}", teamId, exception.javaClass.simpleName)
         }
-    }
-
-    /** 고객 템플릿이 정확한 이름만 허용하므로 패턴(*·?)과 시스템 namespace 는 받지 않는다. */
-    private fun isAllowedNamespace(namespace: String): Boolean =
-        namespace.length <= MAX_NAMESPACE_LENGTH && DNS_LABEL.matches(namespace) && !namespace.startsWith(SYSTEM_PREFIX)
-
-    companion object {
-        private const val MAX_NAMESPACE_LENGTH = 63
-        private const val SYSTEM_PREFIX = "kube-"
-        private val DNS_LABEL = Regex("[a-z0-9]([-a-z0-9]*[a-z0-9])?")
     }
 }

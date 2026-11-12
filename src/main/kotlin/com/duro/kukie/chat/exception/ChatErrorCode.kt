@@ -13,6 +13,10 @@ enum class ChatErrorCode(
     PRIVATE_SESSION(HttpStatus.FORBIDDEN, "Private 대화에서는 클러스터를 변경할 수 없습니다. 변경은 Shared 대화에서 해 주세요."),
     CLUSTER_REQUIRED(HttpStatus.BAD_REQUEST, "클러스터를 골라야 대화를 만들 수 있습니다. 팀 설정에서 클러스터를 먼저 연결해 주세요."),
     CLUSTER_TEAM_MISMATCH(HttpStatus.BAD_REQUEST, "고른 클러스터의 팀과 teamId 가 다릅니다. 대화의 팀은 클러스터가 정합니다."),
+    NAMESPACE_NOT_ALLOWED(
+        HttpStatus.BAD_REQUEST,
+        "제한된 권한(limited)으로 연결한 클러스터는 등록한 네임스페이스에서만 대화할 수 있습니다.",
+    ),
     REQUEST_MISMATCH(HttpStatus.CONFLICT, "같은 requestId 로 다른 요청을 보냈습니다."),
     ACTIVE_RUN_EXISTS(HttpStatus.CONFLICT, "이 대화에 아직 끝나지 않은 요청이 있습니다."),
     ;
