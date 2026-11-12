@@ -308,6 +308,75 @@ class ModelCandidateRulesTest {
         filled.fitsGpus.shouldContainExactly("pro6000")
     }
 
+    @Test
+    fun `회사마다 다운로드가 많은 앞 몇 개만 남기고 등수끼리 다운로드 순으로 섞는다`() {
+        // given
+        val models = ModelCandidateRules.select(
+            listOf(
+                model("Qwen/q-a", downloads = 900),
+                model("Qwen/q-b", downloads = 800),
+                model("Qwen/q-c", downloads = 700),
+                model("upstage/u-a", downloads = 50),
+                model("kakaocorp/k-a", downloads = 300),
+                model("kakaocorp/k-b", downloads = 10),
+            ),
+        ).kept
+
+        // when
+        val spread = ModelCandidateRules.spreadAuthors(models, perAuthor = 2, pinned = emptySet())
+
+        // then
+        spread.map { it.id }.shouldContainExactly("Qwen/q-a", "kakaocorp/k-a", "upstage/u-a", "Qwen/q-b", "kakaocorp/k-b")
+    }
+
+    @Test
+    fun `검증·즐겨찾기 모델은 회사별 수에 넣지 않고 늘 남긴다`() {
+        // given
+        val models = ModelCandidateRules.select(
+            listOf(
+                model("Qwen/q-a", downloads = 900),
+                model("Qwen/q-b", downloads = 800),
+                model("Qwen/q-favorite", downloads = 5),
+            ),
+        ).kept
+
+        // when
+        val spread = ModelCandidateRules.spreadAuthors(models, perAuthor = 1, pinned = setOf("Qwen/q-favorite"))
+
+        // then
+        spread.map { it.id }.shouldContainExactly("Qwen/q-a", "Qwen/q-favorite")
+    }
+
+    @Test
+    fun `다운로드 1등이 즐겨찾기여도 다른 후보의 등수를 밀어내지 않는다`() {
+        // given
+        val models = ModelCandidateRules.select(
+            listOf(
+                model("Qwen/q-favorite", downloads = 900),
+                model("Qwen/q-a", downloads = 800),
+                model("upstage/u-a", downloads = 100),
+            ),
+        ).kept
+
+        // when
+        val spread = ModelCandidateRules.spreadAuthors(models, perAuthor = 1, pinned = setOf("Qwen/q-favorite"))
+
+        // then
+        spread.map { it.id }.shouldContainExactly("Qwen/q-favorite", "Qwen/q-a", "upstage/u-a")
+    }
+
+    @Test
+    fun `회사 계정 대소문자가 달라도 한 회사로 센다`() {
+        // given
+        val models = ModelCandidateRules.select(listOf(model("Qwen/q-a", downloads = 9), model("qwen/q-b", downloads = 1))).kept
+
+        // when
+        val spread = ModelCandidateRules.spreadAuthors(models, perAuthor = 1, pinned = emptySet())
+
+        // then
+        spread.map { it.id }.shouldContainExactly("Qwen/q-a")
+    }
+
     private fun keptOne(model: HuggingFaceModel): CollectedModel = ModelCandidateRules.select(listOf(model)).kept.single()
 
     private fun trendingFixture(): List<HuggingFaceModel> {
@@ -317,6 +386,6 @@ class ModelCandidateRulesTest {
             .expect(ExpectedCount.once(), anything())
             .andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
 
-        return RestHuggingFaceClient(builder.build(), HuggingFaceProperties()).fetchPopular(50)
+        return RestHuggingFaceClient(builder.build(), HuggingFaceProperties()).fetchPopular("any", 50)
     }
 }

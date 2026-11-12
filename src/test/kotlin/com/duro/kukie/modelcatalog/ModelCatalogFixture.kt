@@ -13,6 +13,7 @@ object ModelCatalogFixture {
         license: String? = "apache-2.0",
         architecture: String? = "LlamaForCausalLM",
         gated: GatedAccess = GatedAccess.NONE,
+        downloads: Long = 0,
     ) = HuggingFaceModel(
         id = id,
         totalParams = paramsB?.let { (it * 1e9).toLong() },
@@ -23,6 +24,7 @@ object ModelCatalogFixture {
         gated = gated,
         likes = 10,
         createdAt = "2026-10-01T00:00:00.000Z",
+        downloads = downloads,
     )
 
     fun gptOss20b() = model(

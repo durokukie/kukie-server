@@ -6,6 +6,7 @@ import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshFailedExceptio
 
 class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
 
+    /** 다운로드 순 목록. 회사별로 부르면 그 회사 모델만 순서대로 돌려준다. */
     var popular: List<HuggingFaceModel> = emptyList()
 
     /** 다운로드 순 목록에 없어도 id 로 찾을 수 있는 모델. */
@@ -26,16 +27,20 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
     /** 단건으로 읽은 모델 id, 부른 순서. */
     val fetched = mutableListOf<String>()
 
+    /** 목록을 달라고 한 회사 계정, 부른 순서. */
+    val authors = mutableListOf<String>()
+
     /** 마지막으로 목록을 몇 개 달라고 했는지. */
     var lastLimit: Int? = null
         private set
 
-    override fun fetchPopular(limit: Int): List<HuggingFaceModel> {
+    override fun fetchPopular(author: String, limit: Int): List<HuggingFaceModel> {
         calls++
+        authors += author
         lastLimit = limit
         onCall()
         if (failing) throw ModelCandidateRefreshFailedException()
-        return popular
+        return popular.filter { it.id.substringBefore("/").equals(author, ignoreCase = true) }.take(limit)
     }
 
     override fun fetchModel(modelId: String): HuggingFaceModel {
@@ -52,6 +57,7 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
         failing = false
         onCall = {}
         calls = 0
+        authors.clear()
         lastLimit = null
         fetched.clear()
     }

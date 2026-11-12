@@ -34,9 +34,10 @@ class RestHuggingFaceClientTest {
         RestHuggingFaceClient(builder.build(), HuggingFaceProperties(token = token))
 
     @Test
-    fun `다운로드 순 목록을 한 번에 받아 필요한 칸을 읽는다`() {
+    fun `회사 계정의 다운로드 순 목록을 받아 필요한 칸을 읽는다`() {
         // given
         server.expect(requestTo(startsWith("$API/models?")))
+            .andExpect(queryParam("author", "KRAFTON"))
             .andExpect(queryParam("pipeline_tag", "text-generation"))
             .andExpect(queryParam("sort", "downloads"))
             .andExpect(queryParam("direction", "-1"))
@@ -47,7 +48,7 @@ class RestHuggingFaceClientTest {
             .andRespond(withSuccess(listing(), MediaType.APPLICATION_JSON))
 
         // when
-        val models = client().fetchPopular(50)
+        val models = client().fetchPopular("KRAFTON", 50)
 
         // then
         val (auto, manual, open) = models
@@ -58,6 +59,7 @@ class RestHuggingFaceClientTest {
         auto.tags.shouldContainExactly("license:apache-2.0", "transformers")
         auto.gated shouldBe GatedAccess.AUTO
         auto.likes shouldBe 12
+        auto.downloads shouldBe 1_234_567
         auto.createdAt shouldBe "2026-10-01T00:00:00.000Z"
         manual.gated shouldBe GatedAccess.MANUAL
         open.gated shouldBe GatedAccess.NONE
@@ -65,6 +67,7 @@ class RestHuggingFaceClientTest {
         open.usedStorageBytes shouldBe null
         open.architectures shouldBe emptyList()
         open.likes shouldBe 0
+        open.downloads shouldBe 0
         server.verify()
     }
 
@@ -76,7 +79,7 @@ class RestHuggingFaceClientTest {
             .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
 
         // when
-        client(token = "hf_test_token").fetchPopular(50)
+        client(token = "hf_test_token").fetchPopular("KRAFTON", 50)
 
         // then
         server.verify()
@@ -90,7 +93,7 @@ class RestHuggingFaceClientTest {
             .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
 
         // when
-        client(token = "").fetchPopular(50)
+        client(token = "").fetchPopular("KRAFTON", 50)
 
         // then
         server.verify()
@@ -140,7 +143,7 @@ class RestHuggingFaceClientTest {
             server.expect(requestTo(startsWith("$API/models?"))).andRespond(withStatus(status))
 
             // when & then
-            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular(50) }
+            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular("KRAFTON", 50) }
         }
     }
 
@@ -150,7 +153,7 @@ class RestHuggingFaceClientTest {
         server.expect(requestTo(startsWith("$API/models?"))).andRespond(withSuccess("<html>", MediaType.APPLICATION_JSON))
 
         // when & then
-        shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular(50) }
+        shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular("KRAFTON", 50) }
     }
 
     @Test
@@ -187,7 +190,7 @@ class RestHuggingFaceClientTest {
             server.expect(requestTo(startsWith("$API/models?"))).andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
 
             // when & then
-            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular(50) }
+            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular("KRAFTON", 50) }
         }
     }
 
@@ -221,6 +224,7 @@ class RestHuggingFaceClientTest {
           {
             "id": "KRAFTON/Raon-1-mini-preview",
             "likes": 12,
+            "downloads": 1234567,
             "gated": "auto",
             "createdAt": "2026-10-01T00:00:00.000Z",
             "tags": ["license:apache-2.0", "transformers"],

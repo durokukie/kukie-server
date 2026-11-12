@@ -12,4 +12,6 @@ data class HuggingFaceModel(
     val gated: GatedAccess,
     val likes: Int,
     val createdAt: String?,
+    /** 최근 30일 다운로드 수. 회사가 다른 후보끼리 순서를 정할 때만 쓴다. */
+    val downloads: Long = 0,
 )

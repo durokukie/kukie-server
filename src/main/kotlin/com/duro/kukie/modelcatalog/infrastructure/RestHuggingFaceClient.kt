@@ -30,11 +30,12 @@ class RestHuggingFaceClient internal constructor(
 
     private val log = logger()
 
-    override fun fetchPopular(limit: Int): List<HuggingFaceModel> {
+    override fun fetchPopular(author: String, limit: Int): List<HuggingFaceModel> {
         val models = call {
             restClient.get()
                 .uri {
                     it.path("/models")
+                        .queryParam("author", author)
                         .queryParam("pipeline_tag", "text-generation")
                         // 최근 30일 다운로드 순 — 그날 뜬 모델(trendingScore)보다 덜 바뀌고, 꾸준히 쓰는 모델(Qwen 등)이 빠지지 않는다
                         .queryParam("sort", "downloads")
@@ -87,6 +88,7 @@ class RestHuggingFaceClient internal constructor(
     private class ModelEntry(
         val id: String,
         val likes: Int?,
+        val downloads: Long?,
         val gated: Any?,
         val createdAt: String?,
         val tags: List<String>?,
@@ -109,6 +111,7 @@ class RestHuggingFaceClient internal constructor(
             },
             likes = likes ?: 0,
             createdAt = createdAt,
+            downloads = downloads ?: 0,
         )
 
         // Mistral 레포는 같은 가중치를 consolidated 와 model 두 벌로 올린다. 둘 다 더하면 두 배가 된다
@@ -132,7 +135,7 @@ class RestHuggingFaceClient internal constructor(
     )
 
     companion object {
-        private val LIST_EXPAND = arrayOf<Any>("safetensors", "config", "gated", "createdAt", "likes", "tags")
+        private val LIST_EXPAND = arrayOf<Any>("safetensors", "config", "gated", "createdAt", "likes", "downloads", "tags")
 
         // usedStorage 는 hf download 가 받는 레포 전체 크기고 목록 API 는 이 값을 400 으로 거부한다. 파일 크기는 blobs 로 받는다
         private val MODEL_EXPAND = arrayOf<Any>(*LIST_EXPAND, "usedStorage", "siblings")
