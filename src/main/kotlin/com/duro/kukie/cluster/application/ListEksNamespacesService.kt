@@ -23,6 +23,9 @@ import java.util.UUID
  * 같은 EKS 를 그 사이 다른 관리자가 등록하고 있으면 그 등록이 붙인 entry 를 뗄 수 있다. namespace 를 확인하기 전에 떼면 등록이
  * 권한 대기(409)로 끝나 다시 부르면 되고, 떼는 사이 저장까지 마쳤으면 뗀 뒤 다시 보고 붙여 둔다. 등록의 확인과 저장 사이에 떼고 다시 보기가
  * 모두 끼는 아주 좁은 틈만 남는다(그러면 그 클러스터는 401 로 끊겨 다시 등록해야 한다).
+ *
+ * 같은 EKS 의 목록 호출이 겹쳐도(두 관리자, 재시도) 먼저 끝난 쪽이 entry 를 떼어 늦은 쪽은 409(권한 대기)로 끝날 수 있다. 데이터는
+ * 깨지지 않고 다시 부르면 된다.
  */
 @Service
 class ListEksNamespacesService(
@@ -67,7 +70,13 @@ class ListEksNamespacesService(
             // 떼는 사이 같은 EKS 의 등록이 저장됐으면 그 등록의 entry 이므로 다시 붙인다
             if (eksNamespaces.registeredOn(teamId, credential).isNotEmpty()) attachFull(credential)
         } catch (exception: RuntimeException) {
-            log.warn("목록을 읽으려고 붙인 access entry 를 떼지 못했습니다: team={} reason={}", teamId, exception.javaClass.simpleName)
+            // 등록하지 않은 클러스터에 관리자 entry 가 남아 템플릿의 약속이 깨지므로 알림이 걸리는 레벨로 남긴다
+            log.error(
+                "목록을 읽으려고 붙인 access entry 를 떼지 못했습니다: team={} cluster={} reason={}",
+                teamId,
+                credential.clusterName,
+                exception.javaClass.simpleName,
+            )
         }
     }
 
