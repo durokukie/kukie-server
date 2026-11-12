@@ -31,7 +31,7 @@ class SqsHostingCommandQueue(
         try {
             sqsClient.sendMessage { it.queueUrl(hostingProperties.commandsQueueUrl).messageBody(objectMapper.writeValueAsString(command)) }
         } catch (exception: SdkException) {
-            log.warn("호스팅 명령을 보내지 못했습니다: type={}, app={}/{}", command.type, command.team, command.app, exception)
+            log.warn("호스팅 명령을 보내지 못했습니다: type={}, app={}/{}", command.type, command.team, command.target, exception)
             throw HostingUnavailableException()
         }
     }

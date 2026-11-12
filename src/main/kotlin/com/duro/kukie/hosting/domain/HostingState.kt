@@ -56,6 +56,18 @@ data class HostingDeployment(
     val updatedAt: Instant,
 ) : HostingFile
 
+/** 계정이 GitHub App 에 읽기를 허용한 레포. 파일이 없으면 App 을 설치하지 않은 것이다. */
+data class HostingRepoList(
+    override val version: Int,
+    val owner: HostingAccount,
+    /** false 면 아직 호스팅을 쓸 수 없는 계정이라 배포기가 배포 명령을 거절한다. */
+    val allowed: Boolean,
+    val repos: List<HostingRepoItem>,
+    val at: Instant,
+) : HostingFile
+
+data class HostingRepoItem(val fullName: String, val private: Boolean = false)
+
 data class SkippedPush(
     override val version: Int,
     val sender: HostingAccount,
