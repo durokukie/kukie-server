@@ -6,6 +6,10 @@ import com.duro.kukie.modelcatalog.ModelCatalogFixture.model
 import com.duro.kukie.modelcatalog.domain.GatedAccess
 import com.duro.kukie.modelcatalog.domain.ModelCandidate
 import com.duro.kukie.modelcatalog.domain.ModelCandidateRepository
+import com.duro.kukie.modelcatalog.domain.ModelFavorite
+import com.duro.kukie.modelcatalog.domain.ModelFavoriteRepository
+import com.duro.kukie.cluster.ClusterFixture
+import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.modelcatalog.exception.ModelCatalogErrorCode
 import com.duro.kukie.support.FakeHuggingFaceClient
 import com.duro.kukie.support.IntegrationTest
@@ -37,6 +41,12 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var redisTemplate: StringRedisTemplate
+
+    @Autowired
+    private lateinit var modelFavoriteRepository: ModelFavoriteRepository
+
+    @Autowired
+    private lateinit var clusterRepository: ClusterRepository
 
     @BeforeEach
     fun verifiedModelOffTheList() {
@@ -131,6 +141,48 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
 
         // then
         fakeHuggingFaceClient.lastLimit shouldBe 200
+    }
+
+    @Test
+    fun `다운로드 순 목록에 없는 즐겨찾기 모델도 따로 받아 후보에 남긴다`() {
+        // given
+        val user = teamAdmin()
+        favorite(user, "Qwen/Qwen3-32B")
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
+        fakeHuggingFaceClient.models["Qwen/Qwen3-32B"] = model("Qwen/Qwen3-32B")
+
+        // when
+        refresh(user.accessToken).andExpect { status { isOk() } }
+
+        // then
+        modelCandidateRepository.findAll().map { it.modelId }.toSet() shouldBe
+            setOf("openai/gpt-oss-20b", "openai/gpt-oss-120b", "Qwen/Qwen3-32B")
+    }
+
+    @Test
+    fun `순위 밖 즐겨찾기는 30개까지만 따로 받는다`() {
+        // given
+        val user = teamAdmin()
+        (1..31).forEach { favorite(user, "gone/model-%02d".format(it)) }
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
+
+        // when
+        refresh(user.accessToken).andExpect { status { isOk() } }
+
+        // then
+        fakeHuggingFaceClient.fetched.count { it.startsWith("gone/") } shouldBe 30
+    }
+
+    @Test
+    fun `허깅페이스에서 사라진 즐겨찾기 모델은 빼고 갱신은 성공한다`() {
+        // given
+        val user = teamAdmin()
+        favorite(user, "gone/model-70B")
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
+
+        // when & then
+        refresh(user.accessToken).andExpect { status { isOk() } }
+        modelCandidateRepository.findAll().map { it.modelId }.toSet() shouldBe setOf("openai/gpt-oss-20b", "openai/gpt-oss-120b")
     }
 
     @Test
@@ -384,6 +436,12 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
 
     private fun refresh(accessToken: String): ResultActionsDsl =
         mockMvc.post("/gpu/model-candidates/refresh") { authorization(accessToken) }
+
+    private fun favorite(user: LoggedInUser, modelId: String) {
+        val teamId = savedTeam(user.user.id to TeamRole.ADMIN)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = user.user.id, teamId = teamId))
+        modelFavoriteRepository.save(ModelFavorite(cluster.id, modelId, user.user.id))
+    }
 
     private fun saved(modelId: String): ModelCandidate =
         modelCandidateRepository.findAll().single { it.modelId == modelId }

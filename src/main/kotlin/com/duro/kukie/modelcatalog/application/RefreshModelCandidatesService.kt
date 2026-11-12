@@ -10,6 +10,7 @@ import com.duro.kukie.modelcatalog.domain.ModelCandidate
 import com.duro.kukie.modelcatalog.domain.ModelCandidateRefreshLock
 import com.duro.kukie.modelcatalog.domain.ModelCandidateRepository
 import com.duro.kukie.modelcatalog.domain.ModelCandidateRules
+import com.duro.kukie.modelcatalog.domain.ModelFavoriteRepository
 import com.duro.kukie.modelcatalog.domain.VerifiedModels
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshFailedException
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshTooSoonException
@@ -24,6 +25,7 @@ import java.util.UUID
 class RefreshModelCandidatesService(
     private val huggingFaceClient: HuggingFaceClient,
     private val modelCandidateRepository: ModelCandidateRepository,
+    private val modelFavoriteRepository: ModelFavoriteRepository,
     private val modelCandidateRefreshLock: ModelCandidateRefreshLock,
     private val teamPermission: TeamPermission,
     private val huggingFaceProperties: HuggingFaceProperties,
@@ -72,7 +74,8 @@ class RefreshModelCandidatesService(
         val listing = huggingFaceClient.fetchPopular(POPULAR_LIMIT)
         if (listing.isEmpty()) throw refreshFailed("허깅페이스가 빈 목록을 돌려줬습니다")
 
-        val selection = ModelCandidateRules.select(listing + verifiedModelsOffTheList(listing))
+        val verified = verifiedModelsOffTheList(listing)
+        val selection = ModelCandidateRules.select(listing + verified + favoritesOffTheList(listing + verified))
         VerifiedModels.MODELS.keys.firstOrNull { it in selection.dropped }?.let {
             throw refreshFailed("검증된 모델이 규칙에 걸렸습니다: $it: ${selection.dropped[it]}")
         }
@@ -90,6 +93,28 @@ class RefreshModelCandidatesService(
         return VerifiedModels.MODELS.keys.filter { it !in listed }.map { modelId ->
             huggingFaceClient.fetchModel(modelId).also {
                 if (it.id != modelId) throw refreshFailed("검증된 모델의 이름이 다릅니다: $modelId -> ${it.id}")
+            }
+        }
+    }
+
+    /**
+     * 어느 클러스터든 즐겨찾기한 모델 중 목록에 없는 것을 따로 받는다. 검증 모델과 달리 하나를 못 읽어도(허깅페이스에서
+     * 지워짐·이름 바뀜) 갱신을 실패시키지 않고 그 모델만 뺀다. 규칙에 걸리면 다른 후보처럼 빠진다.
+     */
+    private fun favoritesOffTheList(listing: List<HuggingFaceModel>): List<HuggingFaceModel> {
+        val listed = listing.map { it.id }.toSet()
+        val offTheList = modelFavoriteRepository.findAllModelIds().filter { it !in listed }
+        if (offTheList.size > MAX_FAVORITES_OFF_THE_LIST) {
+            log.warn("순위 밖 즐겨찾기가 {}개라 앞 {}개만 받습니다", offTheList.size, MAX_FAVORITES_OFF_THE_LIST)
+        }
+        // 갱신은 잠금을 쥔 채 하나씩 부른다 — 수를 묶어 허깅페이스가 느려도 갱신이 끝없이 길어지지 않게
+        return offTheList.take(MAX_FAVORITES_OFF_THE_LIST).mapNotNull { modelId ->
+            try {
+                huggingFaceClient.fetchModel(modelId).takeIf { it.id == modelId }
+                    ?: null.also { log.warn("즐겨찾기 모델의 이름이 달라 후보에서 뺍니다: {}", modelId) }
+            } catch (exception: ModelCandidateRefreshFailedException) {
+                log.warn("즐겨찾기 모델을 허깅페이스에서 읽지 못해 후보에서 뺍니다: {}", modelId)
+                null
             }
         }
     }
@@ -117,5 +142,8 @@ class RefreshModelCandidatesService(
          * 200개면 19개, 500개면 26개가 남았다. 남은 후보마다 단건 API 를 한 번씩 더 부르므로 200 에 둔다.
          */
         private const val POPULAR_LIMIT = 200
+
+        /** 순위 밖 즐겨찾기를 따로 받는 수 상한. 넘으면 최근에 넣은 것부터 남기고 경고를 남긴다 */
+        private const val MAX_FAVORITES_OFF_THE_LIST = 30
     }
 }

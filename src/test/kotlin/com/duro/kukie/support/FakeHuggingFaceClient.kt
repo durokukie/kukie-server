@@ -23,6 +23,9 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
     var calls = 0
         private set
 
+    /** 단건으로 읽은 모델 id, 부른 순서. */
+    val fetched = mutableListOf<String>()
+
     /** 마지막으로 목록을 몇 개 달라고 했는지. */
     var lastLimit: Int? = null
         private set
@@ -37,6 +40,7 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
 
     override fun fetchModel(modelId: String): HuggingFaceModel {
         calls++
+        fetched += modelId
         if (failing || modelId in missing) throw ModelCandidateRefreshFailedException()
         return models[modelId] ?: popular.firstOrNull { it.id == modelId } ?: throw ModelCandidateRefreshFailedException()
     }
@@ -49,5 +53,6 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
         onCall = {}
         calls = 0
         lastLimit = null
+        fetched.clear()
     }
 }
