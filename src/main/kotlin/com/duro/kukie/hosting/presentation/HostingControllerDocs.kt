@@ -33,7 +33,7 @@ interface HostingControllerDocs {
         description = "installation.repositories 의 레포 하나로 앱을 시작하라고 배포기에 요청합니다. 기본 브랜치의 최신 커밋을 빌드합니다. " +
             "목록에 latest.commandId 가 응답의 commandId 인 앱이 생기면 시작된 것이고, 시작하지 못했으면 skippedPush 로 알려 줍니다. " +
             "그 뒤로는 그 레포의 기본 브랜치에 push 하면 다시 배포됩니다. 고르지 않은 레포의 push 는 배포하지 않습니다. " +
-            "같은 레포에 1분 안에 다시 요청하면 429 입니다.",
+            "배포 시작은 계정마다 1분에 한 번입니다. 더 자주 요청하면 429 입니다.",
     )
     @ApiResponse(responseCode = "202", description = "Accepted")
     @ApiErrorResponses(

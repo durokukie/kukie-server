@@ -6,6 +6,7 @@ import com.duro.kukie.hosting.application.GetHostingAppService
 import com.duro.kukie.hosting.application.GetHostingAppsService
 import com.duro.kukie.hosting.application.GetHostingBuildLogService
 import com.duro.kukie.hosting.application.SendHostingCommandService
+import com.duro.kukie.hosting.application.StartHostingAppService
 import com.duro.kukie.hosting.domain.HostingCommand
 import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
@@ -31,6 +32,7 @@ class HostingController(
     private val getHostingAppService: GetHostingAppService,
     private val getHostingBuildLogService: GetHostingBuildLogService,
     private val sendHostingCommandService: SendHostingCommandService,
+    private val startHostingAppService: StartHostingAppService,
 ) : HostingControllerDocs {
 
     @GetMapping
@@ -40,7 +42,7 @@ class HostingController(
 
     @PostMapping
     override fun start(@AuthUser userId: UUID, @RequestBody @Valid request: StartHostingAppRequest): ResponseEntity<HostingCommandResponse> {
-        return ResponseEntity.accepted().body(sendHostingCommandService.deploy(userId, request.repository))
+        return ResponseEntity.accepted().body(startHostingAppService(userId, request.repository))
     }
 
     @GetMapping("/{app}")

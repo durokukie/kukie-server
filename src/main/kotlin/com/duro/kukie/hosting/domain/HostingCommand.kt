@@ -23,12 +23,18 @@ data class HostingCommand(
     val app: String?,
     val generation: String?,
 ) {
-    /** 같은 요청을 연달아 보냈는지 가릴 때 쓰는 이름. */
+    /**
+     * 같은 요청을 연달아 보냈는지 가릴 때 쓰는 이름. 배포 시작은 계정에 하나다. 레포마다 두면 허용한 레포 수만큼 한꺼번에
+     * 보낼 수 있고, 배포기는 명령을 하나씩 처리해서 다른 계정이 그 뒤에서 기다린다.
+     */
     val target: String
-        @JsonIgnore get() = app ?: repo.fullName.lowercase()
+        @JsonIgnore get() = app ?: NEW_APP
 
     companion object {
         const val DEPLOY = "deploy"
+
+        // 앱 이름은 밑줄로 시작할 수 없어 겹치지 않는다
+        private const val NEW_APP = "_new"
         const val REDEPLOY = "redeploy"
         const val DELETE = "delete"
 

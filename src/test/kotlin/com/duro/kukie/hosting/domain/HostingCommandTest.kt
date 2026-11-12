@@ -52,6 +52,6 @@ class HostingCommandTest {
         json.path("team").stringValue() shouldBe "recklehs"
         json.has("app") shouldBe false
         json.has("generation") shouldBe false
-        command.target shouldBe "recklehs/shop"
+        command.target shouldBe "_new"
     }
 }

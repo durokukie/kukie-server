@@ -345,11 +345,20 @@ class HostingIntegrationTest : IntegrationTest() {
             jsonPath("$.code") { value("HOSTING_NOT_ALLOWED") }
         }
 
+        // 목록에 없는 레포여도 까닭은 계정이다
+        mockMvc.post("/hosting/apps") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/none"}"""
+        }.andExpect {
+            status { isForbidden() }
+        }
+
         queue.commands.shouldBeEmpty()
     }
 
     @Test
-    fun `같은 레포의 배포 시작을 곧바로 다시 보낼 수 없다`() {
+    fun `배포 시작은 계정마다 곧바로 다시 보낼 수 없다`() {
         // given
         val member = linkedUser()
         putRepos("Recklehs/shop", "Recklehs/blog")
@@ -369,7 +378,7 @@ class HostingIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = """{"repository": "Recklehs/blog"}"""
-        }.andExpect { status { isAccepted() } }
+        }.andExpect { status { isTooManyRequests() } }
     }
 
     @Test
