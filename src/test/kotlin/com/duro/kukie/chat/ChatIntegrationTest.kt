@@ -14,8 +14,11 @@ import com.duro.kukie.chat.exception.ChatErrorCode
 import com.duro.kukie.chat.presentation.dto.request.CreateChatRequest
 import com.duro.kukie.chat.presentation.dto.request.RenameChatRequest
 import com.duro.kukie.cluster.ClusterFixture
+import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.Cluster
+import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.cluster.exception.ClusterErrorCode
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.exception.TeamErrorCode
@@ -87,6 +90,79 @@ class ChatIntegrationTest : IntegrationTest() {
         val saved = chatSessionRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.conversation.id")))!!
         saved.clusterFingerprint shouldBe cluster.fingerprint
         saved.contextName shouldBe cluster.contextName
+    }
+
+    @Test
+    fun `고른 namespace 로 대화를 만든다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id)
+
+        // when
+        val response = mockMvc.post("/conversations") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = CreateChatRequest(clusterId = cluster.id, namespace = " llm ").toJson()
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.session.namespace") { value("llm") }
+        }.andReturn().response.contentAsString
+
+        // then
+        chatSessionRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.conversation.id")))!!
+            .namespace shouldBe "llm"
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["kube-system", "Upper", "team-*", "-x"])
+    fun `이름 꼴이 아니거나 시스템 namespace 면 대화를 만들 수 없다`(namespace: String) {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id)
+
+        // when & then
+        mockMvc.post("/conversations") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = CreateChatRequest(clusterId = cluster.id, namespace = namespace).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.INVALID_NAMESPACE.code) }
+        }
+        chatSessionRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `limited 로 연결한 EKS 는 등록한 namespace 로만 대화를 만든다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(
+            ClusterFixture.cluster(
+                registeredBy = me.user.id,
+                teamId = savedTeam(me.user.id to TeamRole.ADMIN),
+                fingerprint = "f".repeat(64),
+                provider = ClusterProvider.EKS,
+                accessLevel = AccessLevel.LIMITED,
+            ),
+        )
+
+        // when & then
+        mockMvc.post("/conversations") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = CreateChatRequest(clusterId = cluster.id, namespace = "llm").toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ChatErrorCode.NAMESPACE_NOT_ALLOWED.code) }
+        }
+        mockMvc.post("/conversations") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = CreateChatRequest(clusterId = cluster.id, namespace = ClusterFixture.DEFAULT_NAMESPACE).toJson()
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.session.namespace") { value(ClusterFixture.DEFAULT_NAMESPACE) }
+        }
     }
 
     @Test

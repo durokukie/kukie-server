@@ -9,4 +9,6 @@ data class CreateChatCommand(
     val teamId: UUID?,
     val title: String,
     val visibility: ChatVisibility,
+    /** 비우면 클러스터에 등록한 namespace */
+    val namespace: String? = null,
 )
