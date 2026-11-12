@@ -8,7 +8,7 @@ import java.util.UUID
 data class ChatResponse(
     val id: UUID,
     val clusterId: UUID,
-    /** 대화가 쓰는 namespace. 만들 때 고른 값이고 바뀌지 않는다 (DURO-228) — 앱 옆 목록이 이 값으로 대화를 묶는다 */
+    /** 대화가 쓰는 namespace. 만들 때 고른 값이고 바뀌지 않는다 */
     val namespace: String,
     val teamId: UUID,
     val userId: UUID,
