@@ -1,12 +1,12 @@
 package com.duro.kukie.modelcatalog.infrastructure
 
 import com.duro.kukie.global.config.properties.HuggingFaceProperties
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.duro.kukie.global.util.logger
 import com.duro.kukie.modelcatalog.application.port.out.HuggingFaceClient
 import com.duro.kukie.modelcatalog.domain.GatedAccess
 import com.duro.kukie.modelcatalog.domain.HuggingFaceModel
 import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshFailedException
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.client.JdkClientHttpRequestFactory
