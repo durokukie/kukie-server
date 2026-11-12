@@ -34,11 +34,12 @@ class RestHuggingFaceClientTest {
         RestHuggingFaceClient(builder.build(), HuggingFaceProperties(token = token))
 
     @Test
-    fun `트렌딩 목록을 한 번에 받아 필요한 칸을 읽는다`() {
+    fun `다운로드 순 목록을 한 번에 받아 필요한 칸을 읽는다`() {
         // given
         server.expect(requestTo(startsWith("$API/models?")))
             .andExpect(queryParam("pipeline_tag", "text-generation"))
-            .andExpect(queryParam("sort", "trendingScore"))
+            .andExpect(queryParam("sort", "downloads"))
+            .andExpect(queryParam("direction", "-1"))
             .andExpect(queryParam("limit", "50"))
             .andExpect(requestTo(containsString("safetensors")))
             .andExpect(requestTo(not(containsString("usedStorage"))))
@@ -46,7 +47,7 @@ class RestHuggingFaceClientTest {
             .andRespond(withSuccess(listing(), MediaType.APPLICATION_JSON))
 
         // when
-        val models = client().fetchTrending(50)
+        val models = client().fetchPopular(50)
 
         // then
         val (auto, manual, open) = models
@@ -75,7 +76,7 @@ class RestHuggingFaceClientTest {
             .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
 
         // when
-        client(token = "hf_test_token").fetchTrending(50)
+        client(token = "hf_test_token").fetchPopular(50)
 
         // then
         server.verify()
@@ -89,7 +90,7 @@ class RestHuggingFaceClientTest {
             .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
 
         // when
-        client(token = "").fetchTrending(50)
+        client(token = "").fetchPopular(50)
 
         // then
         server.verify()
@@ -139,7 +140,7 @@ class RestHuggingFaceClientTest {
             server.expect(requestTo(startsWith("$API/models?"))).andRespond(withStatus(status))
 
             // when & then
-            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchTrending(50) }
+            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular(50) }
         }
     }
 
@@ -149,7 +150,7 @@ class RestHuggingFaceClientTest {
         server.expect(requestTo(startsWith("$API/models?"))).andRespond(withSuccess("<html>", MediaType.APPLICATION_JSON))
 
         // when & then
-        shouldThrow<ModelCandidateRefreshFailedException> { client().fetchTrending(50) }
+        shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular(50) }
     }
 
     @Test
@@ -186,7 +187,7 @@ class RestHuggingFaceClientTest {
             server.expect(requestTo(startsWith("$API/models?"))).andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
 
             // when & then
-            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchTrending(50) }
+            shouldThrow<ModelCandidateRefreshFailedException> { client().fetchPopular(50) }
         }
     }
 

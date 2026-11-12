@@ -47,7 +47,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `갱신하면 허깅페이스 후보를 거르고 저장해 약속한 형태로 준다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(
+        fakeHuggingFaceClient.popular = listOf(
             model("OBLITERATUS/gpt-oss-20b-obliterated"),
             model("Qwen/Qwen3-32B", paramsB = 32.8, usedStorageGb = 66.0, weightGb = 66.0, license = "llama3.1"),
             model("KRAFTON/Raon-1-mini-preview", paramsB = 28.8, architecture = "Raon1MiniForCausalLM", gated = GatedAccess.AUTO),
@@ -102,7 +102,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `저장된 목록을 읽을 때는 허깅페이스를 부르지 않는다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.popular = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
         refresh(user.accessToken)
         val calls = fakeHuggingFaceClient.calls
 
@@ -118,6 +118,19 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
             jsonPath("$.candidates[2].verified") { value(false) }
         }
         fakeHuggingFaceClient.calls shouldBe calls
+    }
+
+    @Test
+    fun `갱신은 다운로드 순 목록을 200개 받는다`() {
+        // given
+        val user = teamAdmin()
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
+
+        // when
+        refresh(user.accessToken)
+
+        // then
+        fakeHuggingFaceClient.lastLimit shouldBe 200
     }
 
     @Test
@@ -137,10 +150,10 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `트렌딩에서 빠진 검증 모델은 따로 받아 후보에 남긴다`() {
+    fun `다운로드 순 목록에서 빠진 검증 모델은 따로 받아 후보에 남긴다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.popular = listOf(model("Qwen/Qwen3-32B"))
         fakeHuggingFaceClient.models["openai/gpt-oss-20b"] = gptOss20b()
 
         // when & then
@@ -158,7 +171,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `여러 장에서 잰 검증 모델은 GPU 1장에 안 들어가도 실측한 장수에 들어가면 갱신한다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
 
         // when & then
         refresh(user.accessToken).andExpect {
@@ -173,10 +186,10 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `다시 갱신하면 덮어쓰고 빠진 모델을 지우며 이전 수집 시각을 남긴다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.popular = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
         refresh(user.accessToken)
         val firstCollectedAt = saved("openai/gpt-oss-20b").collectedAt
-        fakeHuggingFaceClient.trending = listOf(model("google/g-30B", paramsB = 30.0), gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(model("google/g-30B", paramsB = 30.0), gptOss20b())
         redisTemplate.delete(REFRESH_LOCK_KEY)
 
         // when
@@ -196,7 +209,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `크기를 읽지 못한 후보가 있으면 저장하지 않는다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.popular = listOf(gptOss20b(), model("Qwen/Qwen3-32B"))
         fakeHuggingFaceClient.missing += "Qwen/Qwen3-32B"
 
         // when & then
@@ -208,7 +221,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `허깅페이스를 읽지 못하면 502 를 주고 저장된 목록을 그대로 둔다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
         refresh(user.accessToken)
         val collectedAt = saved("openai/gpt-oss-20b").collectedAt
         fakeHuggingFaceClient.failing = true
@@ -226,9 +239,9 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `빈 목록이 오면 저장된 목록을 지우지 않는다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
         refresh(user.accessToken)
-        fakeHuggingFaceClient.trending = emptyList()
+        fakeHuggingFaceClient.popular = emptyList()
         redisTemplate.delete(REFRESH_LOCK_KEY)
 
         // when & then
@@ -240,7 +253,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `검증된 모델이 규칙에 걸리면 갱신하지 않는다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(model("openai/gpt-oss-20b", license = "cc-by-nc-4.0"))
+        fakeHuggingFaceClient.popular = listOf(model("openai/gpt-oss-20b", license = "cc-by-nc-4.0"))
 
         // when & then
         refresh(user.accessToken).andExpect {
@@ -254,7 +267,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `검증된 모델이 실측한 GPU 에 안 들어간다고 나오면 갱신하지 않는다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(model("openai/gpt-oss-20b", weightGb = 40.0))
+        fakeHuggingFaceClient.popular = listOf(model("openai/gpt-oss-20b", weightGb = 40.0))
 
         // when & then
         refresh(user.accessToken).andExpect { status { isBadGateway() } }
@@ -265,7 +278,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `여러 장에서 잰 검증 모델이 실측한 장수에도 안 들어가면 갱신하지 않는다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
         fakeHuggingFaceClient.models["openai/gpt-oss-120b"] = model("openai/gpt-oss-120b", paramsB = 116.8, weightGb = 141.0)
 
         // when & then
@@ -277,7 +290,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `이름이 바뀐 검증 모델은 갱신하지 않는다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(model("Qwen/Qwen3-32B"))
+        fakeHuggingFaceClient.popular = listOf(model("Qwen/Qwen3-32B"))
         fakeHuggingFaceClient.models["openai/gpt-oss-20b"] = model("openai/renamed")
 
         // when & then
@@ -289,7 +302,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
     fun `방금 갱신했으면 허깅페이스를 다시 부르지 않고 429 를 준다`() {
         // given
         val user = teamAdmin()
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
         refresh(user.accessToken)
         val calls = fakeHuggingFaceClient.calls
 
@@ -325,7 +338,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         fakeHuggingFaceClient.failing = true
         refresh(user.accessToken).andExpect { status { isBadGateway() } }
         fakeHuggingFaceClient.failing = false
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
 
         // when & then
         refresh(user.accessToken).andExpect {
@@ -340,7 +353,7 @@ class ModelCandidateIntegrationTest : IntegrationTest() {
         val user = teamAdmin()
         var remainingDuringCall = 0L
         var secondRefreshStatus = 0
-        fakeHuggingFaceClient.trending = listOf(gptOss20b())
+        fakeHuggingFaceClient.popular = listOf(gptOss20b())
         fakeHuggingFaceClient.onCall = {
             fakeHuggingFaceClient.onCall = {}
             remainingDuringCall = redisTemplate.getExpire(REFRESH_LOCK_KEY)

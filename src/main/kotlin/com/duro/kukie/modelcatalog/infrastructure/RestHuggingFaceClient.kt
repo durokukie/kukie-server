@@ -30,13 +30,15 @@ class RestHuggingFaceClient internal constructor(
 
     private val log = logger()
 
-    override fun fetchTrending(limit: Int): List<HuggingFaceModel> {
+    override fun fetchPopular(limit: Int): List<HuggingFaceModel> {
         val models = call {
             restClient.get()
                 .uri {
                     it.path("/models")
                         .queryParam("pipeline_tag", "text-generation")
-                        .queryParam("sort", "trendingScore")
+                        // 최근 30일 다운로드 순 — 그날 뜬 모델(trendingScore)보다 덜 바뀌고, 꾸준히 쓰는 모델(Qwen 등)이 빠지지 않는다
+                        .queryParam("sort", "downloads")
+                        .queryParam("direction", -1)
                         .queryParam("limit", limit)
                         .queryParam("expand[]", *LIST_EXPAND)
                         .build()

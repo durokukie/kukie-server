@@ -69,7 +69,7 @@ class RefreshModelCandidatesService(
     }
 
     private fun collect(): List<CollectedModel> {
-        val listing = huggingFaceClient.fetchTrending(TRENDING_LIMIT)
+        val listing = huggingFaceClient.fetchPopular(POPULAR_LIMIT)
         if (listing.isEmpty()) throw refreshFailed("허깅페이스가 빈 목록을 돌려줬습니다")
 
         val selection = ModelCandidateRules.select(listing + verifiedModelsOffTheList(listing))
@@ -112,6 +112,10 @@ class RefreshModelCandidatesService(
     }
 
     companion object {
-        private const val TRENDING_LIMIT = 50
+        /**
+         * 다운로드 상위는 1~14B 소형 모델이 대부분이라 크기 규칙(20~130B)에서 많이 빠진다. 2026-11-12 실제 목록에서 100개면 14개,
+         * 200개면 19개, 500개면 26개가 남았다. 남은 후보마다 단건 API 를 한 번씩 더 부르므로 200 에 둔다.
+         */
+        private const val POPULAR_LIMIT = 200
     }
 }

@@ -6,9 +6,9 @@ import com.duro.kukie.modelcatalog.exception.ModelCandidateRefreshFailedExceptio
 
 class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
 
-    var trending: List<HuggingFaceModel> = emptyList()
+    var popular: List<HuggingFaceModel> = emptyList()
 
-    /** 트렌딩 목록에 없어도 id 로 찾을 수 있는 모델. */
+    /** 다운로드 순 목록에 없어도 id 로 찾을 수 있는 모델. */
     val models = mutableMapOf<String, HuggingFaceModel>()
 
     /** 목록에는 있어도 id 로 읽으면 실패하는 모델. */
@@ -23,25 +23,31 @@ class FakeHuggingFaceClient : HuggingFaceClient, Resettable {
     var calls = 0
         private set
 
-    override fun fetchTrending(limit: Int): List<HuggingFaceModel> {
+    /** 마지막으로 목록을 몇 개 달라고 했는지. */
+    var lastLimit: Int? = null
+        private set
+
+    override fun fetchPopular(limit: Int): List<HuggingFaceModel> {
         calls++
+        lastLimit = limit
         onCall()
         if (failing) throw ModelCandidateRefreshFailedException()
-        return trending
+        return popular
     }
 
     override fun fetchModel(modelId: String): HuggingFaceModel {
         calls++
         if (failing || modelId in missing) throw ModelCandidateRefreshFailedException()
-        return models[modelId] ?: trending.firstOrNull { it.id == modelId } ?: throw ModelCandidateRefreshFailedException()
+        return models[modelId] ?: popular.firstOrNull { it.id == modelId } ?: throw ModelCandidateRefreshFailedException()
     }
 
     override fun clear() {
-        trending = emptyList()
+        popular = emptyList()
         models.clear()
         missing.clear()
         failing = false
         onCall = {}
         calls = 0
+        lastLimit = null
     }
 }
