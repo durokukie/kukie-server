@@ -2,6 +2,7 @@ package com.duro.kukie.serving.infrastructure
 
 import com.duro.kukie.global.util.utcNow
 import com.duro.kukie.serving.application.AuthenticatedServingKey
+import com.duro.kukie.serving.application.ServingRejectionObservation
 import com.duro.kukie.serving.application.ServingUsageObservation
 import com.duro.kukie.serving.application.port.out.ServingUsageWriter
 import org.springframework.jdbc.core.JdbcTemplate
@@ -41,8 +42,8 @@ class PostgresServingUsageWriter(private val jdbc: JdbcTemplate) : ServingUsageW
         val now = utcNow()
         jdbc.batchUpdate("""
             insert into tbl_serving_usage(id, key_id, access_id, cluster_id, user_id, model, started_at, deadline_at, finished_at,
-                duration_millis, http_status, wire_status, outcome, input_tokens, output_tokens, usage_missing, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                duration_millis, http_status, wire_status, outcome, input_tokens, output_tokens, usage_missing, created_at, updated_at, ttfb_millis)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (id) do nothing
         """.trimIndent(), events, events.size) { ps, event ->
             val startedAt = LocalDateTime.ofInstant(event.startedAt, ZoneOffset.UTC)
@@ -54,6 +55,21 @@ class PostgresServingUsageWriter(private val jdbc: JdbcTemplate) : ServingUsageW
             ps.setObject(12, event.wireStatus, Types.INTEGER); ps.setString(13, normalize(event.outcome))
             ps.setObject(14, event.inputTokens?.takeIf { it >= 0 }, Types.BIGINT); ps.setObject(15, event.outputTokens?.takeIf { it >= 0 }, Types.BIGINT)
             ps.setBoolean(16, event.usageMissing); ps.setObject(17, now); ps.setObject(18, now)
+            ps.setObject(19, event.ttfbMillis?.takeIf { it >= 0 }, Types.BIGINT)
+        }
+    }
+
+    override fun insertRejections(events: List<ServingRejectionObservation>) {
+        val now = utcNow()
+        jdbc.batchUpdate("""
+            insert into tbl_serving_rejection(id, key_id, access_id, cluster_id, user_id, model, reason, minute, count, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict (id) do nothing
+        """.trimIndent(), events, events.size) { ps, event ->
+            ps.setObject(1, event.id); ps.setObject(2, event.identity.keyId); ps.setObject(3, event.identity.accessId)
+            ps.setObject(4, event.identity.clusterId); ps.setObject(5, event.identity.userId); ps.setString(6, event.model)
+            ps.setString(7, event.reason); ps.setObject(8, LocalDateTime.ofInstant(event.minute, ZoneOffset.UTC)); ps.setInt(9, event.count)
+            ps.setObject(10, now)
         }
     }
 

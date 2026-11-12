@@ -1,6 +1,7 @@
 package com.duro.kukie.serving.application.port.out
 
 import com.duro.kukie.serving.application.AuthenticatedServingKey
+import com.duro.kukie.serving.application.ServingRejectionObservation
 import com.duro.kukie.serving.application.ServingUsageObservation
 import java.util.UUID
 
@@ -12,4 +13,7 @@ interface ServingUsageWriter {
 
     /** 끝난 요청을 한 번에 넣는다. 같은 requestId 행이 있으면 건너뛴다. */
     fun insertFinished(events: List<ServingUsageObservation>, deadlineSlackSeconds: Long)
+
+    /** 게이트웨이가 거절한 요청 수를 넣는다. 같은 id 행이 있으면 건너뛴다. */
+    fun insertRejections(events: List<ServingRejectionObservation>)
 }

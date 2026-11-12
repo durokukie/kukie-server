@@ -13,6 +13,8 @@ class ServingUsageMaintenance(private val jdbc: JdbcTemplate) {
     fun clean() {
         val now = utcNow()
         jdbc.update("update tbl_serving_usage set outcome = 'INTERRUPTED', usage_missing = (model is not null), updated_at = ? where outcome = 'IN_PROGRESS' and deadline_at <= ?", now, now)
-        jdbc.update("delete from tbl_serving_usage where started_at < ?", now.toLocalDate().minusDays(89).atStartOfDay())
+        val cutoff = now.toLocalDate().minusDays(89).atStartOfDay()
+        jdbc.update("delete from tbl_serving_usage where started_at < ?", cutoff)
+        jdbc.update("delete from tbl_serving_rejection where minute < ?", cutoff)
     }
 }

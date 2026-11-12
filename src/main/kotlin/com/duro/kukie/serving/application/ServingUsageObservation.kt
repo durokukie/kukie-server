@@ -15,4 +15,7 @@ data class ServingUsageObservation(
     val usageMissing: Boolean,
     val requestId: java.util.UUID = com.github.f4b6a3.uuid.UuidCreator.getTimeOrderedEpoch(),
     val wireStatus: Int? = null,
+    val ttfbMillis: Long? = null,
 )
+
+data class ServingRejectionObservation(val id: java.util.UUID, val identity: AuthenticatedServingKey, val model: String?, val reason: String, val minute: Instant, val count: Int)
