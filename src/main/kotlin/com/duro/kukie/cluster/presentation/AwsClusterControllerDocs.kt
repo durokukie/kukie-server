@@ -13,14 +13,18 @@ import com.duro.kukie.cluster.exception.EksEndpointRejectedException
 import com.duro.kukie.cluster.exception.EksNamespaceNotAllowedException
 import com.duro.kukie.cluster.exception.InvalidNamespaceException
 import com.duro.kukie.cluster.exception.NamespaceGrantPendingException
+import com.duro.kukie.cluster.exception.NamespaceListFailedException
+import com.duro.kukie.cluster.exception.NamespaceListNotSupportedException
 import com.duro.kukie.cluster.exception.NamespaceNotFoundException
 import com.duro.kukie.cluster.presentation.dto.request.GetEksCandidatesRequest
+import com.duro.kukie.cluster.presentation.dto.request.ListEksNamespacesRequest
 import com.duro.kukie.cluster.presentation.dto.request.RegisterEksClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.StartAwsConnectionRequest
 import com.duro.kukie.cluster.presentation.dto.response.AwsConnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.AwsDisconnectionResponse
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import com.duro.kukie.cluster.presentation.dto.response.EksClusterCandidateResponse
+import com.duro.kukie.cluster.presentation.dto.response.EksNamespacesResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.team.exception.NotTeamAdminException
 import com.duro.kukie.team.exception.NotTeamMemberException
@@ -74,6 +78,31 @@ interface AwsClusterControllerDocs {
         EksAccessDeniedException::class,
     )
     fun getEksCandidates(userId: UUID, request: GetEksCandidatesRequest): ResponseEntity<List<EksClusterCandidateResponse>>
+
+    @Operation(
+        summary = "EKS 클러스터의 namespace 목록",
+        description = "등록 화면에서 고를 namespace 를 이름순으로 줍니다. kube- 로 시작하는 시스템 namespace 와 지우는 중인 것은 뺍니다. " +
+            "full 연결만 됩니다(limited 는 400, 이름을 직접 입력). namespace 는 쿠버네티스 API 로 읽어야 해서 KukieAccess 역할을 " +
+            "클러스터 관리자 access entry 로 잠깐 넣고, 읽은 뒤 이 팀이 그 EKS 를 아직 등록하지 않았으면 바로 지웁니다. 붙인 권한이 " +
+            "퍼지기를 몇 초 기다리고, 그래도 안 되면 409 입니다. 결과는 화면이 기억해 두세요. 팀 관리자만 할 수 있습니다.",
+    )
+    @ApiErrorResponses(
+        NotTeamMemberException::class,
+        NotTeamAdminException::class,
+        AwsRegionNotSupportedException::class,
+        AwsConnectionNotStartedException::class,
+        AwsAccountMismatchException::class,
+        AwsRoleNotAssumableException::class,
+        NamespaceListNotSupportedException::class,
+        EksClusterNotFoundException::class,
+        EksClusterNotReadyException::class,
+        EksAccessEntryDisabledException::class,
+        EksEndpointRejectedException::class,
+        EksAccessDeniedException::class,
+        NamespaceGrantPendingException::class,
+        NamespaceListFailedException::class,
+    )
+    fun listEksNamespaces(userId: UUID, request: ListEksNamespacesRequest): ResponseEntity<EksNamespacesResponse>
 
     @Operation(
         summary = "EKS 클러스터 등록",

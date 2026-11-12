@@ -16,7 +16,9 @@ import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.exception.AwsRoleNotAssumableException
 import com.duro.kukie.cluster.exception.ClusterErrorCode
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
+import com.duro.kukie.cluster.exception.NamespaceGrantPendingException
 import com.duro.kukie.cluster.presentation.dto.request.GetEksCandidatesRequest
+import com.duro.kukie.cluster.presentation.dto.request.ListEksNamespacesRequest
 import com.duro.kukie.cluster.presentation.dto.request.RegisterEksClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.StartAwsConnectionRequest
 import com.duro.kukie.global.exception.GlobalErrorCode
@@ -382,6 +384,152 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     // ── EKS 클러스터 등록 ─────────────────────────────────────────
+
+    // ── namespace 목록 ───────────────────────────────────────────
+
+    @Test
+    fun `전체 권한 계정은 등록 전 EKS 의 namespace 를 시스템 것을 빼고 이름순으로 보고 붙인 entry 는 바로 뗀다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        fakeEksAccessGateway.namespaces = listOf("llm", "kube-system", "default", "kube-public", "app")
+
+        // when
+        val response = mockMvc.post("/clusters/aws/namespaces") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = namespacesRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isOk() }
+        }.andReturn().response.contentAsString
+
+        // then
+        JsonPath.read<List<String>>(response, "$.namespaces") shouldBe listOf("app", "default", "llm")
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.accessChanges shouldBe listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "default", AccessLevel.FULL),
+            FakeEksAccessGateway.NamespaceList(DEFAULT_CLUSTER_NAME),
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, emptySet(), AccessLevel.FULL),
+        )
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `이미 등록한 EKS 의 namespace 를 볼 때는 entry 를 떼지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영")
+        fakeEksAccessGateway.unregistrations.clear()
+
+        // when
+        mockMvc.post("/clusters/aws/namespaces") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = namespacesRequest(idOf(externalId)).toJson()
+        }.andExpect { status { isOk() } }
+
+        // then
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+    }
+
+    @Test
+    fun `namespace 를 읽지 못해도 붙인 entry 는 뗀다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        fakeEksAccessGateway.namespaceListFailure = NamespaceGrantPendingException()
+
+        // when
+        mockMvc.post("/clusters/aws/namespaces") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = namespacesRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+        }
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.unregistrations shouldBe listOf(
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, emptySet(), AccessLevel.FULL),
+        )
+    }
+
+    @Test
+    fun `제한된 권한 계정은 namespace 목록을 볼 수 없고 클러스터를 건드리지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.LIMITED)
+
+        // when
+        mockMvc.post("/clusters/aws/namespaces") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = namespacesRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_LIST_NOT_SUPPORTED.code) }
+        }
+
+        // then
+        fakeEksAccessGateway.accessChanges.shouldBeEmpty()
+    }
+
+    @Test
+    fun `구성원은 namespace 목록을 볼 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+
+        // when
+        mockMvc.post("/clusters/aws/namespaces") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = namespacesRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+
+        // then
+        fakeEksAccessGateway.accessChanges.shouldBeEmpty()
+    }
+
+    @Test
+    fun `사설 주소로 풀리는 EKS 엔드포인트면 namespace 를 읽지 않고 접근 권한도 만들지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        fakeHostResolver.addresses = listOf(InetAddress.getByName("10.0.0.5"))
+
+        // when
+        mockMvc.post("/clusters/aws/namespaces") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = namespacesRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.EKS_ENDPOINT_REJECTED.code) }
+        }
+
+        // then
+        fakeEksAccessGateway.accessChanges.shouldBeEmpty()
+    }
 
     @Test
     fun `관리자는 EKS 클러스터를 등록하고 자격증명 대신 연결 정보를 암호화해 둔다`() {
@@ -1513,6 +1661,13 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         clusterName = DEFAULT_CLUSTER_NAME,
         namespace = namespace,
         name = name,
+    )
+
+    private fun namespacesRequest(connectionId: UUID, accountId: String = ACCOUNT_ID) = ListEksNamespacesRequest(
+        connectionId = connectionId,
+        accountId = accountId,
+        region = DEFAULT_REGION,
+        clusterName = DEFAULT_CLUSTER_NAME,
     )
 
     private fun registerEks(
