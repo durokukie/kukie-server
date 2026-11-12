@@ -5,10 +5,8 @@ Go 저장소: `durokukie/kukie-serving-gateway`. 계약은 해당 저장소 `doc
 - `KUKIE_GATEWAY_INTERNAL_TOKEN`을 전용 자격으로 설정한다. 기본값이 비어 있으면 전부 거절한다. 기존 `KUKIE_INTERNAL_TOKEN`과 별도로 관리한다.
 - 내부 ingress/네트워크에서 게이트웨이에만 HTTPS 접근을 허용한다. 기존 공용 API 라우팅에 `/internal`을 추가하지 않는다.
 - 게이트웨이 전용 내부 자격 교체는 서버/게이트웨이에서 조율한다. 다중 키 무중단 회전은 후속이다.
-- `/authorize`는 개인 키를 확인하고 keyId/clusterId/허용 모델만 반환한다. 주소·카운터 자격을 반환하지 않는다.
-- `/requests`는 키 ID의 현재 상태와 허용 모델을 재확인하고 시작 기록을 확정한다. 반환에 실패하면 게이트웨이는 모델을 호출하지 않는다.
-- 완료 기록은 저장된 요청 ID로 본래 대상을 결정하며 기존 조건부 writer를 재사용한다. 키 폐기 전 시작된 요청도 완료 가능하다. 미완료 시작 행은 기존 유지 작업이 INTERRUPTED로 처리한다.
-- `/key-snapshot`(DURO-223)은 지금 쓸 수 있는 키(`/authorize`와 같은 기준)의 해시·keyId·clusterId·만료와 클러스터별 허용 모델을 한 번에 준다. 키 원문은 저장하지 않으므로 응답에도 없다. 50,000개를 넘으면 500(`SERVING_KEY_SNAPSHOT_TOO_LARGE`)으로 거절한다.
+- 옛 키별 API `/authorize`·`/requests`·`/requests/{requestId}/finish`는 삭제됐다(DURO-223). 게이트웨이는 아래 `/key-snapshot`과 `/usage`만 쓴다.
+- `/key-snapshot`(DURO-223)은 지금 쓸 수 있는 키(폐기·만료되지 않고 이용 권한이 ACTIVE인 키)의 해시·keyId·clusterId·만료와 클러스터별 허용 모델을 한 번에 준다. 키 원문은 저장하지 않으므로 응답에도 없다. 50,000개를 넘으면 500(`SERVING_KEY_SNAPSHOT_TOO_LARGE`)으로 거절한다.
 - `/usage`(DURO-223)는 끝난 요청 1~500건을 한 번에 받는다. requestId가 행 ID라 재전송해도 한 행만 남는다. 폐기·만료된 키의 기록도 저장하며, 키가 없거나 시작 시각이 1일 전보다 오래됐거나 5분 넘게 미래면 그 건만 건너뛴다.
 - 현재 모델 목록은 기존 ServingEndpoint 설정만 사용한다. 커넥터의 모델 등록과 EKS 자동 발견 통합은 이 변경에 포함하지 않는다.
 
@@ -48,7 +46,7 @@ info의 modelStatusValidForSeconds는 서버가 계산한 남은 관측 유효 �
 
 V30은 클러스터별 차단 모델을 별도로 저장한다. 기본은 커넥터 등록 모델을 모두 허용한다. GET /clusters/{clusterId}/serving/model-access는 등록된 모델과 enabled를 반환하고 PATCH는 {"model":"model-id","enabled":false}로 한 모델을 변경한다. 클러스터 관리자만 접근할 수 있으며 미등록 모델은 400, 커넥터 미등록 변경은 503이다. 모든 모델 차단도 허용한다.
 
-차단은 새 요청에 적용된다. 게이트웨이 authorize와 요청 시작 단계가 DB의 차단 목록을 읽으므로, 모델 이름을 직접 넣어도 시작 시 403으로 거절한다. 사용자 info의 models/modelStatuses에서는 제외하며 관리자 info에는 enabled=false로 남겨 재허용할 수 있다. 진행 중인 스트림은 중단하지 않고 GPU 파드/노드도 변경하지 않는다. 커넥터 연결 자격 회전은 차단 정책을 변경하지 않는다. 삭제된 클러스터의 정책은 FK cascade로 정리된다.
+차단은 새 요청에 적용된다. `/key-snapshot`의 클러스터별 허용 모델에서 차단 모델을 빼므로, 게이트웨이는 다음 스냅샷을 받은 뒤 그 모델 요청을 거절한다. 사용자 info의 models/modelStatuses에서는 제외하며 관리자 info에는 enabled=false로 남겨 재허용할 수 있다. 진행 중인 스트림은 중단하지 않고 GPU 파드/노드도 변경하지 않는다. 커넥터 연결 자격 회전은 차단 정책을 변경하지 않는다. 삭제된 클러스터의 정책은 FK cascade로 정리된다.
 
 서버·V30을 먼저 배포한 뒤 프론트 모델 공개 화면을 배포한다. 운영 클러스터의 모델이나 키 설정을 이 기능의 테스트 목적으로 임의 변경하지 않는다. 로컬 PostgreSQL/Redis 통합 검증은 권한 경계·미등록 모델·전체 차단·재허용·자격 회전·게이트웨이 거절을 포함한다.
 

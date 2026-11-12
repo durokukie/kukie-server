@@ -8,13 +8,12 @@ import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
-import java.util.UUID
 
 @InternalApi
 @GatewayApi
 @RestController
 @RequestMapping("/internal/serving-gateway")
-class GatewayControlController(private val authorize: AuthorizeGatewayService, private val begin: BeginGatewayUsageService, private val complete: CompleteGatewayUsageService, private val connectors: GetConnectorBindingsService, private val reportModels: ReportConnectorModelStatusService, private val renewConnector: RenewConnectorCredentialService, private val keySnapshot: GetGatewayKeySnapshotService, private val recordUsage: RecordGatewayUsageService) {
+class GatewayControlController(private val connectors: GetConnectorBindingsService, private val reportModels: ReportConnectorModelStatusService, private val renewConnector: RenewConnectorCredentialService, private val keySnapshot: GetGatewayKeySnapshotService, private val recordUsage: RecordGatewayUsageService) {
     @PostMapping("/model-status")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun modelStatus(@Valid @RequestBody request: GatewayModelStatusRequest) = reportModels(request)
@@ -40,20 +39,4 @@ class GatewayControlController(private val authorize: AuthorizeGatewayService, p
         response.setHeader("Cache-Control", "no-store")
         return renewConnector(request.toCommand())
     }
-
-    @PostMapping("/authorize")
-    fun authorize(@Valid @RequestBody request: GatewayAuthorizeRequest, response: HttpServletResponse): GatewayIdentity {
-        response.setHeader("Cache-Control", "no-store")
-        return authorize(request)
-    }
-
-    @PostMapping("/requests")
-    fun begin(@Valid @RequestBody request: GatewayBeginRequest, response: HttpServletResponse): Map<String, UUID> {
-        response.setHeader("Cache-Control", "no-store")
-        return mapOf("requestId" to begin(request))
-    }
-
-    @PostMapping("/requests/{requestId}/finish")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun finish(@PathVariable requestId: UUID, @Valid @RequestBody request: GatewayFinishRequest) = complete(request.toCommand(requestId))
 }
