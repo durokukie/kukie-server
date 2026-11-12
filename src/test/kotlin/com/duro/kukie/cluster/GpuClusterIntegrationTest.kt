@@ -1380,6 +1380,24 @@ class GpuClusterIntegrationTest : IntegrationTest() {
             authorization(setup.accessToken)
         }
 
+    @Test
+    fun `후보에서 모델을 시작하면 그 클러스터의 즐겨찾기에 저절로 들어간다`() {
+        // given
+        val setup = eksCluster(TeamRole.ADMIN, AccessLevel.FULL)
+
+        // when
+        postModel(setup, "Qwen/Qwen3-32B", 80).andExpect { status { isCreated() } }
+
+        // then
+        mockMvc.get("/clusters/${setup.clusterId}/gpu/model-favorites") {
+            authorization(setup.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.models.length()") { value(1) }
+            jsonPath("$.models[0]") { value("Qwen/Qwen3-32B") }
+        }
+    }
+
     private fun getControl(setup: Setup): ResultActionsDsl =
         mockMvc.get("/clusters/${setup.clusterId}/gpu/node-groups") {
             authorization(setup.accessToken)

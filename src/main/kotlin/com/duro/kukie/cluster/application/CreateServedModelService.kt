@@ -8,6 +8,7 @@ import com.duro.kukie.cluster.exception.GpuServingDeniedException
 import com.duro.kukie.cluster.exception.ServedModelExistsException
 import com.duro.kukie.cluster.presentation.dto.response.ServedModelResponse
 import com.duro.kukie.global.config.properties.ClusterGpuProperties
+import com.duro.kukie.modelcatalog.application.ModelFavoriteService
 import org.springframework.stereotype.Service
 
 @Service
@@ -17,6 +18,7 @@ class CreateServedModelService(
     private val eksAccessGateway: EksAccessGateway,
     private val gpuAuditLog: GpuAuditLog,
     private val clusterGpuProperties: ClusterGpuProperties,
+    private val modelFavoriteService: ModelFavoriteService,
 ) {
 
     /** AWS·쿠버네티스 API 를 부르는 동안 DB 연결을 쥐지 않게 트랜잭션을 걸지 않는다. */
@@ -52,6 +54,8 @@ class CreateServedModelService(
                 ),
             )
         }
+        // 시작한 모델은 그 클러스터의 후보 즐겨찾기에 남긴다 — 측정한 모델이 다운로드 순위에서 밀려도 후보에 남게
+        modelFavoriteService.rememberStarted(command.clusterId, command.userId, command.model)
         return ServedModelResponse(namespace = SERVING_NAMESPACE, name = name, model = command.model)
     }
 
