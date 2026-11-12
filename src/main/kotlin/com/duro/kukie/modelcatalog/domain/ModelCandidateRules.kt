@@ -24,7 +24,7 @@ data class ModelSelection(
     val dropped: Map<String, String>,
 )
 
-/** 허깅페이스 다운로드 순 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
+/** 허깅페이스 다운로드 순 목록에서 파라미터 수가 범위 안이고 라이선스가 걸리지 않고 vLLM 이 띄울 수 있는 원작자 모델만 남긴다. 목록 순서를 지킨다. */
 object ModelCandidateRules {
 
     const val MIN_PARAMS_B = 20.0
@@ -93,6 +93,9 @@ object ModelCandidateRules {
         val license = licenseName(model)
         if (license != null && NON_COMMERCIAL.any { it.containsMatchIn(license) }) return "비상업 라이선스 ($license)"
         if (exceedsColumns(model, license)) return "저장할 수 없는 긴 값"
+        // 오븐은 vLLM 으로만 띄운다 — 공식 vLLM 에도 포크 표에도 없는 구조는 시작해도 뜨지 않는다
+        val architecture = model.architectures.firstOrNull()
+        if (vllmSupport(architecture) == VllmSupport.UNKNOWN) return "vLLM 지원 목록에 없는 구조 (${architecture ?: "모름"})"
         return null
     }
 

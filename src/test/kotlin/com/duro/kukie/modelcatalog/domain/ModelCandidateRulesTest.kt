@@ -235,13 +235,31 @@ class ModelCandidateRulesTest {
     }
 
     @Test
-    fun `vLLM 지원을 나눈다`() {
+    fun `공식 vLLM 과 포크 표에 있는 구조만 남기고 지원을 나눈다`() {
         // when
-        val support = listOf("LlamaForCausalLM", "Raon1MiniForCausalLM", "Glm5NextForConditionalGeneration", null)
+        val support = listOf("LlamaForCausalLM", "Raon1MiniForCausalLM")
             .map { keptOne(model("openai/m", architecture = it)).vllmSupport }
 
         // then
-        support.shouldContainExactly(VllmSupport.UPSTREAM, VllmSupport.FORK, VllmSupport.UNKNOWN, VllmSupport.UNKNOWN)
+        support.shouldContainExactly(VllmSupport.UPSTREAM, VllmSupport.FORK)
+    }
+
+    @Test
+    fun `vLLM 지원 목록에 없거나 구조를 모르는 모델은 뺀다`() {
+        // when
+        val selection = ModelCandidateRules.select(
+            listOf(
+                model("openai/new", architecture = "Glm5NextForConditionalGeneration"),
+                model("openai/unknown", architecture = null),
+            ),
+        )
+
+        // then
+        selection.kept.shouldBeEmpty()
+        selection.dropped shouldBe mapOf(
+            "openai/new" to "vLLM 지원 목록에 없는 구조 (Glm5NextForConditionalGeneration)",
+            "openai/unknown" to "vLLM 지원 목록에 없는 구조 (모름)",
+        )
     }
 
     @Test
