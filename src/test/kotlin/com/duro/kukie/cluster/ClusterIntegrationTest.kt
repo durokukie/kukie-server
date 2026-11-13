@@ -12,6 +12,8 @@ import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.ClusterStatus
+import com.duro.kukie.cluster.domain.saveAndFlushOrThrowTaken
+import com.duro.kukie.cluster.exception.ClusterAlreadyRegisteredException
 import com.duro.kukie.cluster.exception.ClusterErrorCode
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterRequest
@@ -26,6 +28,7 @@ import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.user.UserFixture
 import com.jayway.jsonpath.JsonPath
 import com.zaxxer.hikari.HikariDataSource
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotContain
@@ -389,6 +392,21 @@ class ClusterIntegrationTest : IntegrationTest() {
             jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
         }
         clusterRepository.findAllByTeamIdOrderByCreatedAt(teamId).map { it.name } shouldBe listOf("운영")
+    }
+
+    @Test
+    fun `앞의 검사를 함께 통과한 동시 등록도 DB 가 같은 클러스터를 한 번만 받는다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        clusterRepository.saveAndFlush(ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "운영"))
+
+        // when & then
+        shouldThrow<ClusterAlreadyRegisteredException> {
+            clusterRepository.saveAndFlushOrThrowTaken(
+                ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "운영2", apiServer = ClusterFixture.DEFAULT_SERVER),
+            )
+        }
     }
 
     @Test

@@ -50,7 +50,8 @@ object ClusterFixture {
         registeredBy: UUID,
         teamId: UUID,
         name: String = DEFAULT_NAME,
-        apiServer: String = DEFAULT_SERVER,
+        // 한 팀에 같은 주소·namespace 는 하나뿐이라 이름이 다르면 주소도 다르게 둔다
+        apiServer: String = if (name == DEFAULT_NAME) DEFAULT_SERVER else "https://api-${name.hashCode().toUInt()}.example.com",
         credential: String = "암호문",
         fingerprint: String = "fp",
         defaultNamespace: String = DEFAULT_NAMESPACE,

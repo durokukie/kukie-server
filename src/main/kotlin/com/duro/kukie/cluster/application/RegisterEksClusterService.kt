@@ -12,7 +12,7 @@ import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.NamespaceName
 import com.duro.kukie.cluster.domain.requireNotRegistered
-import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
+import com.duro.kukie.cluster.domain.saveAndFlushOrThrowTaken
 import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
@@ -80,7 +80,7 @@ class RegisterEksClusterService(
             NamespaceStatus.EXISTS, NamespaceStatus.UNKNOWN -> Unit
         }
 
-        val cluster = clusterRepository.saveAndFlushOrThrowNameTaken(
+        val cluster = clusterRepository.saveAndFlushOrThrowTaken(
             Cluster(
                 teamId = connection.teamId,
                 registeredBy = command.userId,

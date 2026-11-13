@@ -73,12 +73,15 @@ fun ClusterRepository.requireNotRegistered(teamId: UUID, apiServer: String, name
     }
 }
 
-fun ClusterRepository.saveAndFlushOrThrowNameTaken(cluster: Cluster): Cluster =
+fun ClusterRepository.saveAndFlushOrThrowTaken(cluster: Cluster): Cluster =
     try {
         saveAndFlush(cluster)
     } catch (exception: DataIntegrityViolationException) {
-        if (NAME_UNIQUE_CONSTRAINT in exception.mostSpecificCause.message.orEmpty()) throw ClusterNameTakenException()
+        val message = exception.mostSpecificCause.message.orEmpty()
+        if (NAME_UNIQUE_CONSTRAINT in message) throw ClusterNameTakenException()
+        if (TARGET_UNIQUE_CONSTRAINT in message) throw ClusterAlreadyRegisteredException()
         throw exception
     }
 
 private const val NAME_UNIQUE_CONSTRAINT = "uk_cluster_team_name"
+private const val TARGET_UNIQUE_CONSTRAINT = "uk_cluster_team_api_server_namespace"

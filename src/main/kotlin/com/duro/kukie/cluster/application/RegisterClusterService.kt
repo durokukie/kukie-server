@@ -6,7 +6,7 @@ import com.duro.kukie.cluster.application.port.out.KubeconfigParser
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.requireNotRegistered
-import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
+import com.duro.kukie.cluster.domain.saveAndFlushOrThrowTaken
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import org.springframework.stereotype.Service
 
@@ -25,7 +25,7 @@ class RegisterClusterService(
         val namespace = command.namespace ?: parsed.namespace
         clusterRepository.requireNotRegistered(command.teamId, parsed.apiServer, namespace)
 
-        val cluster = clusterRepository.saveAndFlushOrThrowNameTaken(
+        val cluster = clusterRepository.saveAndFlushOrThrowTaken(
             Cluster(
                 teamId = command.teamId,
                 registeredBy = command.userId,
