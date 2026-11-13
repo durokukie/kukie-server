@@ -38,6 +38,15 @@ class S3HostingStateStore(
         }
     }
 
+    // 앞쪽이 잘려 UTF-8 글자 중간에서 시작할 수 있어, 깨진 첫 글자는 대체 문자로 읽힌다
+    override fun readTail(key: String, bytes: Int): String? = call {
+        try {
+            s3Client.getObjectAsBytes { it.bucket(hostingProperties.stateBucket).key(key).range("bytes=-$bytes") }.asUtf8String()
+        } catch (exception: NoSuchKeyException) {
+            null
+        }
+    }
+
     private fun <T> call(block: () -> T): T =
         try {
             block()

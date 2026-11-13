@@ -27,3 +27,4 @@ hosting:
   state-bucket: test-hosting-state
   commands-queue-url: http://localhost/test-hosting-commands
   agent-poll-wait: 2s
+  agent-deploy-wait: 2s
