@@ -10,4 +10,5 @@ data class UpdateRunCommand(
     val appendAgentMessages: List<Any?>?,
     val usageSummary: Map<String, Any?>?,
     val titleFrom: String?,
+    val title: String? = null,
 )
