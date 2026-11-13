@@ -43,17 +43,17 @@ class UpdateRunService(
             if (status.active) emptyList() else actionPlanRepository.closeOpenPlans(run.id)
         }.orEmpty()
 
-        session?.let { command.titleFrom?.let { text -> nameFromFirstMessage(it, run, text) } }
+        session?.let { command.titleFrom?.let { text -> nameFromFirstMessage(it, run, text, command.title) } }
         chatRunRepository.flush()
 
         return UpdateRunResponse(RunResponse.from(run), closedPlans.map(PlanResponse::from))
     }
 
-    private fun nameFromFirstMessage(session: ChatSession, run: ChatRun, text: String) {
+    private fun nameFromFirstMessage(session: ChatSession, run: ChatRun, text: String, suggested: String?) {
         if (!session.hasDefaultTitle || run.kind != RunKind.CHAT || !FirstMessageTitle.titleable(text)) return
         val others = chatRunRepository.findInputTexts(session.id, RunKind.CHAT, exceptRunId = run.id)
         if (others.any(FirstMessageTitle::titleable)) return
 
-        session.rename(FirstMessageTitle.of(text))
+        session.rename(FirstMessageTitle.suggested(suggested) ?: FirstMessageTitle.of(text))
     }
 }
