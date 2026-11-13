@@ -197,17 +197,18 @@ class ClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `외부 인증 프로그램을 쓰는 kubeconfig 는 등록할 수 없다`() {
-        // given
+    fun `외부 인증 프로그램을 쓰는 kubeconfig 는 등록하지 않고 ServiceAccount 토큰 방법을 알려 준다`() {
+        // given: OKE 콘솔·oci CLI 가 만드는 kubeconfig 꼴
         val me = loggedInUser()
         val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val okeExec = mapOf("command" to "oci", "args" to listOf("ce", "cluster", "generate-token"))
 
         // when & then
         mockMvc.post("/clusters") {
             authorization(me.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = RegisterClusterRequest(
-                kubeconfig = kubeconfig(user = mapOf("exec" to mapOf("command" to "aws"))),
+                kubeconfig = kubeconfig(user = mapOf("exec" to okeExec)),
                 name = "운영",
                 teamId = teamId,
             ).toJson()
@@ -215,6 +216,7 @@ class ClusterIntegrationTest : IntegrationTest() {
             status { isBadRequest() }
             jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
             jsonPath("$.message") { value(containsString("외부 인증 프로그램")) }
+            jsonPath("$.message") { value(containsString("kukie-access/sa-token-v1.yaml")) }
         }
         clusterRepository.count() shouldBe 0
     }
