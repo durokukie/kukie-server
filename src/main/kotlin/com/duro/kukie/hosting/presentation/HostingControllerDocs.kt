@@ -2,12 +2,15 @@ package com.duro.kukie.hosting.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.hosting.exception.HostingAppNotFoundException
+import com.duro.kukie.hosting.exception.HostingAppSourceMismatchException
 import com.duro.kukie.hosting.exception.HostingCommandTooSoonException
 import com.duro.kukie.hosting.exception.HostingDisabledException
 import com.duro.kukie.hosting.exception.HostingLogNotFoundException
 import com.duro.kukie.hosting.exception.HostingNotAllowedException
+import com.duro.kukie.hosting.exception.HostingRepositoryInUseException
 import com.duro.kukie.hosting.exception.HostingRepositoryNotFoundException
 import com.duro.kukie.hosting.exception.HostingUnavailableException
+import com.duro.kukie.hosting.presentation.dto.request.ConnectHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppsResponse
@@ -70,13 +73,36 @@ interface HostingControllerDocs {
     fun getBuildLog(userId: UUID, app: String, deploymentId: String): ResponseEntity<String>
 
     @Operation(
+        summary = "업로드 앱에 레포 연결",
+        description = "코딩 에이전트가 올린 폴더로 만든 앱(uploaded 가 true)에 installation.repositories 의 레포 하나를 잇습니다. " +
+            "그 레포의 기본 브랜치 최신 커밋을 앱 이름과 주소 그대로 곧바로 배포하고, 그 뒤로는 그 레포에 push 할 때마다 배포됩니다. " +
+            "레포 내용이 지금 떠 있는 업로드와 달라도 막지 않습니다. 새 커밋이 빌드되거나 뜨지 않아도 연결은 남고, 업로드 버전이 계속 돕니다. " +
+            "앱의 latest.commandId 가 응답의 commandId 가 되면 시작된 것이고, 거절되면 skippedPush 의 commandId 로 알려 줍니다. " +
+            "레포 하나에는 앱 하나만 연결할 수 있습니다. 연결을 끊거나 업로드 앱으로 되돌릴 수는 없습니다.",
+    )
+    @ApiResponse(responseCode = "202", description = "Accepted")
+    @ApiErrorResponses(
+        HostingAppNotFoundException::class,
+        HostingAppSourceMismatchException::class,
+        HostingRepositoryNotFoundException::class,
+        HostingRepositoryInUseException::class,
+        HostingNotAllowedException::class,
+        HostingCommandTooSoonException::class,
+        HostingUnavailableException::class,
+        HostingDisabledException::class,
+    )
+    fun connect(userId: UUID, app: String, request: ConnectHostingAppRequest): ResponseEntity<HostingCommandResponse>
+
+    @Operation(
         summary = "다시 배포",
-        description = "기본 브랜치의 최신 커밋을 다시 배포하라고 배포기에 요청합니다. 바로 시작되지 않을 수 있습니다. 앱의 latest.commandId 가 " +
+        description = "기본 브랜치의 최신 커밋을 다시 배포하라고 배포기에 요청합니다. 업로드로 만든 앱은 레포가 없어 409 입니다(다시 올리거나 " +
+            "레포를 연결). 바로 시작되지 않을 수 있습니다. 앱의 latest.commandId 가 " +
             "응답의 commandId 가 되면 시작된 것입니다. 같은 앱에 1분 안에 다시 요청하면 429 입니다.",
     )
     @ApiResponse(responseCode = "202", description = "Accepted")
     @ApiErrorResponses(
         HostingAppNotFoundException::class,
+        HostingAppSourceMismatchException::class,
         HostingCommandTooSoonException::class,
         HostingUnavailableException::class,
         HostingDisabledException::class,

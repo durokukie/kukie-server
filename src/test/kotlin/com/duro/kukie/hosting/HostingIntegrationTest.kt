@@ -264,7 +264,7 @@ class HostingIntegrationTest : IntegrationTest() {
         with(queue.commands.single()) {
             version shouldBe 1
             type shouldBe HostingCommand.REDEPLOY
-            repo.fullName shouldBe "Recklehs/shop"
+            repo?.fullName shouldBe "Recklehs/shop"
             team shouldBe "recklehs"
             app shouldBe "shop"
             generation shouldBe GENERATION
@@ -328,7 +328,7 @@ class HostingIntegrationTest : IntegrationTest() {
 
         with(queue.commands.single()) {
             type shouldBe HostingCommand.DEPLOY
-            repo.fullName shouldBe "Recklehs/shop"
+            repo?.fullName shouldBe "Recklehs/shop"
             team shouldBe "recklehs"
             app shouldBe null
             generation shouldBe null
@@ -587,6 +587,174 @@ class HostingIntegrationTest : IntegrationTest() {
         }
     }
 
+    @Test
+    fun `업로드로 만든 앱은 레포 없이 목록에 나온다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop")
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.apps.length()") { value(1) }
+            jsonPath("$.apps[0].app") { value("my-shop") }
+            jsonPath("$.apps[0].repository") { value(null) }
+            jsonPath("$.apps[0].uploaded") { value(true) }
+        }
+    }
+
+    @Test
+    fun `거절된 업로드 명령은 레포 없이 명령 id 와 함께 알려 준다`() {
+        // given
+        val member = linkedUser()
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "commandId": "c51b", "app": "my-shop", "reason": "source_mismatch", "at": "2026-11-13T01:00:00Z" }"""
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.skippedPush.repository") { value(null) }
+            jsonPath("$.skippedPush.app") { value("my-shop") }
+            jsonPath("$.skippedPush.commandId") { value("c51b") }
+            jsonPath("$.skippedPush.reason") { value("source_mismatch") }
+        }
+    }
+
+    @Test
+    fun `거절된 뒤 같은 이름의 업로드 앱이 배포됐으면 지난 거절은 주지 않는다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop")
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "commandId": "c51b", "app": "my-shop", "reason": "internal", "at": "2026-11-10T01:00:00Z" }"""
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.skippedPush") { value(null) }
+        }
+    }
+
+    @Test
+    fun `업로드 앱은 다시 배포할 수 없고 삭제는 레포 없이 보낸다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop")
+
+        // when & then
+        mockMvc.post("/hosting/apps/my-shop/redeploy") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_APP_SOURCE_MISMATCH") }
+        }
+        mockMvc.delete("/hosting/apps/my-shop") {
+            authorization(member.accessToken)
+        }.andExpect { status { isAccepted() } }
+
+        with(queue.commands.single()) {
+            type shouldBe HostingCommand.DELETE
+            repo shouldBe null
+            app shouldBe "my-shop"
+        }
+    }
+
+    @Test
+    fun `업로드 앱에 내 레포를 연결하면 연결 명령을 보낸다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop")
+        putRepos("Recklehs/shop-frontend")
+
+        // when & then
+        mockMvc.post("/hosting/apps/my-shop/connect") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "recklehs/SHOP-frontend"}"""
+        }.andExpect {
+            status { isAccepted() }
+            jsonPath("$.commandId") { exists() }
+        }
+
+        with(queue.commands.single()) {
+            type shouldBe HostingCommand.CONNECT
+            repo?.fullName shouldBe "Recklehs/shop-frontend"
+            team shouldBe "recklehs"
+            app shouldBe "my-shop"
+            generation shouldBe GENERATION
+            owner.id shouldBe GITHUB.id
+            owner.login shouldBe "Recklehs"
+        }
+    }
+
+    @Test
+    fun `레포로 만든 앱에는 레포를 연결할 수 없다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        putRepos("Recklehs/blog")
+
+        // when & then
+        mockMvc.post("/hosting/apps/shop/connect") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/blog"}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_APP_SOURCE_MISMATCH") }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `이미 다른 앱이 쓰는 레포는 연결할 수 없다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop")
+        putApp("shop")
+        putRepos("Recklehs/shop")
+
+        // when & then
+        mockMvc.post("/hosting/apps/my-shop/connect") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/shop"}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_REPOSITORY_IN_USE") }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `App 에 허용하지 않은 레포나 허용 목록 밖 계정은 연결할 수 없다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop")
+        putRepos("Recklehs/blog")
+
+        // when & then
+        mockMvc.post("/hosting/apps/my-shop/connect") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/other"}"""
+        }.andExpect { status { isNotFound() } }
+
+        putRepos("Recklehs/blog", allowed = false)
+        mockMvc.post("/hosting/apps/my-shop/connect") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/blog"}"""
+        }.andExpect { status { isForbidden() } }
+        queue.commands.shouldBeEmpty()
+    }
+
     private fun linkedUser(): LoggedInUser = loggedInUser(UserFixture.oAuthUser().apply { linkGitHub(GITHUB) })
 
     private fun putApp(app: String, ownerId: Long = GITHUB.id) {
@@ -613,7 +781,12 @@ class HostingIntegrationTest : IntegrationTest() {
         }
     """.trimIndent()
 
-    private fun putDeployment(app: String, generation: String, id: String, phase: String, failure: String = "null") {
+    private fun putUploadApp(app: String) {
+        store.files["apps/recklehs/$app.json"] = appJson(app)
+            .replace(""""repo": { "id": 987654321, "fullName": "Recklehs/$app" },""", """"source": { "type": "upload" },""")
+    }
+
+        private fun putDeployment(app: String, generation: String, id: String, phase: String, failure: String = "null") {
         store.files["deployments/recklehs/$app/$generation/$id.json"] = """
             {
               "version": 1,

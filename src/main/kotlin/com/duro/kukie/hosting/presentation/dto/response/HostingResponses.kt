@@ -44,7 +44,10 @@ data class HostingInstallationResponse(
 
 data class HostingAppResponse(
     val app: String,
-    val repository: String,
+    /** 앱을 배포하는 레포. 업로드로 만들고 레포를 연결하지 않은 앱은 null. */
+    val repository: String?,
+    /** 코딩 에이전트가 올린 폴더로 만든 앱. 레포를 연결하면 push 마다 배포되고 false 가 된다. */
+    val uploaded: Boolean,
     val url: String,
     /** 마지막 배포에 쓴 값. latest.phase 가 failed 면 실행 중인 앱의 값이 아닐 수 있다. */
     val config: HostingConfig,
@@ -52,18 +55,26 @@ data class HostingAppResponse(
     val latest: HostingLatest,
 ) {
     companion object {
-        fun from(app: HostingApp) = HostingAppResponse(app.app, app.repo.fullName, app.url, app.config, app.latest)
+        fun from(app: HostingApp) = HostingAppResponse(app.app, app.repo?.fullName, app.uploaded, app.url, app.config, app.latest)
     }
 }
 
 data class SkippedPushResponse(
-    val repository: String,
-    /** not_allowed, invalid_team_name, invalid_app_name, name_too_long, queue_full, app_limit, internal */
+    /** 업로드 명령이었으면 null. */
+    val repository: String?,
+    /** 배포기가 앱 이름을 알았을 때만. */
+    val app: String?,
+    /** 거절한 명령의 id. push 였으면 null. 명령의 결과는 이것으로 찾는다. */
+    val commandId: String?,
+    /**
+     * not_allowed, invalid_team_name, invalid_app_name, name_too_long, queue_full, auto_deploy_off, app_limit,
+     * source_mismatch, repository_in_use, internal
+     */
     val reason: String,
     val at: Instant,
 ) {
     companion object {
-        fun from(skipped: SkippedPush) = SkippedPushResponse(skipped.repo.fullName, skipped.reason, skipped.at)
+        fun from(skipped: SkippedPush) = SkippedPushResponse(skipped.repo?.fullName, skipped.app, skipped.commandId, skipped.reason, skipped.at)
     }
 }
 

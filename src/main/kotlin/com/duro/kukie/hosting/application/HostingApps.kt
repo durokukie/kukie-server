@@ -52,13 +52,17 @@ class HostingApps(
     fun repoList(account: GitHubAccount): HostingRepoList? =
         read<HostingRepoList>("apps/_repos/${account.team}.json")?.takeIf { it.owner.id == account.id }
 
-    /** 배포를 시작하지 못한 마지막 push. 그 뒤 같은 레포의 앱이 배포됐으면 지난 일이라 주지 않는다. */
+    /** 배포를 시작하지 못한 마지막 push 나 명령. 그 뒤 같은 레포(레포가 없으면 같은 이름)의 앱이 배포됐으면 지난 일이라 주지 않는다. */
     fun skippedPush(account: GitHubAccount, apps: List<HostingApp>): SkippedPush? =
         read<SkippedPush>("apps/_skipped/${account.team}.json")
             ?.takeIf { it.sender.id == account.id }
-            ?.takeUnless { skipped ->
-                apps.any { it.repo.fullName.equals(skipped.repo.fullName, ignoreCase = true) && it.latest.at > skipped.at }
-            }
+            ?.takeUnless { skipped -> apps.any { it.isFor(skipped) && it.latest.at > skipped.at } }
+
+    private fun HostingApp.isFor(skipped: SkippedPush): Boolean {
+        val skippedRepo = skipped.repo?.fullName
+        if (skippedRepo != null && repo?.fullName.equals(skippedRepo, ignoreCase = true)) return true
+        return skipped.app != null && skipped.app == app
+    }
 
     /** 지금 세대의 배포를 최신순으로 준다. 기록은 30일 뒤 지워지므로 비어 있을 수 있다. */
     fun deployments(app: HostingApp): List<HostingDeployment> =

@@ -11,6 +11,8 @@ enum class HostingErrorCode(
     HOSTING_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "빌드 로그가 없습니다. 빌드가 끝나기 전이거나 보관 기간(30일)이 지났습니다."),
     HOSTING_REPOSITORY_NOT_FOUND(HttpStatus.NOT_FOUND, "배포할 수 있는 레포가 아닙니다. GitHub App 에 이 레포를 허용했는지 확인해 주세요."),
     HOSTING_NOT_ALLOWED(HttpStatus.FORBIDDEN, "이 GitHub 계정은 아직 호스팅을 쓸 수 있는 계정이 아닙니다."),
+    HOSTING_APP_SOURCE_MISMATCH(HttpStatus.CONFLICT, "레포로 만든 앱과 업로드로 만든 앱은 서로의 방법으로 배포할 수 없습니다. 업로드 앱은 다시 올리거나 레포를 연결하고, 레포 앱은 push 해 주세요."),
+    HOSTING_REPOSITORY_IN_USE(HttpStatus.CONFLICT, "이 레포는 이미 다른 앱을 배포하고 있습니다. 레포 하나에 앱 하나만 연결할 수 있습니다."),
     HOSTING_COMMAND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "방금 같은 요청을 보냈습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "호스팅 정보를 가져오지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "이 서버에서는 호스팅을 쓸 수 없습니다."),
