@@ -87,7 +87,10 @@ class SnakeYamlKubeconfigParser(
     private fun credential(user: Map<*, *>): Map<String, String> {
         ensure(
             !user.containsKey("exec"),
-            "외부 인증 프로그램(exec)을 쓰는 kubeconfig 는 아직 지원하지 않습니다 — EKS/GKE/AKS 연동은 후속 작업입니다",
+            "외부 인증 프로그램(exec)을 쓰는 kubeconfig 는 받지 않습니다. OKE·GKE·EKS 와 Entra ID 연동 AKS 가 만들어 주는 " +
+                "kubeconfig 가 이 방식입니다(oci·gke-gcloud-auth-plugin·aws·kubelogin 이 짧은 토큰을 그때그때 만듭니다). 클러스터에 Kukie 용 " +
+                "ServiceAccount 토큰을 만들어 토큰 kubeconfig 로 등록하세요: kubectl apply -f $SA_TOKEN_TEMPLATE_URL " +
+                "— 권한 고르기와 kubeconfig 만드는 명령은 그 파일 맨 위 주석에 있습니다",
         )
         ensure(!user.containsKey("auth-provider"), "auth-provider 방식은 아직 지원하지 않습니다")
         for (pathField in listOf("client-certificate", "client-key", "tokenFile")) {
@@ -129,6 +132,10 @@ class SnakeYamlKubeconfigParser(
 
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
+
+        /** kukie-infra terraform/github-actions-foundation(customer-templates.tf)이 게시하는 파일이다. */
+        private const val SA_TOKEN_TEMPLATE_URL =
+            "https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/sa-token-v1.yaml"
 
         private val STRICT_BASE64 = Regex("(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?")
     }
