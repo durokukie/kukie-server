@@ -5,7 +5,8 @@ import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.KubeconfigParser
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
-import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
+import com.duro.kukie.cluster.domain.requireNotRegistered
+import com.duro.kukie.cluster.domain.saveAndFlushOrThrowTaken
 import com.duro.kukie.cluster.exception.ClusterProviderMismatchException
 import com.duro.kukie.cluster.exception.NothingToUpdateException
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
@@ -35,6 +36,13 @@ class UpdateClusterService(
 
         return transactionTemplate.execute {
             val cluster = clusterPermission.requireWritable(command.clusterId, command.userId)
+            // 엔티티를 고친 뒤에 조회하면 그 조회가 고친 값을 먼저 flush 해 제약 위반이 여기서 터진다
+            clusterRepository.requireNotRegistered(
+                cluster.teamId,
+                parsed?.apiServer ?: cluster.apiServer,
+                command.namespace ?: cluster.defaultNamespace,
+                except = cluster.id,
+            )
             command.name?.let(cluster::rename)
             command.namespace?.let(cluster::changeDefaultNamespace)
             parsed?.let {
@@ -47,7 +55,7 @@ class UpdateClusterService(
                 )
             }
 
-            ClusterResponse.from(clusterRepository.saveAndFlushOrThrowNameTaken(cluster))
+            ClusterResponse.from(clusterRepository.saveAndFlushOrThrowTaken(cluster))
         }
     }
 }
