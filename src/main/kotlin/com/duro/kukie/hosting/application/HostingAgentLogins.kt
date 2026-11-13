@@ -36,8 +36,8 @@ class HostingAgentLogins(
         const val CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         const val CODE_LENGTH = 8
 
-        /** 허용·거부한 뒤 에이전트가 결과를 받을 시간. */
-        val DECIDED_TTL: Duration = Duration.ofSeconds(60)
+        /** 허용·거부한 뒤 에이전트가 결과를 받을 시간. 에이전트가 코드를 보여 주고 사용자 답을 기다렸다 부를 수 있어 넉넉히 둔다 */
+        val DECIDED_TTL: Duration = Duration.ofMinutes(10)
         private const val CODE_LOOKUPS_PER_MINUTE = 20
 
         /** 사용자가 입력한 코드: 대소문자와 하이픈·공백을 가리지 않는다. 화면에는 ABCD-EFGH 로 보인다. */
