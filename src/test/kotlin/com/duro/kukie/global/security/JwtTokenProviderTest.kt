@@ -86,4 +86,14 @@ class JwtTokenProviderTest {
 
         shouldThrow<InvalidTokenException> { jwtTokenProvider.getUserIdFromAccessToken(token) }
     }
+
+    @Test
+    fun `호스팅 에이전트 토큰은 접근 토큰으로 쓸 수 없고 접근 토큰은 에이전트 토큰으로 쓸 수 없다`() {
+        val agentToken = jwtTokenProvider.generateHostingAgentToken(userId)
+        val accessToken = jwtTokenProvider.generateAccessToken(userId)
+
+        jwtTokenProvider.getUserIdFromHostingAgentToken(agentToken) shouldBe userId
+        jwtTokenProvider.getUserIdFromAccessToken(agentToken).shouldBeNull()
+        jwtTokenProvider.getUserIdFromHostingAgentToken(accessToken).shouldBeNull()
+    }
 }

@@ -3,6 +3,7 @@ package com.duro.kukie.hosting.application
 import com.duro.kukie.global.config.properties.HostingProperties
 import com.duro.kukie.global.util.logger
 import com.duro.kukie.hosting.application.port.out.HostingStateStore
+import com.duro.kukie.hosting.domain.HostingAllowedList
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFile
@@ -46,6 +47,12 @@ class HostingApps(
         if (!APP_NAME.matches(app)) throw HostingAppNotFoundException()
         return read<HostingApp>("apps/${account.team}/$app.json")?.takeIf { it.owner.id == account.id }
             ?: throw HostingAppNotFoundException()
+    }
+
+    /** 배포기가 받아 주는 계정인지(apps/_allowed.json). 그 파일이 없으면 App 을 설치한 계정의 레포 목록에 적힌 값. */
+    fun allowed(account: GitHubAccount): Boolean {
+        val list = read<HostingAllowedList>("apps/_allowed.json") ?: return repoList(account)?.allowed == true
+        return list.logins.any { it.equals(account.team, ignoreCase = true) }
     }
 
     /** 계정이 GitHub App 에 허용한 레포. App 을 설치하지 않았으면 null. */

@@ -30,7 +30,9 @@ class AuthenticationInterceptor(
         }
 
         val token = resolveToken(request) ?: throw UnauthorizedException()
-        val userId = jwtTokenProvider.getUserIdFromAccessToken(token) ?: throw InvalidTokenException()
+        val userId = jwtTokenProvider.getUserIdFromAccessToken(token)
+            ?: jwtTokenProvider.getUserIdFromHostingAgentToken(token)?.takeIf { handler.acceptsHostingAgentToken() }
+            ?: throw InvalidTokenException()
         request.setAttribute(AUTHENTICATED_USER_ID, userId)
 
         return true
