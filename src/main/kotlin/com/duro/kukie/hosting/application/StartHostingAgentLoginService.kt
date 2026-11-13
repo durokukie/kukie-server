@@ -37,7 +37,8 @@ class StartHostingAgentLoginService(
 
         return HostingAgentLoginResponse(
             code = HostingAgentLogins.display(code),
-            loginUrl = webAppProperties.url.trimEnd('/') + "/agent",
+            // 웹은 라우터가 없어 ?go= 로 열 화면을 받는다(로그인을 다녀와도 남는다)
+            loginUrl = webAppProperties.url.trimEnd('/') + "/?go=agent",
             pollToken = pollToken,
             expiresIn = LOGIN_TTL.seconds,
         )
