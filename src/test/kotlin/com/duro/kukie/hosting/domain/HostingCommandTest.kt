@@ -105,4 +105,33 @@ class HostingCommandTest {
         json.has("repo") shouldBe false
         json.path("generation").stringValue() shouldBe "20261113T021500Z"
     }
+
+    @Test
+    fun `업로드 명령은 폴더의 키와 업로드 id 와 주인의 계정명을 적고 레포와 세대는 없다`() {
+        // given
+        val deploy = HostingAgentDeploy(
+            id = "3f9a1c0e7b2d4a6f8c1e5b9d0a2c4e6f8b1d3a5c",
+            userId = java.util.UUID.randomUUID(),
+            githubId = 127021195,
+            login = "Recklehs",
+            team = "recklehs",
+            app = "my-shop",
+            bytes = 1234,
+            createdAt = Instant.parse("2026-11-13T02:15:00Z"),
+        )
+
+        // when
+        val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(HostingCommand.upload(GitHubAccount(127021195, "Recklehs"), deploy)))
+
+        // then
+        json.path("type").stringValue() shouldBe "upload"
+        json.path("at").stringValue() shouldMatch Regex("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z")
+        json.path("owner").path("login").stringValue() shouldBe "Recklehs"
+        json.path("team").stringValue() shouldBe "recklehs"
+        json.path("app").stringValue() shouldBe "my-shop"
+        json.path("source").path("key").stringValue() shouldBe "uploads/recklehs/my-shop/3f9a1c0e7b2d4a6f8c1e5b9d0a2c4e6f8b1d3a5c.tar.gz"
+        json.path("source").path("sha").stringValue() shouldBe "3f9a1c0e7b2d4a6f8c1e5b9d0a2c4e6f8b1d3a5c"
+        json.has("repo") shouldBe false
+        json.has("generation") shouldBe false
+    }
 }

@@ -8,4 +8,7 @@ interface HostingStateStore {
 
     /** 파일이 없으면 null. */
     fun read(key: String): String?
+
+    /** 파일의 끝 bytes 바이트만. 없으면 null. */
+    fun readTail(key: String, bytes: Int): String?
 }
