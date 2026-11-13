@@ -642,7 +642,7 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `업로드 앱은 다시 배포할 수 없고 삭제는 레포 없이 보낸다`() {
+    fun `업로드 앱은 다시 배포할 수 없다`() {
         // given
         val member = linkedUser()
         putUploadApp("my-shop")
@@ -654,6 +654,16 @@ class HostingIntegrationTest : IntegrationTest() {
             status { isConflict() }
             jsonPath("$.code") { value("HOSTING_APP_SOURCE_MISMATCH") }
         }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `업로드 앱의 삭제 명령에는 레포가 없다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop")
+
+        // when & then
         mockMvc.delete("/hosting/apps/my-shop") {
             authorization(member.accessToken)
         }.andExpect { status { isAccepted() } }
@@ -691,6 +701,65 @@ class HostingIntegrationTest : IntegrationTest() {
             owner.id shouldBe GITHUB.id
             owner.login shouldBe "Recklehs"
         }
+    }
+
+    @Test
+    fun `레포가 적힌 거절은 같은 이름의 다른 앱이 배포돼도 가리지 않는다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("shop")
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "repo": { "fullName": "Recklehs/shop" }, "commandId": "c41a", "app": "shop", "reason": "internal", "at": "2026-11-10T01:00:00Z" }"""
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.skippedPush.commandId") { value("c41a") }
+        }
+    }
+
+    @Test
+    fun `레포를 이미 다른 앱이 써서 거절한 것은 그 앱이 배포돼도 가리지 않는다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "repo": { "fullName": "Recklehs/shop" }, "commandId": "c61c", "app": "my-shop", "reason": "repository_in_use", "at": "2026-11-10T01:00:00Z" }"""
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.skippedPush.reason") { value("repository_in_use") }
+        }
+    }
+
+    @Test
+    fun `남의 업로드 앱에는 연결할 수 없고 같은 앱에 곧바로 다시 연결할 수 없다`() {
+        // given
+        val member = linkedUser()
+        store.files["apps/recklehs/theirs.json"] = appJson("theirs", ownerId = 999)
+            .replace(""""repo": { "id": 987654321, "fullName": "Recklehs/theirs" },""", """"source": { "type": "upload" },""")
+        putUploadApp("my-shop")
+        putRepos("Recklehs/blog")
+
+        // when & then
+        mockMvc.post("/hosting/apps/theirs/connect") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/blog"}"""
+        }.andExpect { status { isNotFound() } }
+        repeat(2) { attempt ->
+            mockMvc.post("/hosting/apps/my-shop/connect") {
+                authorization(member.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"repository": "Recklehs/blog"}"""
+            }.andExpect { status { if (attempt == 0) isAccepted() else isTooManyRequests() } }
+        }
+        queue.commands.size shouldBe 1
     }
 
     @Test
@@ -786,7 +855,7 @@ class HostingIntegrationTest : IntegrationTest() {
             .replace(""""repo": { "id": 987654321, "fullName": "Recklehs/$app" },""", """"source": { "type": "upload" },""")
     }
 
-        private fun putDeployment(app: String, generation: String, id: String, phase: String, failure: String = "null") {
+    private fun putDeployment(app: String, generation: String, id: String, phase: String, failure: String = "null") {
         store.files["deployments/recklehs/$app/$generation/$id.json"] = """
             {
               "version": 1,

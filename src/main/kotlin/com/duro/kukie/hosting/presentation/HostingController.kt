@@ -68,7 +68,7 @@ class HostingController(
         @PathVariable app: String,
         @RequestBody @Valid request: ConnectHostingAppRequest,
     ): ResponseEntity<HostingCommandResponse> {
-        return ResponseEntity.accepted().body(connectHostingAppService(userId, app, request.repository))
+        return ResponseEntity.accepted().body(connectHostingAppService(request.toCommand(userId, app)))
     }
 
     @PostMapping("/{app}/redeploy")

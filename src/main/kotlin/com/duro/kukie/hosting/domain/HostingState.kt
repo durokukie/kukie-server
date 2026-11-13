@@ -58,7 +58,7 @@ data class HostingLatest(
     val at: Instant,
 )
 
-/** repo 와 source 가운데 하나만 있다. 업로드로 만든 앱은 repo 가 없고, 레포를 연결하면 repo 가 생기고 source 가 빠진다. */
+/** repo 와 source 가운데 하나만 있다. 업로드로 만든 앱은 repo 가 없다. */
 data class HostingApp(
     override val version: Int,
     val owner: HostingAccount,
@@ -102,12 +102,9 @@ data class HostingRepoList(
     val at: Instant,
 ) : HostingFile
 
-data class HostingRepoItem(val fullName: String, val private: Boolean = false)
+data class HostingRepoItem(val id: Long? = null, val fullName: String, val private: Boolean = false)
 
-/**
- * repo 는 업로드 명령에는 없다. commandId 는 거절한 명령의 id 이고, push 가 같은 파일을 덮어쓰므로 명령의 결과는 이것으로 찾는다.
- * app 은 배포기가 앱 이름을 알았을 때 있다.
- */
+/** repo 는 업로드 명령에 없다. 명령의 결과는 commandId 로 찾는다(push 가 같은 파일을 덮어쓴다). */
 data class SkippedPush(
     override val version: Int,
     val sender: HostingAccount,
