@@ -1,5 +1,6 @@
 package com.duro.kukie.cluster.domain
 
+import com.duro.kukie.cluster.exception.ClusterAlreadyRegisteredException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import jakarta.persistence.LockModeType
@@ -32,6 +33,8 @@ interface ClusterRepository : JpaRepository<Cluster, UUID> {
 
     fun existsByTeamIdAndName(teamId: UUID, name: String): Boolean
 
+    fun findAllByTeamIdAndApiServerAndDefaultNamespace(teamId: UUID, apiServer: String, defaultNamespace: String): List<Cluster>
+
     @Query(value = "select id from tbl_cluster where team_id = :teamId order by id for update", nativeQuery = true)
     fun lockIdsByTeamId(@Param("teamId") teamId: UUID): List<UUID>
 
@@ -62,6 +65,13 @@ fun ClusterRepository.findByIdOrThrow(id: UUID): Cluster =
 
 fun ClusterRepository.lockByIdOrThrow(id: UUID): Cluster =
     lockById(id) ?: throw ClusterNotFoundException()
+
+/** 같은 EKS 를 namespace 별로 따로 등록하는 건 허용하므로 주소와 namespace 를 함께 본다. */
+fun ClusterRepository.requireNotRegistered(teamId: UUID, apiServer: String, namespace: String, except: UUID? = null) {
+    if (findAllByTeamIdAndApiServerAndDefaultNamespace(teamId, apiServer, namespace).any { it.id != except }) {
+        throw ClusterAlreadyRegisteredException()
+    }
+}
 
 fun ClusterRepository.saveAndFlushOrThrowNameTaken(cluster: Cluster): Cluster =
     try {

@@ -11,6 +11,7 @@ import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.NamespaceName
+import com.duro.kukie.cluster.domain.requireNotRegistered
 import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
 import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
@@ -57,6 +58,7 @@ class RegisterEksClusterService(
 
         val endpoint = eksAccessGateway.describeCluster(credential.target, command.region, command.clusterName)
         apiServerAddressChecker.rejectionOf(endpoint.endpoint)?.let { throw EksEndpointRejectedException(it) }
+        clusterRepository.requireNotRegistered(connection.teamId, endpoint.endpoint, command.namespace)
         val accessLevel = connection.accessLevel
         attach(credential, command.namespace, accessLevel)
         var namespaceStatus = namespaceStatusOf(credential, endpoint, command.namespace)

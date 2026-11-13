@@ -5,6 +5,7 @@ import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.KubeconfigParser
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.cluster.domain.requireNotRegistered
 import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
 import com.duro.kukie.cluster.exception.ClusterProviderMismatchException
 import com.duro.kukie.cluster.exception.NothingToUpdateException
@@ -47,6 +48,7 @@ class UpdateClusterService(
                 )
             }
 
+            clusterRepository.requireNotRegistered(cluster.teamId, cluster.apiServer, cluster.defaultNamespace, except = cluster.id)
             ClusterResponse.from(clusterRepository.saveAndFlushOrThrowNameTaken(cluster))
         }
     }

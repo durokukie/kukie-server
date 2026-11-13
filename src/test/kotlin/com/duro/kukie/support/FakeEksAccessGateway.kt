@@ -141,7 +141,10 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     override fun describeCluster(target: AwsTarget, region: String, clusterName: String): EksClusterEndpoint {
         record(target)
-        return endpoint
+        if (endpoint != DEFAULT_ENDPOINT) return endpoint
+        // 실제 EKS 처럼 계정·리전·이름이 다르면 주소도 다르다
+        if (target.accountId == DEFAULT_ACCOUNT_ID && region == DEFAULT_REGION && clusterName == DEFAULT_CLUSTER_NAME) return endpoint
+        return endpoint.copy(endpoint = "https://$clusterName-${target.accountId}.gr7.$region.eks.amazonaws.com")
     }
 
     override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String, accessLevel: AccessLevel) {
@@ -489,6 +492,8 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
             EksClusterSummary(name = DEFAULT_CLUSTER_NAME, region = DEFAULT_REGION, status = "ACTIVE", version = "1.33"),
             EksClusterSummary(name = "elsewhere", region = "us-east-1", status = "ACTIVE", version = "1.32"),
         )
+
+        const val DEFAULT_ACCOUNT_ID = "123456789012"
 
         val DEFAULT_ENDPOINT = EksClusterEndpoint(
             endpoint = "https://ABCDEF0123456789.gr7.ap-northeast-2.eks.amazonaws.com",

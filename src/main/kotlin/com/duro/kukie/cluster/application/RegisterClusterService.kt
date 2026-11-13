@@ -5,6 +5,7 @@ import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.KubeconfigParser
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.cluster.domain.requireNotRegistered
 import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
 import com.duro.kukie.cluster.presentation.dto.response.ClusterResponse
 import org.springframework.stereotype.Service
@@ -21,6 +22,8 @@ class RegisterClusterService(
     operator fun invoke(command: RegisterClusterCommand): ClusterResponse {
         clusterPermission.requireTeamAdmin(command.teamId, command.userId)
         val parsed = kubeconfigParser.parse(command.kubeconfig, command.context)
+        val namespace = command.namespace ?: parsed.namespace
+        clusterRepository.requireNotRegistered(command.teamId, parsed.apiServer, namespace)
 
         val cluster = clusterRepository.saveAndFlushOrThrowNameTaken(
             Cluster(
@@ -32,7 +35,7 @@ class RegisterClusterService(
                 insecure = parsed.insecure,
                 credential = credentialCipher.encrypt(parsed.credential),
                 contextName = parsed.contextName,
-                defaultNamespace = command.namespace ?: parsed.namespace,
+                defaultNamespace = namespace,
                 fingerprint = parsed.fingerprint,
             ),
         )
