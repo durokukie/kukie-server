@@ -77,7 +77,7 @@ class WaitHostingAgentDeployService(
         return when (phase) {
             SUCCEEDED -> HostingAgentDeployStatusResponse(
                 done = true, status = SUCCEEDED, elapsed = elapsed, url = app.url, build = record?.build,
-                next = if (app.uploaded) "GitHub 레포를 연결하면 기본 브랜치에 push 할 때마다 자동으로 배포돼요: ${webAppProperties.url.trimEnd('/')}/hosting" else null,
+                next = if (app.uploaded) "GitHub 레포를 연결하면 기본 브랜치에 push 할 때마다 자동으로 배포돼요: ${webAppProperties.url.trimEnd('/')}/?go=hosting" else null,
             )
             FAILED -> failed(
                 elapsed,
