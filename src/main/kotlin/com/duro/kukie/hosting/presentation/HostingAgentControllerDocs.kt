@@ -33,7 +33,12 @@ interface HostingAgentControllerDocs {
             "토큰은 한 번만 줍니다. 응답을 놓쳤으면 로그인을 처음부터 다시 합니다.",
     )
     @ApiResponse(responseCode = "202", description = "Accepted: 아직 허용되지 않음")
-    @ApiErrorResponses(HostingAgentDeniedException::class, HostingNotAllowedException::class, HostingAgentExpiredException::class)
+    @ApiErrorResponses(
+        HostingAgentDeniedException::class,
+        HostingNotAllowedException::class,
+        HostingAgentExpiredException::class,
+        HostingTooManyRequestsException::class,
+    )
     fun token(pollToken: String): ResponseEntity<Any>
 
     @Operation(
