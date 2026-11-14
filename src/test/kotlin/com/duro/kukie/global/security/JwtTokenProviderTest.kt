@@ -31,16 +31,23 @@ class JwtTokenProviderTest {
     }
 
     @Test
-    fun `리프레시 토큰에서 사용자 id를 추출할 수 있다`() {
-        val token = jwtTokenProvider.generateRefreshToken(userId)
+    fun `리프레시 토큰에서 사용자 id와 세션 id를 추출할 수 있다`() {
+        val token = jwtTokenProvider.generateRefreshToken(userId, "session-1")
 
-        jwtTokenProvider.getUserIdFromRefreshToken(token) shouldBe userId
+        jwtTokenProvider.parseRefreshToken(token) shouldBe TokenSubject(userId, "session-1")
+    }
+
+    @Test
+    fun `액세스 토큰에도 세션 id 를 담는다`() {
+        val token = jwtTokenProvider.generateAccessToken(userId, "session-1")
+
+        jwtTokenProvider.parseAccessToken(token) shouldBe TokenSubject(userId, "session-1")
     }
 
     @Test
     fun `같은 사용자라도 매번 다른 토큰이 발급된다`() {
-        val first = jwtTokenProvider.generateRefreshToken(userId)
-        val second = jwtTokenProvider.generateRefreshToken(userId)
+        val first = jwtTokenProvider.generateRefreshToken(userId, "session-1")
+        val second = jwtTokenProvider.generateRefreshToken(userId, "session-1")
 
         first shouldNotBe second
     }
@@ -48,9 +55,9 @@ class JwtTokenProviderTest {
     @Test
     fun `토큰 타입이 다르면 사용자 id를 추출할 수 없다`() {
         val accessToken = jwtTokenProvider.generateAccessToken(userId)
-        val refreshToken = jwtTokenProvider.generateRefreshToken(userId)
+        val refreshToken = jwtTokenProvider.generateRefreshToken(userId, "session-1")
 
-        jwtTokenProvider.getUserIdFromRefreshToken(accessToken).shouldBeNull()
+        jwtTokenProvider.parseRefreshToken(accessToken).shouldBeNull()
         jwtTokenProvider.getUserIdFromAccessToken(refreshToken).shouldBeNull()
     }
 

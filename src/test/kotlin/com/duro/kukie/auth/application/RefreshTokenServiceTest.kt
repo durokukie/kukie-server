@@ -1,9 +1,12 @@
 package com.duro.kukie.auth.application
 
 import com.duro.kukie.auth.domain.RefreshTokenRepository
+import com.duro.kukie.auth.domain.RefreshTokenRotation
 import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.security.JwtTokenProvider
+import com.duro.kukie.global.security.TokenSubject
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -11,6 +14,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.util.UUID
@@ -24,47 +28,76 @@ class RefreshTokenServiceTest {
     @MockK(relaxUnitFun = true)
     private lateinit var refreshTokenRepository: RefreshTokenRepository
 
+    @MockK
+    private lateinit var logInSessions: LogInSessions
+
     @InjectMockKs
     private lateinit var refreshTokenService: RefreshTokenService
 
     private val userId: UUID = UUID.randomUUID()
+    private val sessionId = "session-1"
     private val request = RefreshTokenRequest("refresh-token")
 
-    @Test
-    fun `재발급에 성공하면 새 토큰을 발급하고 기존 리프레시 토큰을 삭제한다`() {
-        // given
-        every { jwtTokenProvider.getUserIdFromRefreshToken(request.refreshToken) } returns userId
-        every { refreshTokenRepository.findByUserId(userId) } returns request.refreshToken
-        every { jwtTokenProvider.generateAccessToken(userId) } returns "new-access-token"
-        every { jwtTokenProvider.generateRefreshToken(userId) } returns "new-refresh-token"
+    @BeforeEach
+    fun setUp() {
+        every { jwtTokenProvider.generateAccessToken(userId, sessionId) } returns "new-access-token"
+        every { jwtTokenProvider.generateRefreshToken(userId, sessionId) } returns "new-refresh-token"
+    }
 
-        // when
+    @Test
+    fun `재발급에 성공하면 그 세션의 리프레시 토큰을 새 것으로 바꾼다`() {
+        every { jwtTokenProvider.parseRefreshToken(request.refreshToken) } returns TokenSubject(userId, sessionId)
+        every { refreshTokenRepository.rotate(userId, sessionId, "refresh-token", "new-refresh-token") } returns
+            RefreshTokenRotation.Rotated
+
         val response = refreshTokenService(request)
 
-        // then
-        response.accessToken shouldBe "new-access-token"
-        response.refreshToken shouldBe "new-refresh-token"
-        verify { refreshTokenRepository.save(userId, "new-refresh-token") }
+        response shouldBe TokenResponse("new-access-token", "new-refresh-token")
     }
 
     @Test
-    fun `유효하지 않은 리프레시 토큰이면 예외가 발생한다`() {
-        // given
-        every { jwtTokenProvider.getUserIdFromRefreshToken(request.refreshToken) } returns null
+    fun `직전 토큰이 겹침 시간 안에 다시 오면 지금 리프레시 토큰을 그대로 준다`() {
+        every { jwtTokenProvider.parseRefreshToken(request.refreshToken) } returns TokenSubject(userId, sessionId)
+        every { refreshTokenRepository.rotate(userId, sessionId, any(), any()) } returns
+            RefreshTokenRotation.RecentlyRotated("current-refresh-token")
 
-        // when & then
+        val response = refreshTokenService(request)
+
+        response shouldBe TokenResponse("new-access-token", "current-refresh-token")
+    }
+
+    @Test
+    fun `이미 쓴 토큰이거나 세션이 없으면 예외가 발생한다`() {
+        every { jwtTokenProvider.parseRefreshToken(request.refreshToken) } returns TokenSubject(userId, sessionId)
+        every { refreshTokenRepository.rotate(userId, sessionId, any(), any()) } returnsMany
+            listOf(RefreshTokenRotation.Reused, RefreshTokenRotation.Missing)
+
+        shouldThrow<InvalidTokenException> { refreshTokenService(request) }
         shouldThrow<InvalidTokenException> { refreshTokenService(request) }
     }
 
     @Test
-    fun `만료된 리프레시 토큰의 재사용이 감지되면 현재 리프레시 토큰을 삭제해 로그아웃 시킨다`() {
-        // given
-        every { jwtTokenProvider.getUserIdFromRefreshToken(request.refreshToken) } returns userId
-        every { refreshTokenRepository.findByUserId(userId) } returns "other-refresh-token"
+    fun `리프레시 토큰이 유효하지 않으면 예외가 발생한다`() {
+        every { jwtTokenProvider.parseRefreshToken(request.refreshToken) } returns null
 
-        // when & then
         shouldThrow<InvalidTokenException> { refreshTokenService(request) }
+    }
 
-        verify { refreshTokenRepository.deleteByUserId(userId) }
+    @Test
+    fun `세션 id 없는 옛 토큰이 옛 키와 맞으면 새 세션으로 옮긴다`() {
+        every { jwtTokenProvider.parseRefreshToken(request.refreshToken) } returns TokenSubject(userId, null)
+        every { refreshTokenRepository.takeLegacy(userId, "refresh-token") } returns true
+        every { logInSessions.open(userId) } returns TokenResponse("a", "r")
+
+        refreshTokenService(request) shouldBe TokenResponse("a", "r")
+    }
+
+    @Test
+    fun `세션 id 없는 옛 토큰이 옛 키와 다르면 예외가 발생하고 새 세션을 열지 않는다`() {
+        every { jwtTokenProvider.parseRefreshToken(request.refreshToken) } returns TokenSubject(userId, null)
+        every { refreshTokenRepository.takeLegacy(userId, "refresh-token") } returns false
+
+        shouldThrow<InvalidTokenException> { refreshTokenService(request) }
+        verify(exactly = 0) { logInSessions.open(any()) }
     }
 }
