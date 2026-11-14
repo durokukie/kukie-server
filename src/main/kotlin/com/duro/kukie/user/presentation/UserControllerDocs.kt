@@ -3,6 +3,7 @@ package com.duro.kukie.user.presentation
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import com.duro.kukie.user.exception.InvalidCurrentPasswordException
+import com.duro.kukie.user.exception.LastAdminOfTeamException
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import com.duro.kukie.user.exception.PasswordNotSetException
 import com.duro.kukie.user.exception.SamePasswordException
@@ -14,6 +15,7 @@ import com.duro.kukie.user.presentation.dto.request.UpdateUserRequest
 import com.duro.kukie.user.presentation.dto.response.UserResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
+import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.ResponseEntity
 import java.util.UUID
 
@@ -53,4 +55,14 @@ interface UserControllerDocs {
         UserNotFoundException::class,
     )
     fun changePassword(userId: UUID, request: ChangePasswordRequest): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "회원 탈퇴",
+        description = "이름·이메일·비밀번호·GitHub 연결을 지우고(행은 익명화해 남긴다) 로그인을 모두 끊는다. 혼자인 팀은 같이 삭제하고, " +
+            "개인 대화·알림을 지우고 서빙 접근을 취소한다. 팀 공유 대화와 등록한 클러스터는 남는다. " +
+            "다른 팀원이 있는 팀의 유일한 관리자면 409 로 거절한다.",
+    )
+    @ApiResponse(responseCode = "204", description = "No Content")
+    @ApiErrorResponses(LastAdminOfTeamException::class, UserNotFoundException::class)
+    fun deleteMe(userId: UUID, response: HttpServletResponse): ResponseEntity<Unit>
 }

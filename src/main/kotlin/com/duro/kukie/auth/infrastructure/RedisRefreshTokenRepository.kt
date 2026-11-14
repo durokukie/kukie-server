@@ -60,6 +60,11 @@ class RedisRefreshTokenRepository(
         redisTemplate.execute(DELETE, listOf(sessionKey(userId, sessionId), indexKey(userId)), sessionId)
     }
 
+    override fun deleteAll(userId: UUID) {
+        redisTemplate.execute(DELETE_ALL, listOf(indexKey(userId)), sessionKeyPrefix(userId))
+        deleteLegacy(userId)
+    }
+
     override fun takeLegacy(userId: UUID, presented: String): Boolean =
         redisTemplate.execute(TAKE_LEGACY, listOf(legacyKey(userId)), presented, REUSE_GRACE.toMillis().toString()) == 1L
 
@@ -143,6 +148,18 @@ class RedisRefreshTokenRepository(
             """
             redis.call('DEL', KEYS[1])
             redis.call('ZREM', KEYS[2], ARGV[1])
+            return 1
+            """.trimIndent(),
+            Long::class.java,
+        )
+
+        // KEYS: 목록 / ARGV: sessionKeyPrefix
+        private val DELETE_ALL = DefaultRedisScript(
+            """
+            for _, sessionId in ipairs(redis.call('ZRANGE', KEYS[1], 0, -1)) do
+              redis.call('DEL', ARGV[1] .. sessionId)
+            end
+            redis.call('DEL', KEYS[1])
             return 1
             """.trimIndent(),
             Long::class.java,

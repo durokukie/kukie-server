@@ -13,6 +13,7 @@ enum class UserErrorCode(
     PASSWORD_NOT_SET(HttpStatus.BAD_REQUEST, "비밀번호가 설정되지 않은 계정입니다. 이메일 인증으로 비밀번호를 설정해 주세요."),
     INVALID_CURRENT_PASSWORD(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
     SAME_PASSWORD(HttpStatus.BAD_REQUEST, "새 비밀번호가 현재 비밀번호와 같습니다."),
+    LAST_ADMIN_OF_TEAM(HttpStatus.CONFLICT, "다른 팀원이 있는 팀의 유일한 관리자입니다. 관리자를 넘기거나 팀을 삭제한 뒤 탈퇴해 주세요."),
     ;
 
     override val code: String
