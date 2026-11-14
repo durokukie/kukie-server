@@ -16,6 +16,9 @@ interface RefreshTokenRepository {
     /** 그 세션만 지운다. 다른 세션은 그대로 둔다. */
     fun delete(userId: UUID, sessionId: String)
 
+    /** 그 사용자의 세션을 모두 지운다(세션 도입 전 키 포함). 탈퇴할 때 쓴다. */
+    fun deleteAll(userId: UUID)
+
     /**
      * 세션 도입 전 키(사용자당 하나)의 토큰이 [presented] 이면 true 를 주고 그 키를 겹침 시간 뒤에 사라지게 한다.
      * 옛 토큰을 새 세션으로 옮길 때 쓴다.
