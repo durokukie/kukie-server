@@ -31,7 +31,7 @@ class JwtTokenProvider(
 
     fun parseAccessToken(token: String): TokenSubject? = parseByTokenType(token, TokenType.ACCESS)
 
-    /** 세션 도입(DURO-259) 전에 낸 토큰은 sessionId 가 null 이다. */
+    /** 세션 도입 전에 낸 토큰은 sessionId 가 null 이다. */
     fun parseRefreshToken(token: String): TokenSubject? = parseByTokenType(token, TokenType.REFRESH)
 
     private fun parseByTokenType(token: String, expectedType: TokenType): TokenSubject? {
