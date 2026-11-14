@@ -1,10 +1,9 @@
 package com.duro.kukie.support
 
 import com.duro.kukie.TestcontainersConfig
-import com.duro.kukie.auth.domain.RefreshTokenRepository
+import com.duro.kukie.auth.application.LogInSessions
 import com.duro.kukie.global.config.properties.InternalProperties
 import com.duro.kukie.global.security.InternalApiInterceptor
-import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.team.TeamFixture
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
@@ -17,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.data.redis.connection.DataType
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.HttpHeaders
 import org.springframework.jdbc.core.JdbcTemplate
@@ -43,10 +43,7 @@ abstract class IntegrationTest {
     private lateinit var fakes: List<Resettable>
 
     @Autowired
-    private lateinit var jwtTokenProvider: JwtTokenProvider
-
-    @Autowired
-    private lateinit var refreshTokenRepository: RefreshTokenRepository
+    private lateinit var logInSessions: LogInSessions
 
     @Autowired
     private lateinit var objectMapper: ObjectMapper
@@ -68,11 +65,16 @@ abstract class IntegrationTest {
 
     protected fun loggedInUser(user: User = UserFixture.user()): LoggedInUser {
         val savedUser = userRepository.save(user)
-        val accessToken = jwtTokenProvider.generateAccessToken(savedUser.id)
-        val refreshToken = jwtTokenProvider.generateRefreshToken(savedUser.id)
-        refreshTokenRepository.save(savedUser.id, refreshToken)
+        val tokens = logInSessions.open(savedUser.id)
 
-        return LoggedInUser(savedUser, accessToken, refreshToken)
+        return LoggedInUser(savedUser, tokens.accessToken, tokens.refreshToken)
+    }
+
+    /** 재발급 겹침 시간을 지난 것으로 만든다. 그 뒤 직전 리프레시 토큰을 다시 쓰면 재사용으로 본다. */
+    protected fun passRefreshReuseGrace() {
+        redisTemplate.keys("refresh-token:{*}:*")
+            .filter { redisTemplate.type(it) == DataType.HASH }
+            .forEach { redisTemplate.opsForHash<String, String>().put(it, "rotatedAt", "0") }
     }
 
     protected fun savedTeam(vararg members: Pair<UUID, TeamRole>): UUID {

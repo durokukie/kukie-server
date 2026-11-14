@@ -4,9 +4,8 @@ import com.duro.kukie.auth.application.port.`in`.OAuthLogInCommand
 import com.duro.kukie.auth.application.port.out.OAuthClient
 import com.duro.kukie.auth.application.port.out.OAuthProfile
 import com.duro.kukie.auth.domain.OAuthProvider
-import com.duro.kukie.auth.domain.RefreshTokenRepository
+import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.domain.Email
-import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.GitHubAccount
 import com.duro.kukie.user.domain.User
@@ -38,10 +37,7 @@ class OAuthLogInServiceTest {
     private lateinit var userRepository: UserRepository
 
     @MockK
-    private lateinit var jwtTokenProvider: JwtTokenProvider
-
-    @MockK(relaxUnitFun = true)
-    private lateinit var refreshTokenRepository: RefreshTokenRepository
+    private lateinit var logInSessions: LogInSessions
 
     @MockK
     private lateinit var transactionTemplate: TransactionTemplate
@@ -65,8 +61,7 @@ class OAuthLogInServiceTest {
         val user = UserFixture.user()
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns profile
         every { userRepository.findByEmail(Email(profile.email)) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         val response = oAuthLogInService(command)
@@ -74,7 +69,7 @@ class OAuthLogInServiceTest {
         // then
         response.accessToken shouldBe "access-token"
         response.refreshToken shouldBe "refresh-token"
-        verify { refreshTokenRepository.save(user.id, "refresh-token") }
+        verify { logInSessions.open(user.id) }
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
     }
 
@@ -85,8 +80,7 @@ class OAuthLogInServiceTest {
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns profile
         every { userRepository.findByEmail(Email(profile.email)) } returns null
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
-        every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"
+        every { logInSessions.open(any()) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         val response = oAuthLogInService(command)
@@ -99,7 +93,7 @@ class OAuthLogInServiceTest {
             email shouldBe Email(profile.email)
             password shouldBe null
         }
-        verify { refreshTokenRepository.save(savedUser.captured.id, "refresh-token") }
+        verify { logInSessions.open(savedUser.captured.id) }
     }
 
     @Test
@@ -111,8 +105,7 @@ class OAuthLogInServiceTest {
         every { userRepository.findByEmail(Email(profile.email)) } returns user
         every { userRepository.lockById(user.id) } returns user
         every { userRepository.saveAndFlush(user) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -128,8 +121,7 @@ class OAuthLogInServiceTest {
         val user = UserFixture.user().apply { changeAvatar(AVATAR_URL) }
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns profile
         every { userRepository.findByEmail(Email(profile.email)) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -149,8 +141,7 @@ class OAuthLogInServiceTest {
         every { userRepository.existsByGithubId(GITHUB.id) } returns false
         every { userRepository.lockById(user.id) } returns user
         every { userRepository.saveAndFlush(user) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -171,8 +162,7 @@ class OAuthLogInServiceTest {
         every { userRepository.findByEmail(Email(profile.email)) } returns user
         every { userRepository.lockById(user.id) } returns user
         every { userRepository.saveAndFlush(user) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -191,8 +181,7 @@ class OAuthLogInServiceTest {
             profile.copy(gitHub = GITHUB)
         every { userRepository.findByEmail(Email(profile.email)) } returns user
         every { userRepository.existsByGithubId(GITHUB.id) } returns true
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         val response = oAuthLogInService(command)
@@ -210,8 +199,7 @@ class OAuthLogInServiceTest {
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns
             profile.copy(gitHub = GITHUB.copy(id = 999, login = "someone-else"))
         every { userRepository.findByEmail(Email(profile.email)) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -231,8 +219,7 @@ class OAuthLogInServiceTest {
         every { userRepository.findByEmail(Email(profile.email)) } returns null
         every { userRepository.existsByGithubId(GITHUB.id) } returns false
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
-        every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"
+        every { logInSessions.open(any()) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -248,8 +235,7 @@ class OAuthLogInServiceTest {
         val user = UserFixture.user().apply { linkGitHub(GITHUB) }
         every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns profile
         every { userRepository.findByEmail(Email(profile.email)) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -281,8 +267,7 @@ class OAuthLogInServiceTest {
         every { userRepository.existsByGithubId(GITHUB.id) } returns false
         every { userRepository.saveAndFlush(capture(saved)) } throws
             violation(User.GITHUB_ID_UNIQUE_CONSTRAINT) andThenAnswer { saved.last() }
-        every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"
+        every { logInSessions.open(any()) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         val response = oAuthLogInService(command)
@@ -304,15 +289,14 @@ class OAuthLogInServiceTest {
         every { userRepository.existsByGithubId(GITHUB.id) } returns false
         every { userRepository.lockById(user.id) } returns user
         every { userRepository.saveAndFlush(user) } throws violation(User.GITHUB_ID_UNIQUE_CONSTRAINT)
-        every { jwtTokenProvider.generateAccessToken(stored.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(stored.id) } returns "refresh-token"
+        every { logInSessions.open(stored.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         val response = oAuthLogInService(command)
 
         // then
         response.accessToken shouldBe "access-token"
-        verify { refreshTokenRepository.save(stored.id, "refresh-token") }
+        verify { logInSessions.open(stored.id) }
     }
 
     @Test
@@ -323,8 +307,7 @@ class OAuthLogInServiceTest {
             profile.copy(avatarUrl = AVATAR_URL)
         every { userRepository.findByEmail(Email(profile.email)) } returns null
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
-        every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"
+        every { logInSessions.open(any()) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -341,8 +324,7 @@ class OAuthLogInServiceTest {
             profile.copy(avatarUrl = "javascript:alert(1)")
         every { userRepository.findByEmail(Email(profile.email)) } returns null
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
-        every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"
+        every { logInSessions.open(any()) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)
@@ -359,8 +341,7 @@ class OAuthLogInServiceTest {
             profile.copy(name = "a".repeat(60))
         every { userRepository.findByEmail(Email(profile.email)) } returns null
         every { userRepository.saveAndFlush(capture(savedUser)) } answers { savedUser.captured }
-        every { jwtTokenProvider.generateAccessToken(any()) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(any()) } returns "refresh-token"
+        every { logInSessions.open(any()) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         oAuthLogInService(command)

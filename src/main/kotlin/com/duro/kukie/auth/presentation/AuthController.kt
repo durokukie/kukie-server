@@ -26,6 +26,7 @@ import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.AuthCookies
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.global.security.AuthenticationInterceptor
 import com.duro.kukie.user.presentation.dto.response.UserResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -109,9 +110,11 @@ class AuthController(
     @DeleteMapping("/logout")
     override fun logOut(
         @AuthUser userId: UUID,
+        httpRequest: HttpServletRequest,
         response: HttpServletResponse,
     ): ResponseEntity<Unit> {
-        logOutService(userId)
+        // 액세스 토큰의 세션 id 로 이 로그인만 끊는다. 다른 창·기기는 그대로 둔다
+        logOutService(userId, httpRequest.getAttribute(AuthenticationInterceptor.AUTHENTICATED_SESSION_ID) as? String)
         authCookies.clear(response)
 
         return ResponseEntity.noContent().build()

@@ -30,8 +30,9 @@ class AuthenticationInterceptor(
         }
 
         val token = resolveToken(request) ?: throw UnauthorizedException()
-        val userId = jwtTokenProvider.getUserIdFromAccessToken(token) ?: throw InvalidTokenException()
-        request.setAttribute(AUTHENTICATED_USER_ID, userId)
+        val subject = jwtTokenProvider.parseAccessToken(token) ?: throw InvalidTokenException()
+        request.setAttribute(AUTHENTICATED_USER_ID, subject.userId)
+        subject.sessionId?.let { request.setAttribute(AUTHENTICATED_SESSION_ID, it) }
 
         return true
     }
@@ -52,6 +53,7 @@ class AuthenticationInterceptor(
 
     companion object {
         const val AUTHENTICATED_USER_ID = "authenticatedUserId"
+        const val AUTHENTICATED_SESSION_ID = "authenticatedSessionId"
         private const val BEARER_PREFIX = "Bearer "
     }
 }
