@@ -29,7 +29,7 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-/** DURO-259: 리프레시 토큰을 로그인(세션)마다 둔다. 같은 계정의 두 창·기기가 서로를 끊지 않는다. */
+/** 리프레시 토큰을 로그인(세션)마다 둔다. 같은 계정의 두 창·기기가 서로를 끊지 않는다. */
 class RefreshTokenSessionIntegrationTest : IntegrationTest() {
 
     @Autowired
