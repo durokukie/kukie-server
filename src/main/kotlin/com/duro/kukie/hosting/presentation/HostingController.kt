@@ -2,12 +2,14 @@ package com.duro.kukie.hosting.presentation
 
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.hosting.application.ConnectHostingAppService
 import com.duro.kukie.hosting.application.GetHostingAppService
 import com.duro.kukie.hosting.application.GetHostingAppsService
 import com.duro.kukie.hosting.application.GetHostingBuildLogService
 import com.duro.kukie.hosting.application.SendHostingCommandService
 import com.duro.kukie.hosting.application.StartHostingAppService
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.hosting.presentation.dto.request.ConnectHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppsResponse
@@ -33,6 +35,7 @@ class HostingController(
     private val getHostingBuildLogService: GetHostingBuildLogService,
     private val sendHostingCommandService: SendHostingCommandService,
     private val startHostingAppService: StartHostingAppService,
+    private val connectHostingAppService: ConnectHostingAppService,
 ) : HostingControllerDocs {
 
     @GetMapping
@@ -57,6 +60,15 @@ class HostingController(
         @PathVariable deploymentId: String,
     ): ResponseEntity<String> {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(TEXT_UTF8)).body(getHostingBuildLogService(userId, app, deploymentId))
+    }
+
+    @PostMapping("/{app}/connect")
+    override fun connect(
+        @AuthUser userId: UUID,
+        @PathVariable app: String,
+        @RequestBody @Valid request: ConnectHostingAppRequest,
+    ): ResponseEntity<HostingCommandResponse> {
+        return ResponseEntity.accepted().body(connectHostingAppService(request.toCommand(userId, app)))
     }
 
     @PostMapping("/{app}/redeploy")

@@ -54,4 +54,55 @@ class HostingCommandTest {
         json.has("generation") shouldBe false
         command.target shouldBe "_new"
     }
+
+    @Test
+    fun `연결 명령은 업로드 앱에 레포와 세대, 주인의 계정명을 함께 적는다`() {
+        // given
+        val app = HostingApp(
+            version = 1,
+            owner = HostingAccount(127021195, "Recklehs", "User"),
+            source = HostingSource(HostingSource.UPLOAD),
+            team = "recklehs",
+            app = "my-shop",
+            generation = "20261113T021500Z",
+            url = "https://my-shop-recklehs.apps.dev.durokukie.com",
+            config = HostingConfig(3000, "S", "default"),
+            latest = HostingLatest("20261113T021744Z-3f9a1c0", null, "succeeded", HostingCommit("3f9a1c0", "upload"), Instant.parse("2026-11-13T02:19:36Z")),
+        )
+
+        // when
+        val command = HostingCommand.connect(GitHubAccount(127021195, "Recklehs"), app, "Recklehs/shop-frontend")
+        val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(command))
+
+        // then
+        json.path("type").stringValue() shouldBe "connect"
+        json.path("owner").path("login").stringValue() shouldBe "Recklehs"
+        json.path("repo").path("fullName").stringValue() shouldBe "Recklehs/shop-frontend"
+        json.path("app").stringValue() shouldBe "my-shop"
+        json.path("generation").stringValue() shouldBe "20261113T021500Z"
+        app.uploaded shouldBe true
+    }
+
+    @Test
+    fun `업로드 앱의 삭제 명령에는 레포가 없다`() {
+        // given
+        val app = HostingApp(
+            version = 1,
+            owner = HostingAccount(127021195, "Recklehs", "User"),
+            source = HostingSource(HostingSource.UPLOAD),
+            team = "recklehs",
+            app = "my-shop",
+            generation = "20261113T021500Z",
+            url = "https://my-shop-recklehs.apps.dev.durokukie.com",
+            config = HostingConfig(3000, "S", "default"),
+            latest = HostingLatest("20261113T021744Z-3f9a1c0", null, "succeeded", HostingCommit("3f9a1c0", "upload"), Instant.parse("2026-11-13T02:19:36Z")),
+        )
+
+        // when
+        val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(HostingCommand.of(HostingCommand.DELETE, app)))
+
+        // then
+        json.has("repo") shouldBe false
+        json.path("generation").stringValue() shouldBe "20261113T021500Z"
+    }
 }

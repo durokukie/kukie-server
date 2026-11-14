@@ -9,7 +9,8 @@ import java.util.UUID
 
 /**
  * 배포기에 보내는 명령. 삭제는 그사이 같은 이름으로 다시 만든 앱을 지우지 않게 앱의 세대를 함께 보낸다.
- * 배포 시작에는 앱 이름과 세대가 없다. 앱 이름은 배포기가 레포 이름으로 정한다.
+ * 배포 시작에는 앱 이름과 세대가 없다. 앱 이름은 배포기가 레포 이름으로 정한다. 업로드로 만든 앱의 명령에는 repo 가 없다.
+ * owner 의 login 은 업로드·연결에서 배포기가 앱의 주인으로 쓴다.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class HostingCommand(
@@ -18,7 +19,7 @@ data class HostingCommand(
     val type: String,
     val at: Instant,
     val owner: HostingAccount,
-    val repo: HostingRepo,
+    val repo: HostingRepo?,
     val team: String,
     val app: String?,
     val generation: String?,
@@ -37,14 +38,15 @@ data class HostingCommand(
         private const val NEW_APP = "_new"
         const val REDEPLOY = "redeploy"
         const val DELETE = "delete"
+        const val CONNECT = "connect"
 
         fun of(type: String, app: HostingApp) = HostingCommand(
             version = HostingFile.VERSION,
             commandId = UUID.randomUUID().toString(),
             type = type,
             at = Instant.now().truncatedTo(ChronoUnit.SECONDS),
-            owner = HostingAccount(app.owner.id),
-            repo = HostingRepo(fullName = app.repo.fullName),
+            owner = HostingAccount(app.owner.id, app.owner.login, app.owner.type),
+            repo = app.repo?.let { HostingRepo(fullName = it.fullName) },
             team = app.team,
             app = app.app,
             generation = app.generation,
@@ -55,11 +57,24 @@ data class HostingCommand(
             commandId = UUID.randomUUID().toString(),
             type = DEPLOY,
             at = Instant.now().truncatedTo(ChronoUnit.SECONDS),
-            owner = HostingAccount(account.id),
+            owner = HostingAccount(account.id, account.login),
             repo = HostingRepo(fullName = repository),
             team = account.login.lowercase(),
             app = null,
             generation = null,
+        )
+
+        /** 업로드로 만든 앱에 레포를 잇는다. 세대는 화면이 본 앱이 그사이 지웠다 다시 만든 앱이 아닌지 배포기가 확인하는 데 쓴다. */
+        fun connect(account: GitHubAccount, app: HostingApp, repository: String) = HostingCommand(
+            version = HostingFile.VERSION,
+            commandId = UUID.randomUUID().toString(),
+            type = CONNECT,
+            at = Instant.now().truncatedTo(ChronoUnit.SECONDS),
+            owner = HostingAccount(account.id, account.login),
+            repo = HostingRepo(fullName = repository),
+            team = app.team,
+            app = app.app,
+            generation = app.generation,
         )
     }
 }
