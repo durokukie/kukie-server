@@ -23,6 +23,8 @@ data class HostingCommand(
     val team: String,
     val app: String?,
     val generation: String?,
+    /** 업로드 명령에만: 서버가 받아 둔 폴더의 키와 업로드 id(커밋 sha 자리). */
+    val source: HostingCommandSource? = null,
 ) {
     /**
      * 같은 요청을 연달아 보냈는지 가릴 때 쓰는 이름. 배포 시작은 계정에 하나다. 레포마다 두면 허용한 레포 수만큼 한꺼번에
@@ -39,6 +41,7 @@ data class HostingCommand(
         const val REDEPLOY = "redeploy"
         const val DELETE = "delete"
         const val CONNECT = "connect"
+        const val UPLOAD = "upload"
 
         fun of(type: String, app: HostingApp) = HostingCommand(
             version = HostingFile.VERSION,
@@ -64,6 +67,19 @@ data class HostingCommand(
             generation = null,
         )
 
+        fun upload(account: GitHubAccount, deploy: HostingAgentDeploy) = HostingCommand(
+            version = HostingFile.VERSION,
+            commandId = UUID.randomUUID().toString(),
+            type = UPLOAD,
+            at = Instant.now().truncatedTo(ChronoUnit.SECONDS),
+            owner = HostingAccount(account.id, account.login),
+            repo = null,
+            team = deploy.team,
+            app = deploy.app,
+            generation = null,
+            source = HostingCommandSource(deploy.key, deploy.id),
+        )
+
         /** 업로드로 만든 앱에 레포를 잇는다. 세대는 화면이 본 앱이 그사이 지웠다 다시 만든 앱이 아닌지 배포기가 확인하는 데 쓴다. */
         fun connect(account: GitHubAccount, app: HostingApp, repository: String) = HostingCommand(
             version = HostingFile.VERSION,
@@ -78,3 +94,5 @@ data class HostingCommand(
         )
     }
 }
+
+data class HostingCommandSource(val key: String, val sha: String)

@@ -50,4 +50,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeHostingCommandQueue(): FakeHostingCommandQueue = FakeHostingCommandQueue()
+
+    @Bean
+    @Primary
+    fun fakeHostingUploadStore(): FakeHostingUploadStore = FakeHostingUploadStore()
 }
