@@ -382,7 +382,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
 
         // then: 같은 멈춘 표시를 보고 늦게 푸는 호출은 새로 정한 표시를 지우지 못해 명령이 두 번 나가지 않는다
         deploys.releaseStart(id, "c-dead")
-        start(agent, id) shouldBe commandId
+        deploys.claimStart(id, "x", HostingAgentDeploys.RECORD_TTL) shouldBe commandId
         queue.commands.size shouldBe 1
     }
 
