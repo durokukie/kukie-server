@@ -52,10 +52,10 @@ class RedisHostingAgentDeployRepository(
         redisTemplate.execute(DELETE_IF, listOf(activeKey(team)), id)
     }
 
-    override fun claimStart(id: String, commandId: String, ttl: Duration): String {
-        if (redisTemplate.opsForValue().setIfAbsent(startKey(id), commandId, ttl) == true) return commandId
-        return redisTemplate.opsForValue().get(startKey(id)) ?: commandId
-    }
+    // 정하기와 먼저 정한 값 읽기를 한 번에 한다. 따로 하면 그 사이 표시가 풀렸을 때 정하지 않고도 정한 것으로 답한다
+    override fun claimStart(id: String, commandId: String, ttl: Duration): String =
+        redisTemplate.execute(SET_OR_GET, listOf(startKey(id)), commandId, ttl.toMillis().toString())
+            ?: error("start claim of $id was not answered")
 
     override fun startClaimAge(id: String, ttl: Duration): Duration? {
         val left = redisTemplate.getExpire(startKey(id), TimeUnit.MILLISECONDS)
@@ -73,6 +73,10 @@ class RedisHostingAgentDeployRepository(
     private fun activeKey(team: String) = "hosting:agent:active:$team"
 
     companion object {
+        private val SET_OR_GET = RedisScript.of<String>(
+            "if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then return ARGV[1] end return redis.call('GET', KEYS[1])",
+            String::class.java,
+        )
         private val DELETE_IF = RedisScript.of<Long>(
             "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
             Long::class.java,
