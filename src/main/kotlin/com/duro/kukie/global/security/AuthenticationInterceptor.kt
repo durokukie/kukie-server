@@ -30,10 +30,11 @@ class AuthenticationInterceptor(
         }
 
         val token = resolveToken(request) ?: throw UnauthorizedException()
-        val userId = jwtTokenProvider.getUserIdFromAccessToken(token)
-            ?: jwtTokenProvider.getUserIdFromHostingAgentToken(token)?.takeIf { handler.acceptsHostingAgentToken() }
+        val subject = jwtTokenProvider.parseAccessToken(token)
+            ?: jwtTokenProvider.getUserIdFromHostingAgentToken(token)?.takeIf { handler.acceptsHostingAgentToken() }?.let { TokenSubject(it, null) }
             ?: throw InvalidTokenException()
-        request.setAttribute(AUTHENTICATED_USER_ID, userId)
+        request.setAttribute(AUTHENTICATED_USER_ID, subject.userId)
+        subject.sessionId?.let { request.setAttribute(AUTHENTICATED_SESSION_ID, it) }
 
         return true
     }
@@ -54,6 +55,7 @@ class AuthenticationInterceptor(
 
     companion object {
         const val AUTHENTICATED_USER_ID = "authenticatedUserId"
+        const val AUTHENTICATED_SESSION_ID = "authenticatedSessionId"
         private const val BEARER_PREFIX = "Bearer "
     }
 }

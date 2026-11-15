@@ -318,6 +318,7 @@ class AuthIntegrationTest : IntegrationTest() {
         val user = loggedInUser()
 
         refresh(user.refreshToken).andExpect { status { isOk() } }
+        passRefreshReuseGrace()
 
         refresh(user.refreshToken).andExpect {
             status { isUnauthorized() }
@@ -562,7 +563,8 @@ class AuthIntegrationTest : IntegrationTest() {
             }
         }
 
-        // 회전: 쿠키로 쓴 옛 리프레시 토큰도 더는 안 된다
+        // 회전: 겹침 시간이 지나면 쿠키로 쓴 옛 리프레시 토큰도 더는 안 된다
+        passRefreshReuseGrace()
         refresh(user.refreshToken).andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value(AuthErrorCode.INVALID_TOKEN.code) }

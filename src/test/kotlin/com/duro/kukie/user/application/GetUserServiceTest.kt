@@ -1,5 +1,7 @@
 package com.duro.kukie.user.application
 
+import com.duro.kukie.global.config.properties.HostingProperties
+import com.duro.kukie.global.config.properties.InternalProperties
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.findByIdOrThrow
@@ -19,6 +21,12 @@ class GetUserServiceTest {
 
     @MockK
     private lateinit var userRepository: UserRepository
+
+    @MockK(relaxed = true)
+    private lateinit var internalProperties: InternalProperties
+
+    @MockK(relaxed = true)
+    private lateinit var hostingProperties: HostingProperties
 
     @InjectMockKs
     private lateinit var getUserService: GetUserService

@@ -3,10 +3,8 @@ package com.duro.kukie.auth.application
 import com.duro.kukie.auth.application.port.`in`.OAuthLogInCommand
 import com.duro.kukie.auth.application.port.out.OAuthClient
 import com.duro.kukie.auth.application.port.out.OAuthProfile
-import com.duro.kukie.auth.domain.RefreshTokenRepository
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.domain.Email
-import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.lockByIdOrThrow
@@ -19,8 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate
 class OAuthLogInService(
     private val oAuthClient: OAuthClient,
     private val userRepository: UserRepository,
-    private val jwtTokenProvider: JwtTokenProvider,
-    private val refreshTokenRepository: RefreshTokenRepository,
+    private val logInSessions: LogInSessions,
     private val transactionTemplate: TransactionTemplate,
 ) {
 
@@ -29,11 +26,7 @@ class OAuthLogInService(
         val profile = oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier)
         val user = findOrCreateUser(profile)
 
-        val accessToken = jwtTokenProvider.generateAccessToken(user.id)
-        val refreshToken = jwtTokenProvider.generateRefreshToken(user.id)
-        refreshTokenRepository.save(user.id, refreshToken)
-
-        return TokenResponse(accessToken, refreshToken)
+        return logInSessions.open(user.id)
     }
 
     private fun findOrCreateUser(profile: OAuthProfile): User {
