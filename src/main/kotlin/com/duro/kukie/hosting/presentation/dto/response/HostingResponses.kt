@@ -73,7 +73,7 @@ data class SkippedPushResponse(
     val commandId: String?,
     /**
      * not_allowed, invalid_team_name, invalid_app_name, name_too_long, queue_full, auto_deploy_off, app_limit,
-     * app_name_taken, source_mismatch, repository_in_use, internal
+     * app_name_taken, account_renamed, source_mismatch, repository_in_use, internal
      */
     val reason: String,
     val at: Instant,
