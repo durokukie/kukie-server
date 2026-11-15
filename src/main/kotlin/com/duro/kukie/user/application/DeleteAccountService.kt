@@ -12,16 +12,18 @@ import com.duro.kukie.team.application.DeleteTeamService
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.user.domain.GitHubAccount
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.lockByIdOrThrow
 import com.duro.kukie.user.exception.LastAdminOfTeamException
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
  * 회원 탈퇴. 다른 팀원이 있는 팀의 유일한 관리자면 거절한다. 혼자인 팀은 같이 지우고, 개인 대화·알림·서빙 접근을 정리한 뒤
- * 사용자 행을 익명화한다. 팀 공유 대화와 등록한 클러스터는 팀 자료라 남긴다.
+ * 사용자 행을 익명화한다. 팀 공유 대화와 등록한 클러스터는 팀 자료라 남긴다. 호스팅 앱은 커밋 뒤에 지운다(HostingWithdrawalListener).
  */
 @Service
 class DeleteAccountService(
@@ -35,6 +37,7 @@ class DeleteAccountService(
     private val notificationRepository: NotificationRepository,
     private val servingAccessRepository: ServingAccessRepository,
     private val refreshTokenRepository: RefreshTokenRepository,
+    private val events: ApplicationEventPublisher,
 ) {
 
     @Transactional
@@ -47,8 +50,10 @@ class DeleteAccountService(
         servingAccessRepository.findAllByUserIdAndStatusOrderByCreatedAtDesc(userId, ServingAccessStatus.ACTIVE)
             .forEach { it.revoke() }
 
+        val gitHub = user.githubId?.let { id -> user.githubLogin?.let { GitHubAccount(id, it) } }
         user.anonymize(utcNow())
         refreshTokenRepository.deleteAll(userId)
+        gitHub?.let { events.publishEvent(UserWithdrawn(userId, it)) }
     }
 
     // 팀 삭제·관리자 변경과 같은 순서로 팀부터 잠근 뒤 구성원을 읽는다

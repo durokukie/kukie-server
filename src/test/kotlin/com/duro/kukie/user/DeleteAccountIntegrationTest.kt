@@ -8,16 +8,20 @@ import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.global.config.properties.AuthCookieProperties
 import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.util.utcNow
+import com.duro.kukie.hosting.domain.HostingCommand
 import com.duro.kukie.notification.domain.Notification
 import com.duro.kukie.notification.domain.NotificationRepository
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
 import com.duro.kukie.serving.domain.ServingAccess
 import com.duro.kukie.serving.domain.ServingAccessRepository
 import com.duro.kukie.serving.domain.ServingAccessStatus
+import com.duro.kukie.support.FakeHostingCommandQueue
+import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.user.domain.GitHubAccount
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.exception.UserErrorCode
 import io.kotest.matchers.shouldBe
@@ -39,6 +43,8 @@ class DeleteAccountIntegrationTest : IntegrationTest() {
     @Autowired private lateinit var sessions: ChatSessionRepository
     @Autowired private lateinit var notifications: NotificationRepository
     @Autowired private lateinit var accesses: ServingAccessRepository
+    @Autowired private lateinit var hostingStore: FakeHostingStateStore
+    @Autowired private lateinit var hostingQueue: FakeHostingCommandQueue
 
     @Test
     fun `탈퇴하면 개인정보를 지우고 로그인을 모두 끊는다`() {
@@ -134,6 +140,31 @@ class DeleteAccountIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `탈퇴하면 내 호스팅 앱마다 삭제 명령을 보낸다`() {
+        val me = loggedInUser(UserFixture.oAuthUser().apply { linkGitHub(GitHubAccount(GITHUB_ID, "Recklehs")) })
+        hostingStore.files["apps/recklehs/shop.json"] = hostingAppJson("shop", GITHUB_ID)
+        hostingStore.files["apps/recklehs/blog.json"] = hostingAppJson("blog", GITHUB_ID)
+        hostingStore.files["apps/recklehs/stolen.json"] = hostingAppJson("stolen", ownerId = 999)
+
+        deleteMe(me.accessToken).andExpect { status { isNoContent() } }
+
+        hostingQueue.commands.map { it.type to it.app }.toSet() shouldBe
+            setOf(HostingCommand.DELETE to "shop", HostingCommand.DELETE to "blog")
+        hostingQueue.commands.map { it.generation }.toSet() shouldBe setOf(HOSTING_GENERATION)
+    }
+
+    @Test
+    fun `호스팅 명령을 보내지 못해도 탈퇴는 된다`() {
+        val me = loggedInUser(UserFixture.oAuthUser().apply { linkGitHub(GitHubAccount(GITHUB_ID, "Recklehs")) })
+        hostingStore.files["apps/recklehs/shop.json"] = hostingAppJson("shop", GITHUB_ID)
+        hostingQueue.shouldFail = true
+
+        deleteMe(me.accessToken).andExpect { status { isNoContent() } }
+
+        userRepository.findByIdOrNull(me.user.id)!!.deletedAt shouldNotBe null
+    }
+
+    @Test
     fun `로그인하지 않으면 탈퇴할 수 없다`() {
         mockMvc.delete("/users/me").andExpect { status { isUnauthorized() } }
     }
@@ -146,4 +177,28 @@ class DeleteAccountIntegrationTest : IntegrationTest() {
             contentType = MediaType.APPLICATION_JSON
             content = RefreshTokenRequest(refreshToken).toJson()
         }
+
+    companion object {
+        const val GITHUB_ID = 127021195L
+        const val HOSTING_GENERATION = "20261101T031500Z"
+
+        fun hostingAppJson(app: String, ownerId: Long) = """
+            {
+              "version": 1,
+              "owner": { "id": $ownerId, "login": "Recklehs", "type": "User" },
+              "repo": { "id": 987654321, "fullName": "Recklehs/$app" },
+              "team": "recklehs",
+              "app": "$app",
+              "generation": "$HOSTING_GENERATION",
+              "url": "https://$app-recklehs.apps.dev.durokukie.com",
+              "config": { "port": 3000, "size": "S", "source": "default" },
+              "latest": {
+                "deploymentId": "20261110T011744Z-0123456",
+                "phase": "succeeded",
+                "commit": { "sha": "0123456789abcdef", "message": "feat: 첫 화면" },
+                "at": "2026-11-10T01:19:36Z"
+              }
+            }
+        """.trimIndent()
+    }
 }
