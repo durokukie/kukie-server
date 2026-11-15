@@ -62,8 +62,8 @@ class RedisHostingAgentDeployRepository(
         return if (left < 0) null else ttl.minusMillis(left)
     }
 
-    override fun releaseStart(id: String) {
-        redisTemplate.delete(startKey(id))
+    override fun releaseStart(id: String, commandId: String) {
+        redisTemplate.execute(DELETE_IF, listOf(startKey(id)), commandId)
     }
 
     private fun deployKey(id: String) = "hosting:agent:deploy:$id"

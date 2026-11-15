@@ -379,6 +379,11 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         commandId shouldNotBe "c-dead"
         queue.commands.single().commandId shouldBe commandId
         waitFor(agent, id).andExpect { jsonPath("$.status") { value("queued") } }
+
+        // then: 같은 멈춘 표시를 보고 늦게 푸는 호출은 새로 정한 표시를 지우지 못해 명령이 두 번 나가지 않는다
+        deploys.releaseStart(id, "c-dead")
+        start(agent, id) shouldBe commandId
+        queue.commands.size shouldBe 1
     }
 
     @Test

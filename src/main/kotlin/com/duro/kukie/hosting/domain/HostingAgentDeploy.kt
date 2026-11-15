@@ -44,7 +44,8 @@ interface HostingAgentDeployRepository {
     /** 배포의 명령을 정한다. 먼저 정한 쪽의 commandId 를 준다(같은 배포의 시작이 겹쳐도 명령은 하나). */
     fun claimStart(id: String, commandId: String, ttl: Duration): String
 
-    fun releaseStart(id: String)
+    /** 시작 표시가 commandId 일 때만 푼다. 그사이 다른 호출이 새로 정한 표시는 지우지 않는다. */
+    fun releaseStart(id: String, commandId: String)
 
     /** 배포의 시작 표시가 정해진 지 얼마나 됐는지. claimStart 에 준 ttl 로 잰다. 표시가 없으면 null. */
     fun startClaimAge(id: String, ttl: Duration): Duration?

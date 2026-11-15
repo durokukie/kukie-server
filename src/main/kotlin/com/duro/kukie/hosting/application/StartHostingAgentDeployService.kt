@@ -54,7 +54,7 @@ class StartHostingAgentDeployService(
         if (commandId != command.commandId && hostingAgentDeploys.requireOwned(userId, id).commandId == null &&
             (hostingAgentDeployRepository.startClaimAge(deploy.id, HostingAgentDeploys.RECORD_TTL) ?: Duration.ZERO) > STALE_START
         ) {
-            hostingAgentDeployRepository.releaseStart(deploy.id)
+            hostingAgentDeployRepository.releaseStart(deploy.id, commandId)
             commandId = hostingAgentDeployRepository.claimStart(deploy.id, command.commandId, HostingAgentDeploys.RECORD_TTL)
         }
         // 겹쳐 부른 쪽은 먼저 정한 명령을 받는다. 기록하고 보내는 것은 먼저 정한 쪽이 한다
@@ -66,7 +66,7 @@ class StartHostingAgentDeployService(
             hostingCommandQueue.send(command)
         } catch (exception: RuntimeException) {
             runCatching { hostingAgentDeploys.save(deploy) }
-            hostingAgentDeployRepository.releaseStart(deploy.id)
+            hostingAgentDeployRepository.releaseStart(deploy.id, commandId)
             hostingAgentDeployRepository.clearActive(deploy.team, deploy.id)
             throw exception
         }
