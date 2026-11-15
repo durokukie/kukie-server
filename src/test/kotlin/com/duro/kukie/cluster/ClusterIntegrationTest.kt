@@ -12,6 +12,8 @@ import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.ClusterStatus
+import com.duro.kukie.cluster.domain.saveAndFlushOrThrowTaken
+import com.duro.kukie.cluster.exception.ClusterAlreadyRegisteredException
 import com.duro.kukie.cluster.exception.ClusterErrorCode
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterRequest
@@ -26,6 +28,7 @@ import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.user.UserFixture
 import com.jayway.jsonpath.JsonPath
 import com.zaxxer.hikari.HikariDataSource
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotContain
@@ -365,11 +368,102 @@ class ClusterIntegrationTest : IntegrationTest() {
         mockMvc.post("/clusters") {
             authorization(me.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = RegisterClusterRequest(kubeconfig = kubeconfig(), name = "운영", teamId = teamId).toJson()
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(serverUrl = "https://other.example.com"), name = "운영", teamId = teamId).toJson()
         }.andExpect {
             status { isConflict() }
             jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_NAME_TAKEN.code) }
         }
+    }
+
+    @Test
+    fun `같은 팀에 같은 주소와 namespace 의 클러스터를 다른 이름으로 또 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(), name = "운영2", teamId = teamId).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        clusterRepository.findAllByTeamIdOrderByCreatedAt(teamId).map { it.name } shouldBe listOf("운영")
+    }
+
+    @Test
+    fun `앞의 검사를 함께 통과한 동시 등록도 DB 가 같은 클러스터를 한 번만 받는다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        clusterRepository.saveAndFlush(ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "운영"))
+
+        // when & then
+        shouldThrow<ClusterAlreadyRegisteredException> {
+            clusterRepository.saveAndFlushOrThrowTaken(
+                ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "운영2", apiServer = ClusterFixture.DEFAULT_SERVER),
+            )
+        }
+    }
+
+    @Test
+    fun `같은 클러스터라도 namespace 가 다르면 등록한다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(namespace = "api"), name = "운영 api", teamId = teamId).toJson()
+        }.andExpect {
+            status { isCreated() }
+        }
+    }
+
+    @Test
+    fun `kubeconfig 를 바꿔 같은 팀의 다른 등록과 겹치게 할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+        val id = register(me, name = "스테이징", teamId = teamId, kubeconfig = kubeconfig(serverUrl = "https://other.example.com"))
+
+        // when & then
+        mockMvc.patch("/clusters/$id") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateClusterRequest(kubeconfig = kubeconfig()).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        clusterRepository.findByIdOrNull(id)!!.apiServer shouldBe "https://other.example.com"
+    }
+
+    @Test
+    fun `namespace 를 바꿔 같은 팀의 다른 등록과 겹치게 할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+        val id = register(me, name = "운영 api", teamId = teamId, kubeconfig = kubeconfig(namespace = "api"))
+
+        // when & then
+        mockMvc.patch("/clusters/$id") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateClusterRequest(namespace = ClusterFixture.DEFAULT_NAMESPACE).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        clusterRepository.findByIdOrNull(id)!!.defaultNamespace shouldBe "api"
     }
 
     @Test
@@ -717,11 +811,12 @@ class ClusterIntegrationTest : IntegrationTest() {
         user: LoggedInUser,
         name: String = ClusterFixture.DEFAULT_NAME,
         teamId: UUID = savedTeam(user.user.id to TeamRole.ADMIN),
+        kubeconfig: String = kubeconfig(),
     ): UUID {
         val response = mockMvc.post("/clusters") {
             authorization(user.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = RegisterClusterRequest(kubeconfig = kubeconfig(), name = name, teamId = teamId).toJson()
+            content = RegisterClusterRequest(kubeconfig = kubeconfig, name = name, teamId = teamId).toJson()
         }.andExpect {
             status { isCreated() }
         }.andReturn().response.contentAsString

@@ -31,8 +31,12 @@ interface InternalClusterControllerDocs {
     )
     fun getClusterConnection(clusterId: UUID, userId: UUID, expectedFingerprint: String?): ResponseEntity<ClusterConnectionResponse>
 
-    @Operation(summary = "[내부] 클러스터 상태 갱신", description = "agent 의 연결 확인 결과를 남깁니다. 사용자 토큰은 보지 않습니다.")
-    @ApiErrorResponses(InvalidInternalTokenException::class, ClusterNotFoundException::class)
+    @Operation(
+        summary = "[내부] 클러스터 상태 갱신",
+        description = "agent 의 연결 확인 결과를 남깁니다. fingerprint 는 agent 가 확인할 때 쓴 연결 정보의 지문이고, " +
+            "그 사이 kubeconfig 가 바뀌어 지금 지문과 다르면 409 입니다. 사용자 토큰은 보지 않습니다.",
+    )
+    @ApiErrorResponses(InvalidInternalTokenException::class, ClusterNotFoundException::class, ClusterChangedException::class)
     fun updateClusterStatus(clusterId: UUID, request: UpdateClusterStatusRequest): ResponseEntity<ClusterResponse>
 
     @Operation(

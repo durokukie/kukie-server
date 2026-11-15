@@ -9,6 +9,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import org.hibernate.annotations.DynamicUpdate
 import org.springframework.security.crypto.password.PasswordEncoder
+import java.time.LocalDateTime
 import java.util.UUID
 
 // 바뀐 열만 쓴다. 이름·비밀번호를 고치는 요청이 먼저 읽어 둔 값으로 그사이 커밋된 GitHub 연결을 덮지 않게 한다
@@ -62,6 +63,13 @@ class User private constructor(
     var githubLogin: String? = null
         protected set
 
+    @Column(name = "deleted_at")
+    var deletedAt: LocalDateTime? = null
+        protected set
+
+    val isDeleted: Boolean
+        get() = deletedAt != null
+
     val hasPassword: Boolean
         get() = password != null
 
@@ -91,7 +99,18 @@ class User private constructor(
         githubLogin = null
     }
 
+    /** 탈퇴. 다른 표가 이 행을 가리키므로 행은 남기고 사람을 알아볼 수 있는 값만 지운다. 같은 이메일로 다시 가입하면 새 계정이다. */
+    fun anonymize(now: LocalDateTime) {
+        name = DELETED_NAME
+        email = Email("deleted+$id@deleted.invalid")
+        password = null
+        avatarUrl = null
+        unlinkGitHub()
+        deletedAt = now
+    }
+
     companion object {
+        const val DELETED_NAME = "탈퇴한 사용자"
         const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
         const val GITHUB_ID_UNIQUE_CONSTRAINT = "tbl_user_github_id_key"
         private const val AVATAR_URL_MAX_LENGTH = 500

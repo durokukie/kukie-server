@@ -19,18 +19,23 @@ data class HostingAppsResponse(
     val skippedPush: SkippedPushResponse?,
     /** GitHub App 설치. null 이면 App 을 아직 설치하지 않았다. */
     val installation: HostingInstallationResponse?,
+    /** GitHub App 설치 페이지. 허용 레포 바꾸기도 같은 주소다. */
+    val installUrl: String,
 ) {
     companion object {
         private const val APP_LIMIT = 3
 
-        fun notLinked() = HostingAppsResponse(null, APP_LIMIT, emptyList(), null, null)
+        private fun installUrl(githubApp: String) = "https://github.com/apps/$githubApp/installations/new"
 
-        fun of(account: GitHubAccount, apps: List<HostingApp>, skipped: SkippedPush?, repos: HostingRepoList?) = HostingAppsResponse(
+        fun notLinked(githubApp: String) = HostingAppsResponse(null, APP_LIMIT, emptyList(), null, null, installUrl(githubApp))
+
+        fun of(githubApp: String, account: GitHubAccount, apps: List<HostingApp>, skipped: SkippedPush?, repos: HostingRepoList?) = HostingAppsResponse(
             githubLogin = account.login,
             appLimit = APP_LIMIT,
             apps = apps.map(HostingAppResponse::from),
             skippedPush = skipped?.let(SkippedPushResponse::from),
             installation = repos?.let { HostingInstallationResponse(it.allowed, it.repos) },
+            installUrl = installUrl(githubApp),
         )
     }
 }
@@ -68,7 +73,7 @@ data class SkippedPushResponse(
     val commandId: String?,
     /**
      * not_allowed, invalid_team_name, invalid_app_name, name_too_long, queue_full, auto_deploy_off, app_limit,
-     * source_mismatch, repository_in_use, internal
+     * app_name_taken, source_mismatch, repository_in_use, internal
      */
     val reason: String,
     val at: Instant,

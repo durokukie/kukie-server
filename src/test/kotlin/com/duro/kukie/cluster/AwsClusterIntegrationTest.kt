@@ -908,6 +908,34 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         fakeEksAccessGateway.targets.shouldBeEmpty()
     }
 
+    @Test
+    fun `같은 팀에 같은 주소와 namespace 의 클러스터가 있으면 고객 계정을 건드리지 않고 거부한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        clusterRepository.save(
+            ClusterFixture.cluster(
+                registeredBy = admin.user.id,
+                teamId = teamId,
+                name = "kubeconfig 로 등록한 운영",
+                apiServer = DEFAULT_ENDPOINT.endpoint,
+                defaultNamespace = "kukie-demo",
+            ),
+        )
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId), namespace = "kukie-demo").toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        fakeEksAccessGateway.registrations.shouldBeEmpty()
+    }
+
     // ── 클러스터 구성 조회 ──────────────────────────────────────
 
     @Test

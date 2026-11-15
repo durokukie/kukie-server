@@ -46,6 +46,12 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
     )
     fun lockIdsByTeamId(@Param("teamId") teamId: UUID): List<UUID>
 
+    @Query(
+        value = "select id from tbl_chat_session where user_id = :userId and visibility = 'PRIVATE' order by id for update",
+        nativeQuery = true,
+    )
+    fun lockPrivateIdsByUserId(@Param("userId") userId: UUID): List<UUID>
+
     /** 엔티티 갱신과 달리 updatedAt 을 건드리지 않아 목록 순서가 그대로다. */
     @Modifying(clearAutomatically = true)
     @Query("update ChatSession s set s.title = :title, s.version = s.version + 1 where s.id = :id")
