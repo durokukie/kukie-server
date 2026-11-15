@@ -403,7 +403,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
 
     private fun agent(github: GitHubAccount = GITHUB): Agent {
         val member = loggedInUser(UserFixture.oAuthUser(email = "${github.login}@test.com").apply { linkGitHub(github) })
-        store.files["apps/_allowed.json"] = """{ "version": 1, "logins": ["${github.login.lowercase()}"] }"""
+        store.files["apps/_allowed.json"] = """{ "version": 1, "ids": [${github.id}] }"""
         return Agent(member, jwt.generateHostingAgentToken(member.user.id))
     }
 
