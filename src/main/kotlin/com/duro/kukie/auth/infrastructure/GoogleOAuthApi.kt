@@ -25,7 +25,11 @@ class GoogleOAuthApi(
         val email = userInfo.email?.takeIf { userInfo.emailVerified == true }
             ?: throw OAuthLogInFailedException()
 
-        return OAuthProfile(email = email, name = userInfo.name ?: email.substringBefore("@"))
+        return OAuthProfile(
+            email = email,
+            name = userInfo.name ?: email.substringBefore("@"),
+            avatarUrl = userInfo.picture,
+        )
     }
 
     private fun exchangeCode(code: String, redirectUri: String, codeVerifier: String?): String {
@@ -68,6 +72,7 @@ class GoogleOAuthApi(
         @JsonProperty("email_verified")
         val emailVerified: Boolean?,
         val name: String?,
+        val picture: String?,
     )
 
     companion object {

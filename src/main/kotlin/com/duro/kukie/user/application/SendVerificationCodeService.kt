@@ -4,6 +4,7 @@ import com.duro.kukie.global.domain.Email
 import com.duro.kukie.user.application.port.out.VerificationCodeSender
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
+import com.duro.kukie.user.domain.VerificationType
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import org.springframework.stereotype.Service
 import kotlin.random.Random
@@ -21,7 +22,7 @@ class SendVerificationCodeService(
         }
 
         val code = generateCode()
-        verificationCodeRepository.save(email, code)
+        verificationCodeRepository.save(VerificationType.SIGN_UP, email, code)
 
         verificationCodeSender.send(email.value, code)
     }

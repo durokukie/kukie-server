@@ -4,12 +4,15 @@ import com.duro.kukie.cluster.application.port.`in`.RegisterEksClusterCommand
 import com.duro.kukie.cluster.application.port.out.ApiServerAddressChecker
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
+import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
-import com.duro.kukie.cluster.domain.saveAndFlushOrThrowNameTaken
+import com.duro.kukie.cluster.domain.NamespaceName
+import com.duro.kukie.cluster.domain.requireNotRegistered
+import com.duro.kukie.cluster.domain.saveAndFlushOrThrowTaken
 import com.duro.kukie.cluster.exception.AwsRegionNotSupportedException
 import com.duro.kukie.cluster.exception.ClusterNameTakenException
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
@@ -42,7 +45,7 @@ class RegisterEksClusterService(
         val connection = clusterPermission.requireWritableAwsConnection(command.connectionId, command.userId)
         connection.requireAccount(command.accountId)
         if (command.region !in clusterAwsProperties.regions) throw AwsRegionNotSupportedException()
-        if (!isAllowedNamespace(command.namespace)) throw InvalidNamespaceException()
+        if (!NamespaceName.isAllowed(command.namespace)) throw InvalidNamespaceException()
         // 고객 계정에 권한을 붙인 뒤 이름 중복으로 저장이 실패하면 권한만 남으므로 먼저 확인한다.
         // 동시 등록이 이 검사를 함께 통과하는 경우는 아래 저장의 unique 제약이 막는다.
         if (clusterRepository.existsByTeamIdAndName(connection.teamId, command.name)) throw ClusterNameTakenException()
@@ -55,33 +58,29 @@ class RegisterEksClusterService(
 
         val endpoint = eksAccessGateway.describeCluster(credential.target, command.region, command.clusterName)
         apiServerAddressChecker.rejectionOf(endpoint.endpoint)?.let { throw EksEndpointRejectedException(it) }
+        clusterRepository.requireNotRegistered(connection.teamId, endpoint.endpoint, command.namespace)
         val accessLevel = connection.accessLevel
-        try {
-            eksAccessGateway.registerSelf(credential.target, command.region, command.clusterName, command.namespace, accessLevel)
-        } catch (exception: EksAccessDeniedException) {
-            if (accessLevel == AccessLevel.LIMITED) throw EksNamespaceNotAllowedException()
-            throw exception
-        }
-        val namespaceStatus = eksAccessGateway.namespaceStatus(
-            credential.target,
-            command.region,
-            command.clusterName,
-            endpoint,
-            command.namespace,
-            waitForGrant = true,
-        )
+        attach(credential, command.namespace, accessLevel)
+        var namespaceStatus = namespaceStatusOf(credential, endpoint, command.namespace)
         log.info("EKS namespace 확인: status={}", namespaceStatus)
+        if (
+            namespaceStatus == NamespaceStatus.UNAUTHENTICATED &&
+            renewStaleEntry(connection.teamId, credential, command.namespace, accessLevel)
+        ) {
+            namespaceStatus = namespaceStatusOf(credential, endpoint, command.namespace)
+            log.info("EKS access entry 를 다시 만든 뒤 namespace 확인: status={}", namespaceStatus)
+        }
         when (namespaceStatus) {
             NamespaceStatus.MISSING -> {
                 releaseNamespace(connection.teamId, credential, accessLevel)
                 throw NamespaceNotFoundException(command.namespace)
             }
             // 권한을 거두면 다시 부를 때 또 처음부터 퍼지기를 기다려야 하므로 남겨 둔다
-            NamespaceStatus.GRANT_PENDING -> throw NamespaceGrantPendingException()
+            NamespaceStatus.GRANT_PENDING, NamespaceStatus.UNAUTHENTICATED -> throw NamespaceGrantPendingException()
             NamespaceStatus.EXISTS, NamespaceStatus.UNKNOWN -> Unit
         }
 
-        val cluster = clusterRepository.saveAndFlushOrThrowNameTaken(
+        val cluster = clusterRepository.saveAndFlushOrThrowTaken(
             Cluster(
                 teamId = connection.teamId,
                 registeredBy = command.userId,
@@ -101,6 +100,52 @@ class RegisterEksClusterService(
         return ClusterResponse.from(cluster)
     }
 
+    private fun attach(credential: EksCredential, namespace: String, accessLevel: AccessLevel) {
+        try {
+            eksAccessGateway.registerSelf(credential.target, credential.region, credential.clusterName, namespace, accessLevel)
+        } catch (exception: EksAccessDeniedException) {
+            if (accessLevel == AccessLevel.LIMITED) throw EksNamespaceNotAllowedException()
+            throw exception
+        }
+    }
+
+    private fun namespaceStatusOf(credential: EksCredential, endpoint: EksClusterEndpoint, namespace: String): NamespaceStatus =
+        eksAccessGateway.namespaceStatus(
+            credential.target,
+            credential.region,
+            credential.clusterName,
+            endpoint,
+            namespace,
+            waitForGrant = true,
+        )
+
+    /**
+     * 스택을 다시 만들면 옛 entry 는 지워진 역할의 고유 ID 에 묶여 새 역할이 인증되지 않는데, registerSelf 는 있는 entry 를 그대로 둔다.
+     * 그 entry 를 지우고 다시 만들었으면 true. 같은 entry 를 쓰는 EKS 의 다른 namespace 도 다시 붙인다.
+     *
+     * 다시 만든 entry 가 퍼지는 동안 등록을 다시 불러도 selfEntrySettled 가 막아 또 지우지 않는다.
+     */
+    private fun renewStaleEntry(teamId: UUID, credential: EksCredential, namespace: String, accessLevel: AccessLevel): Boolean {
+        val others = try {
+            if (!eksAccessGateway.selfEntrySettled(credential.target, credential.region, credential.clusterName)) return false
+            val registered = eksNamespaces.registeredOn(teamId, credential) - namespace
+            eksAccessGateway.unregisterSelf(credential.target, credential.region, credential.clusterName, emptySet(), accessLevel)
+            registered
+        } catch (exception: RuntimeException) {
+            log.warn("옛 access entry 를 지우지 못했습니다: team={} reason={}", teamId, exception.javaClass.simpleName)
+            return false
+        }
+        attach(credential, namespace, accessLevel)
+        for (other in others) {
+            try {
+                eksAccessGateway.registerSelf(credential.target, credential.region, credential.clusterName, other, accessLevel)
+            } catch (exception: RuntimeException) {
+                log.warn("같은 EKS 의 다른 namespace 를 다시 붙이지 못했습니다: team={} reason={}", teamId, exception.javaClass.simpleName)
+            }
+        }
+        return true
+    }
+
     /** 없는 namespace 에 붙인 권한을 거둔다. 실패해도 등록 거부는 그대로 알린다. */
     private fun releaseNamespace(teamId: UUID, credential: EksCredential, accessLevel: AccessLevel) {
         try {
@@ -109,15 +154,5 @@ class RegisterEksClusterService(
         } catch (exception: RuntimeException) {
             log.warn("없는 namespace 의 권한을 거두지 못했습니다: team={} reason={}", teamId, exception.javaClass.simpleName)
         }
-    }
-
-    /** 고객 템플릿이 정확한 이름만 허용하므로 패턴(*·?)과 시스템 namespace 는 받지 않는다. */
-    private fun isAllowedNamespace(namespace: String): Boolean =
-        namespace.length <= MAX_NAMESPACE_LENGTH && DNS_LABEL.matches(namespace) && !namespace.startsWith(SYSTEM_PREFIX)
-
-    companion object {
-        private const val MAX_NAMESPACE_LENGTH = 63
-        private const val SYSTEM_PREFIX = "kube-"
-        private val DNS_LABEL = Regex("[a-z0-9]([-a-z0-9]*[a-z0-9])?")
     }
 }

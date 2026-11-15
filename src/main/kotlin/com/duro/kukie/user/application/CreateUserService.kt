@@ -4,6 +4,7 @@ import com.duro.kukie.user.application.port.`in`.CreateUserCommand
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
 import com.duro.kukie.user.domain.VerificationCodeRepository
+import com.duro.kukie.user.domain.VerificationType
 import com.duro.kukie.user.exception.DuplicatedEmailException
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
 import org.hibernate.exception.ConstraintViolationException
@@ -25,7 +26,7 @@ class CreateUserService(
             throw DuplicatedEmailException()
         }
 
-        val code = verificationCodeRepository.findByEmail(command.email)
+        val code = verificationCodeRepository.findByEmail(VerificationType.SIGN_UP, command.email)
         if (code == null || code != command.verificationCode) {
             throw InvalidVerificationCodeException()
         }
@@ -47,6 +48,6 @@ class CreateUserService(
             throw e
         }
 
-        verificationCodeRepository.deleteByEmail(command.email)
+        verificationCodeRepository.deleteByEmail(VerificationType.SIGN_UP, command.email)
     }
 }

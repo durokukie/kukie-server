@@ -10,3 +10,11 @@ annotation class InternalApi
 fun HandlerMethod.isInternalApi(): Boolean =
     hasMethodAnnotation(InternalApi::class.java) ||
         AnnotatedElementUtils.hasAnnotation(beanType, InternalApi::class.java)
+
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class GatewayApi
+
+fun HandlerMethod.isGatewayApi(): Boolean =
+    hasMethodAnnotation(GatewayApi::class.java) ||
+        AnnotatedElementUtils.hasAnnotation(beanType, GatewayApi::class.java)

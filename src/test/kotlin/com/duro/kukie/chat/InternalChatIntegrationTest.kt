@@ -174,6 +174,21 @@ class InternalChatIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `shared 대화에서는 방 주인이 아니라 요청을 보낸 구성원을 요청자로 남긴다`() {
+        // given
+        val owner = userRepository.save(UserFixture.user(email = "owner@example.com"))
+        val member = loggedInUser()
+        val teamId = savedTeam(owner.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val session = savedSession(owner.id, savedCluster(owner.id, teamId = teamId).id, visibility = ChatVisibility.SHARED)
+
+        // when
+        startRun(session, member, requestId = "req-1").andExpect { status { isCreated() } }
+
+        // then
+        chatRunRepository.findAll().single().requestedBy shouldBe member.user.id
+    }
+
+    @Test
     fun `같은 요청을 다시 보내면 처음 시작한 요청을 돌려준다`() {
         // given
         val me = loggedInUser()

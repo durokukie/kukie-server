@@ -2,22 +2,32 @@ package com.duro.kukie.auth.presentation
 
 import com.duro.kukie.auth.application.ExchangeHandoffCodeService
 import com.duro.kukie.auth.application.IssueHandoffCodeService
+import com.duro.kukie.auth.application.LinkGitHubAccountService
 import com.duro.kukie.auth.application.LogInService
 import com.duro.kukie.auth.application.LogOutService
 import com.duro.kukie.auth.application.OAuthLogInService
 import com.duro.kukie.auth.application.RefreshTokenService
+import com.duro.kukie.auth.application.ResetPasswordService
+import com.duro.kukie.auth.application.SendPasswordResetCodeService
+import com.duro.kukie.auth.application.UnlinkGitHubAccountService
 import com.duro.kukie.auth.domain.OAuthProvider
 import com.duro.kukie.auth.exception.UnauthorizedException
 import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.LinkGitHubAccountRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.auth.presentation.dto.request.ResetPasswordRequest
+import com.duro.kukie.auth.presentation.dto.request.SendPasswordResetCodeRequest
 import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
+import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.AuthCookies
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.global.security.AuthenticationInterceptor
+import com.duro.kukie.user.presentation.dto.response.UserResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
@@ -36,10 +46,14 @@ import java.util.UUID
 class AuthController(
     private val logInService: LogInService,
     private val oAuthLogInService: OAuthLogInService,
+    private val linkGitHubAccountService: LinkGitHubAccountService,
+    private val unlinkGitHubAccountService: UnlinkGitHubAccountService,
     private val logOutService: LogOutService,
     private val refreshTokenService: RefreshTokenService,
     private val issueHandoffCodeService: IssueHandoffCodeService,
     private val exchangeHandoffCodeService: ExchangeHandoffCodeService,
+    private val sendPasswordResetCodeService: SendPasswordResetCodeService,
+    private val resetPasswordService: ResetPasswordService,
     private val authCookies: AuthCookies,
 ) : AuthControllerDocs {
 
@@ -60,7 +74,25 @@ class AuthController(
         return ResponseEntity.ok(oAuthLogInService(request.toCommand(provider)).alsoIssueCookies(response))
     }
 
-    /** 리프레시 토큰은 본문(앱)이 먼저, 없으면 쿠키(웹). 둘 다 없으면 인증 없음. */
+    @Authenticated
+    @PostMapping("/oauth/github/link")
+    override fun linkGitHubAccount(
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: LinkGitHubAccountRequest,
+    ): ResponseEntity<UserResponse> {
+        return ResponseEntity.ok(linkGitHubAccountService(request.toCommand(userId)))
+    }
+
+    @Authenticated
+    @DeleteMapping("/oauth/github/link")
+    override fun unlinkGitHubAccount(
+        @AuthUser userId: UUID,
+    ): ResponseEntity<Unit> {
+        unlinkGitHubAccountService(userId)
+
+        return ResponseEntity.noContent().build()
+    }
+
     @PostMapping("/refresh")
     override fun refresh(
         @RequestBody(required = false) @Valid request: RefreshTokenRequest?,
@@ -78,9 +110,11 @@ class AuthController(
     @DeleteMapping("/logout")
     override fun logOut(
         @AuthUser userId: UUID,
+        httpRequest: HttpServletRequest,
         response: HttpServletResponse,
     ): ResponseEntity<Unit> {
-        logOutService(userId)
+        // 액세스 토큰의 세션 id 로 이 로그인만 끊는다. 다른 창·기기는 그대로 둔다
+        logOutService(userId, httpRequest.getAttribute(AuthenticationInterceptor.AUTHENTICATED_SESSION_ID) as? String)
         authCookies.clear(response)
 
         return ResponseEntity.noContent().build()
@@ -103,6 +137,24 @@ class AuthController(
         response: HttpServletResponse,
     ): ResponseEntity<TokenResponse> {
         return ResponseEntity.ok(exchangeHandoffCodeService(request).alsoIssueCookies(response))
+    }
+
+    @PostMapping("/password-reset/code")
+    override fun sendPasswordResetCode(
+        @RequestBody @Valid request: SendPasswordResetCodeRequest,
+    ): ResponseEntity<Unit> {
+        sendPasswordResetCodeService(Email(request.email))
+
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/password-reset")
+    override fun resetPassword(
+        @RequestBody @Valid request: ResetPasswordRequest,
+    ): ResponseEntity<Unit> {
+        resetPasswordService(request.toCommand())
+
+        return ResponseEntity.noContent().build()
     }
 
     private fun TokenResponse.alsoIssueCookies(response: HttpServletResponse): TokenResponse {

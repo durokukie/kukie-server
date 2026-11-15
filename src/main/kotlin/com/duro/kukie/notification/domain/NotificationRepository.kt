@@ -7,6 +7,8 @@ import java.util.UUID
 
 interface NotificationRepository : JpaRepository<Notification, UUID> {
     fun findAllByUserIdOrderByCreatedAtDesc(userId: UUID): List<Notification>
+
+    fun deleteAllByUserId(userId: UUID)
 }
 
 fun NotificationRepository.findByIdOrThrow(id: UUID): Notification =

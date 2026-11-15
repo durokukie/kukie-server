@@ -1,12 +1,19 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.actionplan.ActionPlanFixture
+import com.duro.kukie.actionplan.domain.ActionPlanRepository
 import com.duro.kukie.chat.ChatFixture
+import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSessionRepository
+import com.duro.kukie.chat.domain.ChatVisibility
+import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.cluster.ClusterFixture.kubeconfig
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
 import com.duro.kukie.cluster.domain.ClusterStatus
+import com.duro.kukie.cluster.domain.saveAndFlushOrThrowTaken
+import com.duro.kukie.cluster.exception.ClusterAlreadyRegisteredException
 import com.duro.kukie.cluster.exception.ClusterErrorCode
 import com.duro.kukie.cluster.presentation.dto.request.RegisterClusterRequest
 import com.duro.kukie.cluster.presentation.dto.request.UpdateClusterRequest
@@ -21,6 +28,7 @@ import com.duro.kukie.team.exception.TeamErrorCode
 import com.duro.kukie.user.UserFixture
 import com.jayway.jsonpath.JsonPath
 import com.zaxxer.hikari.HikariDataSource
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotContain
@@ -57,6 +65,12 @@ class ClusterIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var chatSessionRepository: ChatSessionRepository
+
+    @Autowired
+    private lateinit var chatRunRepository: ChatRunRepository
+
+    @Autowired
+    private lateinit var actionPlanRepository: ActionPlanRepository
 
     @Autowired
     private lateinit var dataSource: DataSource
@@ -118,6 +132,52 @@ class ClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `CA 가 없는 공인 주소 kubeconfig 는 기본 신뢰 저장소로 검증하도록 등록한다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(cluster = mapOf("server" to "https://gke-abc.asia-northeast3.gke.goog"))
+
+        // when
+        val response = mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = ClusterFixture.DEFAULT_NAME, teamId = teamId).toJson()
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.insecure") { value(false) }
+        }.andReturn().response.contentAsString
+
+        // then
+        val stored = clusterRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.id")))!!
+        stored.caData shouldBe null
+        stored.insecure shouldBe false
+    }
+
+    @Test
+    fun `CA 대신 insecure-skip-tls-verify 를 쓴 kubeconfig 는 검증 없이 쓰도록 등록한다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(cluster = mapOf("server" to ClusterFixture.DEFAULT_SERVER, "insecure-skip-tls-verify" to true))
+
+        // when
+        val response = mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = ClusterFixture.DEFAULT_NAME, teamId = teamId).toJson()
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.insecure") { value(true) }
+        }.andReturn().response.contentAsString
+
+        // then
+        val stored = clusterRepository.findByIdOrNull(UUID.fromString(JsonPath.read(response, "$.id")))!!
+        stored.caData shouldBe null
+        stored.insecure shouldBe true
+    }
+
+    @Test
     fun `kubeconfig 를 검사하는 동안 DB 연결을 잡지 않는다`() {
         // given
         val admin = loggedInUser()
@@ -140,17 +200,18 @@ class ClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `외부 인증 프로그램을 쓰는 kubeconfig 는 등록할 수 없다`() {
-        // given
+    fun `외부 인증 프로그램을 쓰는 kubeconfig 는 등록하지 않고 ServiceAccount 토큰 방법을 알려 준다`() {
+        // given: OKE 콘솔·oci CLI 가 만드는 kubeconfig 꼴
         val me = loggedInUser()
         val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val okeExec = mapOf("command" to "oci", "args" to listOf("ce", "cluster", "generate-token"))
 
         // when & then
         mockMvc.post("/clusters") {
             authorization(me.accessToken)
             contentType = MediaType.APPLICATION_JSON
             content = RegisterClusterRequest(
-                kubeconfig = kubeconfig(user = mapOf("exec" to mapOf("command" to "aws"))),
+                kubeconfig = kubeconfig(user = mapOf("exec" to okeExec)),
                 name = "운영",
                 teamId = teamId,
             ).toJson()
@@ -158,6 +219,7 @@ class ClusterIntegrationTest : IntegrationTest() {
             status { isBadRequest() }
             jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
             jsonPath("$.message") { value(containsString("외부 인증 프로그램")) }
+            jsonPath("$.message") { value(containsString("kukie-access/sa-token-v1.yaml")) }
         }
         clusterRepository.count() shouldBe 0
     }
@@ -181,6 +243,100 @@ class ClusterIntegrationTest : IntegrationTest() {
                 jsonPath("$.message") { value(containsString("사설")) }
             }
         }
+    }
+
+    @Test
+    fun `CA 가 없어도 사설 주소를 가리키면 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        fakeHostResolver.addresses = listOf(InetAddress.getByName("10.0.0.5"))
+
+        // when & then
+        for (serverUrl in listOf("https://10.0.0.5", "https://sneaky.gke.goog")) {
+            mockMvc.post("/clusters") {
+                authorization(me.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = RegisterClusterRequest(
+                    kubeconfig = kubeconfig(cluster = mapOf("server" to serverUrl)),
+                    name = "운영",
+                    teamId = teamId,
+                ).toJson()
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+                jsonPath("$.message") { value(containsString("사설")) }
+            }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `CA 가 없어도 외부 인증 프로그램을 쓰는 kubeconfig 는 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(
+            cluster = mapOf("server" to "https://gke-abc.asia-northeast3.gke.goog"),
+            user = mapOf("exec" to mapOf("command" to "gke-gcloud-auth-plugin")),
+        )
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = "운영", teamId = teamId).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+            jsonPath("$.message") { value(containsString("외부 인증 프로그램")) }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `CA 값이 비어 있으면 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(ca = ""), name = "운영", teamId = teamId).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+            jsonPath("$.message") { value(containsString("certificate-authority-data 값이 비어 있습니다")) }
+        }
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `CA 와 insecure-skip-tls-verify 를 함께 쓴 kubeconfig 는 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val body = kubeconfig(
+            cluster = mapOf(
+                "server" to ClusterFixture.DEFAULT_SERVER,
+                "certificate-authority-data" to ClusterFixture.CA,
+                "insecure-skip-tls-verify" to true,
+            ),
+        )
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = body, name = "운영", teamId = teamId).toJson()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(ClusterErrorCode.KUBECONFIG_REJECTED.code) }
+            jsonPath("$.message") { value(containsString("함께 쓸 수 없습니다")) }
+        }
+        clusterRepository.count() shouldBe 0
     }
 
     @Test
@@ -212,11 +368,102 @@ class ClusterIntegrationTest : IntegrationTest() {
         mockMvc.post("/clusters") {
             authorization(me.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = RegisterClusterRequest(kubeconfig = kubeconfig(), name = "운영", teamId = teamId).toJson()
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(serverUrl = "https://other.example.com"), name = "운영", teamId = teamId).toJson()
         }.andExpect {
             status { isConflict() }
             jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_NAME_TAKEN.code) }
         }
+    }
+
+    @Test
+    fun `같은 팀에 같은 주소와 namespace 의 클러스터를 다른 이름으로 또 등록할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(), name = "운영2", teamId = teamId).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        clusterRepository.findAllByTeamIdOrderByCreatedAt(teamId).map { it.name } shouldBe listOf("운영")
+    }
+
+    @Test
+    fun `앞의 검사를 함께 통과한 동시 등록도 DB 가 같은 클러스터를 한 번만 받는다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        clusterRepository.saveAndFlush(ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "운영"))
+
+        // when & then
+        shouldThrow<ClusterAlreadyRegisteredException> {
+            clusterRepository.saveAndFlushOrThrowTaken(
+                ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "운영2", apiServer = ClusterFixture.DEFAULT_SERVER),
+            )
+        }
+    }
+
+    @Test
+    fun `같은 클러스터라도 namespace 가 다르면 등록한다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+
+        // when & then
+        mockMvc.post("/clusters") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = RegisterClusterRequest(kubeconfig = kubeconfig(namespace = "api"), name = "운영 api", teamId = teamId).toJson()
+        }.andExpect {
+            status { isCreated() }
+        }
+    }
+
+    @Test
+    fun `kubeconfig 를 바꿔 같은 팀의 다른 등록과 겹치게 할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+        val id = register(me, name = "스테이징", teamId = teamId, kubeconfig = kubeconfig(serverUrl = "https://other.example.com"))
+
+        // when & then
+        mockMvc.patch("/clusters/$id") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateClusterRequest(kubeconfig = kubeconfig()).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        clusterRepository.findByIdOrNull(id)!!.apiServer shouldBe "https://other.example.com"
+    }
+
+    @Test
+    fun `namespace 를 바꿔 같은 팀의 다른 등록과 겹치게 할 수 없다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        register(me, name = "운영", teamId = teamId)
+        val id = register(me, name = "운영 api", teamId = teamId, kubeconfig = kubeconfig(namespace = "api"))
+
+        // when & then
+        mockMvc.patch("/clusters/$id") {
+            authorization(me.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = UpdateClusterRequest(namespace = ClusterFixture.DEFAULT_NAMESPACE).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        clusterRepository.findByIdOrNull(id)!!.defaultNamespace shouldBe "api"
     }
 
     @Test
@@ -368,6 +615,195 @@ class ClusterIntegrationTest : IntegrationTest() {
         clusterRepository.existsById(cluster.id) shouldBe true
     }
 
+    @Test
+    fun `관리자가 대화 삭제를 함께 요청하면 다른 구성원의 Private 대화까지 지우고 클러스터를 삭제한다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+        val shared = chatSessionRepository.save(ChatFixture.session(admin.user.id, cluster.id, visibility = ChatVisibility.SHARED))
+        val othersPrivate = chatSessionRepository.save(ChatFixture.session(member.user.id, cluster.id))
+        val run = chatRunRepository.save(ChatFixture.run(shared.id, status = RunStatus.COMPLETED))
+        val plan = actionPlanRepository.save(ActionPlanFixture.plan(run.id))
+
+        // when
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(cluster.id) shouldBe false
+        chatSessionRepository.existsById(shared.id) shouldBe false
+        chatSessionRepository.existsById(othersPrivate.id) shouldBe false
+        chatRunRepository.existsById(run.id) shouldBe false
+        actionPlanRepository.existsById(plan.id) shouldBe false
+    }
+
+    @Test
+    fun `대화 삭제를 요청해도 다른 클러스터의 대화는 남는다`() {
+        // given
+        val me = loggedInUser()
+        val teamId = savedTeam(me.user.id to TeamRole.ADMIN)
+        val target = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId))
+        val other = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = teamId, name = "다른 클러스터"))
+        chatSessionRepository.save(ChatFixture.session(me.user.id, target.id))
+        val kept = chatSessionRepository.save(ChatFixture.session(me.user.id, other.id))
+        val keptRun = chatRunRepository.save(ChatFixture.run(kept.id, status = RunStatus.COMPLETED))
+        val keptPlan = actionPlanRepository.save(ActionPlanFixture.plan(keptRun.id))
+
+        // when
+        mockMvc.delete("/clusters/${target.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(other.id) shouldBe true
+        chatSessionRepository.existsById(kept.id) shouldBe true
+        chatRunRepository.existsById(keptRun.id) shouldBe true
+        actionPlanRepository.existsById(keptPlan.id) shouldBe true
+    }
+
+    @Test
+    fun `대화 삭제를 false 로 보내면 값을 안 보낸 요청처럼 거부한다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = savedTeam(me.user.id to TeamRole.ADMIN)))
+        val session = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "false")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_IN_USE.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(session.id) shouldBe true
+    }
+
+    @Test
+    fun `대화 삭제 값을 알아볼 수 없으면 아무것도 지우지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = savedTeam(me.user.id to TeamRole.ADMIN)))
+        val session = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "maybe")
+        }.andExpect { status { isBadRequest() } }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(session.id) shouldBe true
+    }
+
+    @Test
+    fun `관리자가 아니면 대화 삭제를 함께 요청해도 아무것도 지우지 못한다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+        val mine = chatSessionRepository.save(ChatFixture.session(member.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(member.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(mine.id) shouldBe true
+    }
+
+    @Test
+    fun `팀 밖의 사용자가 대화 삭제를 함께 요청하면 클러스터가 없는 것처럼 답한다`() {
+        // given
+        val admin = loggedInUser()
+        val stranger = loggedInUser(UserFixture.user(email = "stranger@example.com"))
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = savedTeam(admin.user.id to TeamRole.ADMIN)))
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, cluster.id))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(stranger.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value(ClusterErrorCode.NOT_FOUND.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(session.id) shouldBe true
+    }
+
+    @Test
+    fun `끝나지 않은 요청이 있는 대화가 하나라도 있으면 아무것도 지우지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = me.user.id, teamId = savedTeam(me.user.id to TeamRole.ADMIN)))
+        val finished = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id))
+        val finishedRun = chatRunRepository.save(ChatFixture.run(finished.id, status = RunStatus.COMPLETED))
+        val running = chatSessionRepository.save(ChatFixture.session(me.user.id, cluster.id, visibility = ChatVisibility.SHARED))
+        val activeRun = chatRunRepository.save(ChatFixture.run(running.id, status = RunStatus.AWAITING_APPROVAL))
+
+        // when & then
+        mockMvc.delete("/clusters/${cluster.id}") {
+            authorization(me.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_HAS_ACTIVE_RUN.code) }
+        }
+        clusterRepository.existsById(cluster.id) shouldBe true
+        chatSessionRepository.existsById(finished.id) shouldBe true
+        chatRunRepository.existsById(finishedRun.id) shouldBe true
+        chatRunRepository.existsById(activeRun.id) shouldBe true
+    }
+
+    @Test
+    fun `관리자는 다른 구성원의 Private 대화까지 포함한 대화 수를 본다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+        val other = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId, name = "다른 클러스터"))
+        chatSessionRepository.save(ChatFixture.session(admin.user.id, cluster.id, visibility = ChatVisibility.SHARED))
+        chatSessionRepository.save(ChatFixture.session(member.user.id, cluster.id))
+        chatSessionRepository.save(ChatFixture.session(admin.user.id, other.id))
+
+        // when & then
+        mockMvc.get("/clusters/${cluster.id}/conversations/count") {
+            authorization(admin.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.count") { value(2) }
+        }
+    }
+
+    @Test
+    fun `관리자가 아니면 대화 수를 볼 수 없다`() {
+        // given
+        val admin = loggedInUser()
+        val member = loggedInUser(UserFixture.user(email = "member@example.com"))
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN, member.user.id to TeamRole.MEMBER)
+        val cluster = clusterRepository.save(ClusterFixture.cluster(registeredBy = admin.user.id, teamId = teamId))
+
+        // when & then
+        mockMvc.get("/clusters/${cluster.id}/conversations/count") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value(TeamErrorCode.NOT_TEAM_ADMIN.code) }
+        }
+    }
+
     private fun activeConnections(): Int =
         dataSource.unwrap(HikariDataSource::class.java).hikariPoolMXBean.activeConnections
 
@@ -375,11 +811,12 @@ class ClusterIntegrationTest : IntegrationTest() {
         user: LoggedInUser,
         name: String = ClusterFixture.DEFAULT_NAME,
         teamId: UUID = savedTeam(user.user.id to TeamRole.ADMIN),
+        kubeconfig: String = kubeconfig(),
     ): UUID {
         val response = mockMvc.post("/clusters") {
             authorization(user.accessToken)
             contentType = MediaType.APPLICATION_JSON
-            content = RegisterClusterRequest(kubeconfig = kubeconfig(), name = name, teamId = teamId).toJson()
+            content = RegisterClusterRequest(kubeconfig = kubeconfig, name = name, teamId = teamId).toJson()
         }.andExpect {
             status { isCreated() }
         }.andReturn().response.contentAsString

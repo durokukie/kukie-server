@@ -38,7 +38,15 @@ web-app:
   url: ${WEB_APP_URL}
 
 internal:
+  gateway-token: ${KUKIE_GATEWAY_INTERNAL_TOKEN:}
   token: ${KUKIE_INTERNAL_TOKEN}
+
+# 커넥터 자격 수명·회전 뒤 직전 자격 겹침 기간·클러스터별 최소 갱신 간격
+serving:
+  connector-credential:
+    lifetime: ${KUKIE_CONNECTOR_CREDENTIAL_LIFETIME:24h}
+    overlap: ${KUKIE_CONNECTOR_CREDENTIAL_OVERLAP:30m}
+    renew-min-interval: ${KUKIE_CONNECTOR_RENEW_MIN_INTERVAL:30s}
 
 # 매니페스트 레포에 PR 을 여는 GitHub App (kukie-gitops). 개인키는 서버에만 둔다
 github-app:
@@ -50,6 +58,19 @@ github-app:
   # 설치 때 사용자 인증(OAuth)을 켜면 넣는다. 비어 있으면 state 발급 뒤 10분 안에 새로 생긴 설치만 묶는다
   client-id: ${GITHUB_APP_CLIENT_ID:}
   client-secret: ${GITHUB_APP_CLIENT_SECRET:}
+
+# GPU 화면의 모델 후보를 받아 오는 허깅페이스 API. 토큰이 없으면 익명으로 부른다
+hugging-face:
+  api-url: https://huggingface.co/api
+  token: ${HF_TOKEN:}
+  refresh-cooldown: PT1M
+  refresh-lock-timeout: PT5M
+
+# 호스팅 앱의 상태 파일 버킷과 명령 큐 (kukie-infra 가 만든다). 둘 중 하나라도 비어 있으면 호스팅 API 는 503 을 준다
+hosting:
+  github-app: ${HOSTING_GITHUB_APP:kukie-hosting-dev}
+  state-bucket: ${HOSTING_STATE_BUCKET:}
+  commands-queue-url: ${HOSTING_COMMANDS_QUEUE_URL:}
 
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}
@@ -64,3 +85,17 @@ cluster:
     role-name-prefix: KukieAccess-
     session-seconds: 900
     # 템플릿 v2 스택 알림 보관함(SQS) — 환경 변수 CLUSTER_AWS_NOTICE_QUEUE_URL 로만 준다. 없으면 알림을 읽지 않는다
+  # 서버가 만드는 ServedModel 의 엔진. 이미지는 digest 로 고정한다
+  gpu:
+    engine-image: vllm/vllm-openai:v0.32.0@sha256:6ee133356d49ed24cee03dd0cda3d3980279a11c107ce3e752c89e76540f41c9
+    engine-args:
+      - --max-model-len
+      - "16384"
+      - --gpu-memory-utilization
+      - "0.92"
+    # 사전 검사 Job 의 이미지. 고객 클러스터가 받을 수 있는지도 같이 본다
+    precheck-image: curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
+    # 모델 대화. keep-alive 간격은 CloudFront origin_read_timeout(60초)보다 짧아야 한다
+    chat-timeout: PT10M
+    chat-heartbeat: PT5S
+    chat-max-streams: 32

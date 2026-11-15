@@ -2,6 +2,7 @@ package com.duro.kukie.global.security
 
 import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.exception.UnauthorizedException
+import jakarta.servlet.DispatcherType
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpHeaders
@@ -23,10 +24,15 @@ class AuthenticationInterceptor(
         if (handler !is HandlerMethod || handler.requiresAuthentication().not()) {
             return true
         }
+        // 스트림이 끝나면 같은 요청이 인터셉터를 한 번 더 지난다. 그사이 만료된 토큰으로 이미 보낸 응답을 401 로 망치지 않게 입구에서만 본다
+        if (request.dispatcherType == DispatcherType.ASYNC) {
+            return true
+        }
 
         val token = resolveToken(request) ?: throw UnauthorizedException()
-        val userId = jwtTokenProvider.getUserIdFromAccessToken(token) ?: throw InvalidTokenException()
-        request.setAttribute(AUTHENTICATED_USER_ID, userId)
+        val subject = jwtTokenProvider.parseAccessToken(token) ?: throw InvalidTokenException()
+        request.setAttribute(AUTHENTICATED_USER_ID, subject.userId)
+        subject.sessionId?.let { request.setAttribute(AUTHENTICATED_SESSION_ID, it) }
 
         return true
     }
@@ -47,6 +53,7 @@ class AuthenticationInterceptor(
 
     companion object {
         const val AUTHENTICATED_USER_ID = "authenticatedUserId"
+        const val AUTHENTICATED_SESSION_ID = "authenticatedSessionId"
         private const val BEARER_PREFIX = "Bearer "
     }
 }

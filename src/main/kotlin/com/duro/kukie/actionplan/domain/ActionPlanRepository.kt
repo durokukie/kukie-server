@@ -14,6 +14,8 @@ interface ActionPlanRepository : JpaRepository<ActionPlan, UUID> {
 
     fun findAllByRunIdOrderByCreatedAtAscIdAsc(runId: UUID): List<ActionPlan>
 
+    fun findAllByRunIdInOrderByCreatedAtAscIdAsc(runIds: Collection<UUID>): List<ActionPlan>
+
     fun findAllByRunIdAndStatusInOrderByCreatedAtAscIdAsc(runId: UUID, statuses: Collection<PlanStatus>): List<ActionPlan>
 
     fun findByRunIdAndToolCallId(runId: UUID, toolCallId: String): ActionPlan?
@@ -61,6 +63,22 @@ interface ActionPlanRepository : JpaRepository<ActionPlan, UUID> {
     @Query("select p.runId as runId, count(p) as plans from ActionPlan p where p.runId in :runIds group by p.runId")
     fun countByRunIds(@Param("runIds") runIds: Collection<UUID>): List<RunPlanCount>
 
+    /** 그 도구의 계획 중 끝나지 않은 것: 결과 없이 승인·실행 상태이거나, 머지는 기록됐는데 sync 를 아직 지켜보는 중이다. */
+    @Query(
+        value = """
+        select p.id as planId, s.cluster_id as clusterId, r.status in ('running', 'awaiting_approval', 'recovery_required') as runActive
+        from tbl_action_plan p
+            join tbl_chat_run r on r.id = p.run_id
+            join tbl_chat_session s on s.id = r.session_id
+        where p.tool_name = :toolName
+          and (p.status in ('APPROVED', 'EXECUTING')
+            or (p.status = 'APPLIED' and p.execution_result -> 'sync_result' ->> 'status' = :watching))
+        order by p.id
+        """,
+        nativeQuery = true,
+    )
+    fun findUnsettled(@Param("toolName") toolName: String, @Param("watching") watching: String): List<UnsettledPlanRow>
+
     @Modifying
     @Query(
         """
@@ -70,6 +88,15 @@ interface ActionPlanRepository : JpaRepository<ActionPlan, UUID> {
         """,
     )
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)
+
+    @Modifying
+    @Query(
+        """
+        delete from ActionPlan p where p.runId in (
+            select r.id from ChatRun r where r.sessionId in (select s.id from ChatSession s where s.clusterId = :clusterId))
+        """,
+    )
+    fun deleteAllByClusterId(@Param("clusterId") clusterId: UUID)
 
     @Modifying
     @Query("delete from ActionPlan p where p.runId in (select r.id from ChatRun r where r.sessionId = :sessionId)")

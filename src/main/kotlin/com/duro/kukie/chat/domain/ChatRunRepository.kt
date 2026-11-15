@@ -20,6 +20,8 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
 
     fun existsBySessionIdAndStatusIn(sessionId: UUID, statuses: Collection<RunStatus>): Boolean
 
+    fun existsBySessionIdInAndStatusIn(sessionIds: Collection<UUID>, statuses: Collection<RunStatus>): Boolean
+
     @Query("select r.sessionId from ChatRun r where r.id = :id")
     fun findSessionIdById(@Param("id") id: UUID): UUID?
 
@@ -29,7 +31,8 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
     @Query(
         """
         select new com.duro.kukie.chat.domain.RunTurn(
-            r.id, r.turnNo, r.kind, r.mode, r.status, r.inputText, r.responsePayload, r.startedAt, r.finishedAt)
+            r.id, r.turnNo, r.kind, r.mode, r.status, r.inputText, r.requestedBy,
+            r.responsePayload, r.startedAt, r.finishedAt)
         from ChatRun r where r.sessionId = :sessionId order by r.turnNo
         """,
     )
@@ -87,6 +90,10 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
         """,
     )
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)
+
+    @Modifying
+    @Query("delete from ChatRun r where r.sessionId in (select s.id from ChatSession s where s.clusterId = :clusterId)")
+    fun deleteAllByClusterId(@Param("clusterId") clusterId: UUID)
 
     @Modifying
     @Query("delete from ChatRun r where r.sessionId = :sessionId")

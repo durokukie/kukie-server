@@ -4,6 +4,7 @@ import com.duro.kukie.actionplan.domain.ActionPlan
 import com.duro.kukie.actionplan.domain.PlanFailureReason
 import com.duro.kukie.actionplan.domain.PlanRisk
 import com.duro.kukie.actionplan.domain.PlanStatus
+import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.LocalDateTime
 import java.util.UUID
 
@@ -38,6 +39,9 @@ data class ActionPlanDetailResponse(
     val pullRequestUrl: String?,
     val mergeCommit: String?,
     val syncResult: Map<String, Any?>?,
+    /** 새 리소스 PR 계획일 때만 칸이 있다(new_resources·risk_warnings). diff 같은 payload.gitops 의 다른 칸은 내주지 않는다 */
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    val gitops: Map<String, Any?>?,
 ) {
     companion object {
         fun of(plan: ActionPlan, markdown: String) = ActionPlanDetailResponse(
@@ -68,7 +72,31 @@ data class ActionPlanDetailResponse(
             pullRequestUrl = (pullRequest(plan)?.get("url") as? String)?.ifBlank { null },
             mergeCommit = (plan.executionResult?.get(ActionPlan.MERGE_COMMIT) as? String)?.ifBlank { null },
             syncResult = stringKeyed(plan.executionResult?.get(ActionPlan.SYNC_RESULT)),
+            gitops = gitops(plan),
         )
+
+        private fun gitops(plan: ActionPlan): Map<String, Any?>? {
+            val gitops = plan.payload["gitops"] as? Map<*, *> ?: return null
+            val shown = buildMap<String, Any?> {
+                (gitops["new_resources"] as? List<*>)?.let { resources ->
+                    put("new_resources", resources.mapNotNull { picked(it, NEW_RESOURCE_KEYS) })
+                }
+                (gitops["risk_warnings"] as? List<*>)?.let { warnings ->
+                    put("risk_warnings", warnings.mapNotNull(::riskWarning))
+                }
+            }
+            return shown.ifEmpty { null }
+        }
+
+        private fun riskWarning(value: Any?): Map<String, Any?>? =
+            picked(value, RISK_WARNING_KEYS)?.plus("location" to picked((value as Map<*, *>)["location"], LOCATION_KEYS))
+
+        private fun picked(value: Any?, keys: List<String>): Map<String, Any?>? =
+            (value as? Map<*, *>)?.let { entry -> keys.filter(entry::containsKey).associateWith { entry[it] } }
+
+        private val NEW_RESOURCE_KEYS = listOf("api_version", "kind", "name", "namespace", "file")
+        private val RISK_WARNING_KEYS = listOf("code", "risk", "suggestion", "text")
+        private val LOCATION_KEYS = listOf("file", "resource", "field", "value")
 
         private fun pullRequest(plan: ActionPlan): Map<*, *>? = plan.payload[ActionPlan.PULL_REQUEST] as? Map<*, *>
 

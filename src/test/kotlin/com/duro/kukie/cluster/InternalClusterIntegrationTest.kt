@@ -163,7 +163,7 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         mockMvc.patch("/internal/clusters/${cluster.id}/status") {
             internalToken()
             contentType = MediaType.APPLICATION_JSON
-            content = mapOf("status" to "connected", "checkedAt" to "2026-10-14T09:00:00").toJson()
+            content = mapOf("status" to "connected", "checkedAt" to "2026-10-14T09:00:00", "fingerprint" to cluster.fingerprint).toJson()
         }.andExpect {
             status { isOk() }
             jsonPath("$.id") { value(cluster.id.toString()) }
@@ -173,6 +173,44 @@ class InternalClusterIntegrationTest : IntegrationTest() {
         val saved = clusterRepository.findByIdOrNull(cluster.id)!!
         saved.status shouldBe ClusterStatus.CONNECTED
         saved.lastCheckedAt shouldBe checkedAt
+    }
+
+    @Test
+    fun `연결을 확인하는 사이 kubeconfig 가 바뀌었으면 결과를 남기지 않는다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, mapOf("token" to "t"))
+        val before = clusterRepository.findByIdOrNull(cluster.id)!!
+
+        // when & then
+        mockMvc.patch("/internal/clusters/${cluster.id}/status") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("status" to "connected", "checkedAt" to "2026-10-14T09:00:00", "fingerprint" to "옛-지문").toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_CHANGED.code) }
+        }
+        val saved = clusterRepository.findByIdOrNull(cluster.id)!!
+        saved.status shouldBe before.status
+        saved.lastCheckedAt shouldBe before.lastCheckedAt
+    }
+
+    @Test
+    fun `연결 확인 결과에 지문이 없으면 400 이다`() {
+        // given
+        val me = loggedInUser()
+        val cluster = savedCluster(me.user.id, mapOf("token" to "t"))
+
+        // when & then
+        mockMvc.patch("/internal/clusters/${cluster.id}/status") {
+            internalToken()
+            contentType = MediaType.APPLICATION_JSON
+            content = mapOf("status" to "connected", "checkedAt" to "2026-10-14T09:00:00").toJson()
+        }.andExpect {
+            status { isBadRequest() }
+        }
+        clusterRepository.findByIdOrNull(cluster.id)!!.lastCheckedAt shouldBe null
     }
 
     @Test

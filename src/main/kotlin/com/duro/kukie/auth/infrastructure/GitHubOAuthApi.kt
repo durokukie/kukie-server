@@ -3,6 +3,7 @@ package com.duro.kukie.auth.infrastructure
 import com.duro.kukie.auth.application.port.out.OAuthProfile
 import com.duro.kukie.auth.exception.OAuthLogInFailedException
 import com.duro.kukie.global.config.properties.OAuthProperties
+import com.duro.kukie.user.domain.GitHubAccount
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatusCode
@@ -23,7 +24,12 @@ class GitHubOAuthApi(
         val user = fetchUser(accessToken)
         val email = fetchVerifiedEmail(accessToken)
 
-        return OAuthProfile(email = email, name = user.name ?: user.login)
+        return OAuthProfile(
+            email = email,
+            name = user.name ?: user.login,
+            avatarUrl = user.avatarUrl,
+            gitHub = GitHubAccount(id = user.id?.takeIf { it > 0 } ?: throw OAuthLogInFailedException(), login = user.login),
+        )
     }
 
     private fun exchangeCode(code: String, redirectUri: String, codeVerifier: String?): String {
@@ -81,8 +87,11 @@ class GitHubOAuthApi(
     )
 
     private data class GitHubUserResponse(
+        val id: Long?,
         val login: String,
         val name: String?,
+        @JsonProperty("avatar_url")
+        val avatarUrl: String?,
     )
 
     private data class GitHubEmailResponse(

@@ -11,6 +11,7 @@ data class TeamMemberResponse(
     val id: UUID,
     val name: String,
     val email: String,
+    val avatarUrl: String?,
     val role: TeamRole,
     val joinedAt: LocalDateTime,
 ) {
@@ -19,6 +20,7 @@ data class TeamMemberResponse(
             id = user.id,
             name = user.name,
             email = user.email.value,
+            avatarUrl = user.avatarUrl,
             role = membership.role,
             joinedAt = membership.createdAt,
         )

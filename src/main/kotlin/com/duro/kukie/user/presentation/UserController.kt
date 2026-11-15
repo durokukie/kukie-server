@@ -1,19 +1,25 @@
 package com.duro.kukie.user.presentation
 
 import com.duro.kukie.global.domain.Email
+import com.duro.kukie.global.security.AuthCookies
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.user.application.ChangePasswordService
 import com.duro.kukie.user.application.CreateUserService
+import com.duro.kukie.user.application.DeleteAccountService
 import com.duro.kukie.user.application.GetUserService
 import com.duro.kukie.user.application.SendVerificationCodeService
 import com.duro.kukie.user.application.UpdateUserService
+import com.duro.kukie.user.presentation.dto.request.ChangePasswordRequest
 import com.duro.kukie.user.presentation.dto.request.CreateUserRequest
 import com.duro.kukie.user.presentation.dto.request.SendVerificationCodeRequest
 import com.duro.kukie.user.presentation.dto.request.UpdateUserRequest
 import com.duro.kukie.user.presentation.dto.response.UserResponse
+import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -29,6 +35,9 @@ class UserController(
     private val getUserService: GetUserService,
     private val sendVerificationCodeService: SendVerificationCodeService,
     private val updateUserService: UpdateUserService,
+    private val changePasswordService: ChangePasswordService,
+    private val deleteAccountService: DeleteAccountService,
+    private val authCookies: AuthCookies,
 ) : UserControllerDocs {
     @PostMapping
     override fun createUser(
@@ -63,5 +72,28 @@ class UserController(
         @RequestBody @Valid request: UpdateUserRequest,
     ): ResponseEntity<UserResponse> {
         return ResponseEntity.ok(updateUserService(request.toCommand(userId)))
+    }
+
+    @Authenticated
+    @PutMapping("/me/password")
+    override fun changePassword(
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: ChangePasswordRequest,
+    ): ResponseEntity<Unit> {
+        changePasswordService(request.toCommand(userId))
+
+        return ResponseEntity.noContent().build()
+    }
+
+    @Authenticated
+    @DeleteMapping("/me")
+    override fun deleteMe(
+        @AuthUser userId: UUID,
+        response: HttpServletResponse,
+    ): ResponseEntity<Unit> {
+        deleteAccountService(userId)
+        authCookies.clear(response)
+
+        return ResponseEntity.noContent().build()
     }
 }

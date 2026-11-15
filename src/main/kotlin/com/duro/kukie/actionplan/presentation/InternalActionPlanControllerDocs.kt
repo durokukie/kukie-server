@@ -9,7 +9,9 @@ import com.duro.kukie.actionplan.presentation.dto.request.FailPlanRequest
 import com.duro.kukie.actionplan.presentation.dto.request.OfferPlanRequest
 import com.duro.kukie.actionplan.presentation.dto.request.RecordDryRunRequest
 import com.duro.kukie.actionplan.presentation.dto.request.RecordPlanResultRequest
+import com.duro.kukie.actionplan.presentation.dto.request.RecordSyncResultRequest
 import com.duro.kukie.actionplan.presentation.dto.response.PlanResponse
+import com.duro.kukie.actionplan.presentation.dto.response.UnsettledPlanResponse
 import com.duro.kukie.auth.exception.InvalidInternalTokenException
 import com.duro.kukie.chat.exception.RunNotFoundException
 import com.duro.kukie.global.docs.ApiErrorResponses
@@ -74,9 +76,29 @@ interface InternalActionPlanControllerDocs {
     @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)
     fun recordPlanResult(planId: UUID, request: RecordPlanResultRequest): ResponseEntity<PlanResponse>
 
+    @Operation(
+        summary = "[내부] sync 결과 기록",
+        description = "머지(mergeCommit)와 함께 APPLIED 로 닫힌 계획의 executionResult.sync_result 를 바꿉니다. " +
+            "지금 값의 status 가 syncing 일 때만 받고, 같은 값이 다시 오면 그대로 200 입니다.",
+    )
+    @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)
+    fun recordSyncResult(planId: UUID, request: RecordSyncResultRequest): ResponseEntity<PlanResponse>
+
+    @Operation(
+        summary = "[내부] 끝나지 않은 계획 목록",
+        description = "그 도구의 계획 중 결과 없이 APPROVED·EXECUTING 이거나, APPLIED 인데 sync_result.status 가 syncing 인 것입니다. " +
+            "에이전트가 다시 뜰 때 앞 프로세스가 끝내지 못한 계획을 찾는 데 씁니다.",
+    )
+    @ApiErrorResponses(InvalidInternalTokenException::class)
+    fun getUnsettledPlans(toolName: String): ResponseEntity<List<UnsettledPlanResponse>>
+
     @Operation(summary = "[내부] 실패", description = "열린 계획(DRAFT·WAITING_APPROVAL·APPROVED·EXECUTING)을 사유와 함께 FAILED 로 닫습니다.")
     @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)
     fun failPlan(planId: UUID, request: FailPlanRequest): ResponseEntity<PlanResponse>
+
+    @Operation(summary = "[내부] 전제 깨짐", description = "승인 순간 전제가 바뀌어 실행하지 않은, 결정 전 계획을 STALE 로 닫는다. 이미 STALE 이면 그대로 돌려준다.")
+    @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)
+    fun markPlanStale(planId: UUID): ResponseEntity<PlanResponse>
 
     @Operation(summary = "[내부] 확인 불가", description = "결과 없이 APPROVED·EXECUTING 인 계획을 UNKNOWN 으로 닫습니다.")
     @ApiErrorResponses(InvalidInternalTokenException::class, ActionPlanNotFoundException::class, PlanStateConflictException::class)

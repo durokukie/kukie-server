@@ -1,6 +1,7 @@
 package com.duro.kukie.global.exception
 
 import com.duro.kukie.global.util.logger
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.HttpRequestMethodNotSupportedException
@@ -8,10 +9,12 @@ import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.servlet.NoHandlerFoundException
 import org.springframework.web.servlet.resource.NoResourceFoundException
 
+/** 오류는 Accept 와 상관없이 JSON 이다. 스트림을 기다리는 요청(Accept: text/event-stream)의 거절도 본문을 잃지 않아야 한다. */
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
@@ -25,6 +28,7 @@ class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(errorCode.code, message))
     }
 
@@ -35,6 +39,7 @@ class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
@@ -44,6 +49,7 @@ class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
@@ -54,6 +60,7 @@ class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
@@ -64,6 +71,7 @@ class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
@@ -74,6 +82,7 @@ class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 
@@ -82,7 +91,14 @@ class GlobalExceptionHandler {
     fun handleBusinessException(e: BusinessException): ResponseEntity<ErrorResponse> {
         return ResponseEntity
             .status(e.errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(e.errorCode.code, e.message))
+    }
+
+    /** 스트림을 읽던 브라우저가 끊었다. 평범한 일이고 쓸 곳도 없다. */
+    @ExceptionHandler(AsyncRequestNotUsableException::class)
+    fun handleClientGone(e: AsyncRequestNotUsableException) {
+        log.debug("클라이언트가 응답을 받기 전에 끊었습니다: reason={}", e.javaClass.simpleName)
     }
 
     /** 위에서 처리하지 못한 모든 예외 — 500 으로 응답하고 로그를 남긴다. */
@@ -93,6 +109,7 @@ class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(errorCode.status)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(ErrorResponse(errorCode.code, errorCode.message))
     }
 }

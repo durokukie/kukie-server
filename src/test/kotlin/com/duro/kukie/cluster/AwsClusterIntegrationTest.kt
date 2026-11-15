@@ -1,5 +1,9 @@
 package com.duro.kukie.cluster
 
+import com.duro.kukie.chat.ChatFixture
+import com.duro.kukie.chat.domain.ChatRunRepository
+import com.duro.kukie.chat.domain.ChatSessionRepository
+import com.duro.kukie.chat.domain.ChatVisibility
 import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
@@ -54,6 +58,12 @@ class AwsClusterIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var clusterRepository: ClusterRepository
+
+    @Autowired
+    private lateinit var chatSessionRepository: ChatSessionRepository
+
+    @Autowired
+    private lateinit var chatRunRepository: ChatRunRepository
 
     @Autowired
     private lateinit var credentialCipher: CredentialCipher
@@ -704,6 +714,144 @@ class AwsClusterIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `권한 대기 뒤에도 인증이 안 되는 옛 entry 면 지우고 다시 만들어 같은 EKS 의 다른 namespace 까지 다시 붙인 뒤 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
+        fakeEksAccessGateway.accessChanges.clear()
+        fakeEksAccessGateway.namespaceStatuses += NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.accessChanges shouldBe listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo"),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, emptySet()),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo"),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-app"),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+        )
+        clusterRepository.count() shouldBe 2
+    }
+
+    @Test
+    fun `전체 권한의 계정도 옛 entry 면 전체 권한으로 다시 만들어 등록한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        connect(externalId, stackId = null, accessLevel = AccessLevel.FULL)
+        fakeEksAccessGateway.namespaceStatuses += NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        val target = AwsTarget(accountId = ACCOUNT_ID, externalId = externalId)
+        fakeEksAccessGateway.accessChanges shouldBe listOf(
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo", AccessLevel.FULL),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+            FakeEksAccessGateway.Unregistration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, emptySet(), AccessLevel.FULL),
+            FakeEksAccessGateway.Registration(target, DEFAULT_REGION, DEFAULT_CLUSTER_NAME, "kukie-demo", AccessLevel.FULL),
+            FakeEksAccessGateway.NamespaceCheck("kukie-demo", waitForGrant = true),
+        )
+        clusterRepository.count() shouldBe 1
+    }
+
+    @Test
+    fun `같은 EKS 의 다른 namespace 를 다시 붙이지 못해도 새 등록은 마친다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        registerEks(admin, externalId, namespace = "kukie-app", name = "앱")
+        fakeEksAccessGateway.deniedNamespaces = setOf("kukie-app")
+        fakeEksAccessGateway.namespaceStatuses += NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+
+        // then
+        clusterRepository.count() shouldBe 2
+    }
+
+    @Test
+    fun `옛 entry 를 다시 만들어도 인증이 안 되면 안내하고 다시 불러도 퍼지는 동안은 또 지우지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNAUTHENTICATED
+
+        // when
+        repeat(2) {
+            mockMvc.post("/clusters/aws") {
+                authorization(admin.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = registerRequest(idOf(externalId)).toJson()
+            }.andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+            }
+            fakeEksAccessGateway.selfEntrySettled = false
+        }
+
+        // then — 첫 호출에서 한 번만 지운다
+        fakeEksAccessGateway.unregistrations.size shouldBe 1
+        fakeEksAccessGateway.namespaceChecks.size shouldBe 3
+        clusterRepository.count() shouldBe 0
+    }
+
+    @Test
+    fun `막 만든 entry 의 401 은 퍼지는 중으로 보고 지우지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNAUTHENTICATED
+        fakeEksAccessGateway.selfEntrySettled = false
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+        }
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+        fakeEksAccessGateway.registrations.size shouldBe 1
+    }
+
+    @Test
+    fun `옛 entry 를 지우지 못하면 다시 붙이지 않고 안내한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        fakeEksAccessGateway.namespaceStatus = NamespaceStatus.UNAUTHENTICATED
+        fakeEksAccessGateway.unregisterFailure = EksAccessDeniedException()
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId)).toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.NAMESPACE_GRANT_PENDING.code) }
+        }
+        fakeEksAccessGateway.registrations.size shouldBe 1
+        fakeEksAccessGateway.namespaceChecks.size shouldBe 1
+    }
+
+    @Test
     fun `namespace 를 확인하지 못해도 EKS 클러스터를 등록한다`() {
         // given
         val admin = loggedInUser()
@@ -758,6 +906,34 @@ class AwsClusterIntegrationTest : IntegrationTest() {
         }
         // 고객 계정은 건드리지 않는다
         fakeEksAccessGateway.targets.shouldBeEmpty()
+    }
+
+    @Test
+    fun `같은 팀에 같은 주소와 namespace 의 클러스터가 있으면 고객 계정을 건드리지 않고 거부한다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        clusterRepository.save(
+            ClusterFixture.cluster(
+                registeredBy = admin.user.id,
+                teamId = teamId,
+                name = "kubeconfig 로 등록한 운영",
+                apiServer = DEFAULT_ENDPOINT.endpoint,
+                defaultNamespace = "kukie-demo",
+            ),
+        )
+
+        // when & then
+        mockMvc.post("/clusters/aws") {
+            authorization(admin.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = registerRequest(idOf(externalId), namespace = "kukie-demo").toJson()
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(ClusterErrorCode.CLUSTER_ALREADY_REGISTERED.code) }
+        }
+        fakeEksAccessGateway.registrations.shouldBeEmpty()
     }
 
     // ── 클러스터 구성 조회 ──────────────────────────────────────
@@ -975,6 +1151,80 @@ class AwsClusterIntegrationTest : IntegrationTest() {
             authorization(admin.accessToken)
         }.andExpect { status { isNoContent() } }
         clusterRepository.existsById(clusterId) shouldBe false
+    }
+
+    @Test
+    fun `대화까지 지운 EKS 클러스터도 access entry 를 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId))
+
+        // when
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+
+        // then
+        clusterRepository.existsById(clusterId) shouldBe false
+        chatSessionRepository.existsById(session.id) shouldBe false
+        fakeEksAccessGateway.unregistrations.single().clusterName shouldBe DEFAULT_CLUSTER_NAME
+    }
+
+    @Test
+    fun `access entry 를 정리하지 못해도 대화와 클러스터는 지운다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId))
+        fakeEksAccessGateway.failure = AwsRoleNotAssumableException()
+
+        // when & then
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isNoContent() } }
+        clusterRepository.existsById(clusterId) shouldBe false
+        chatSessionRepository.existsById(session.id) shouldBe false
+    }
+
+    @Test
+    fun `대화 때문에 삭제가 거부되면 access entry 를 건드리지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId))
+
+        // when & then
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+        }.andExpect { status { isConflict() } }
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
+    }
+
+    @Test
+    fun `끝나지 않은 요청 때문에 삭제가 거부되면 access entry 를 건드리지 않는다`() {
+        // given
+        val admin = loggedInUser()
+        val teamId = savedTeam(admin.user.id to TeamRole.ADMIN)
+        val externalId = startConnection(admin, teamId)
+        val clusterId = registerEks(admin, externalId, namespace = "kukie-demo", name = "운영 EKS")
+        val session = chatSessionRepository.save(ChatFixture.session(admin.user.id, clusterId, visibility = ChatVisibility.SHARED))
+        chatRunRepository.save(ChatFixture.run(session.id))
+
+        // when & then
+        mockMvc.delete("/clusters/$clusterId") {
+            authorization(admin.accessToken)
+            param("deleteConversations", "true")
+        }.andExpect { status { isConflict() } }
+        fakeEksAccessGateway.unregistrations.shouldBeEmpty()
     }
 
     // ── AWS 연결 해제 ────────────────────────────────────────────

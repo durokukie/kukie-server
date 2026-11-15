@@ -13,6 +13,10 @@ class FakeBeansConfig {
 
     @Bean
     @Primary
+    fun fakePasswordResetCodeSender(): FakePasswordResetCodeSender = FakePasswordResetCodeSender()
+
+    @Bean
+    @Primary
     fun fakeOAuthClient(): FakeOAuthClient = FakeOAuthClient()
 
     @Bean
@@ -34,4 +38,16 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeStackNoticeResponder(): FakeStackNoticeResponder = FakeStackNoticeResponder()
+
+    @Bean
+    @Primary
+    fun fakeHuggingFaceClient(): FakeHuggingFaceClient = FakeHuggingFaceClient()
+
+    @Bean
+    @Primary
+    fun fakeHostingStateStore(): FakeHostingStateStore = FakeHostingStateStore()
+
+    @Bean
+    @Primary
+    fun fakeHostingCommandQueue(): FakeHostingCommandQueue = FakeHostingCommandQueue()
 }

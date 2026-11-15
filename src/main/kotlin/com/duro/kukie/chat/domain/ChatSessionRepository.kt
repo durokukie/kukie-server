@@ -32,7 +32,10 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
     @Query("select s from ChatSession s join ChatRun r on r.sessionId = s.id where r.id = :runId")
     fun findByRunId(@Param("runId") runId: UUID): ChatSession?
 
-    fun existsByClusterId(clusterId: UUID): Boolean
+    fun countByClusterId(clusterId: UUID): Long
+
+    @Query(value = "select id from tbl_chat_session where cluster_id = :clusterId order by id for update", nativeQuery = true)
+    fun lockIdsByClusterId(@Param("clusterId") clusterId: UUID): List<UUID>
 
     @Query(
         value = """
@@ -42,6 +45,12 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
         nativeQuery = true,
     )
     fun lockIdsByTeamId(@Param("teamId") teamId: UUID): List<UUID>
+
+    @Query(
+        value = "select id from tbl_chat_session where user_id = :userId and visibility = 'PRIVATE' order by id for update",
+        nativeQuery = true,
+    )
+    fun lockPrivateIdsByUserId(@Param("userId") userId: UUID): List<UUID>
 
     /** 엔티티 갱신과 달리 updatedAt 을 건드리지 않아 목록 순서가 그대로다. */
     @Modifying(clearAutomatically = true)
@@ -56,6 +65,10 @@ interface ChatSessionRepository : JpaRepository<ChatSession, UUID> {
     @Modifying
     @Query("delete from ChatSession s where s.clusterId in (select c.id from Cluster c where c.teamId = :teamId)")
     fun deleteAllByTeamId(@Param("teamId") teamId: UUID)
+
+    @Modifying
+    @Query("delete from ChatSession s where s.clusterId = :clusterId")
+    fun deleteAllByClusterId(@Param("clusterId") clusterId: UUID)
 }
 
 fun ChatSessionRepository.findByIdOrThrow(id: UUID): ChatSession =

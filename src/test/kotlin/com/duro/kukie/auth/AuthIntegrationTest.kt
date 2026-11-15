@@ -1,18 +1,27 @@
 package com.duro.kukie.auth
 
+import com.duro.kukie.auth.application.port.out.OAuthProfile
 import com.duro.kukie.auth.exception.AuthErrorCode
 import com.duro.kukie.auth.domain.PkceS256
 import com.duro.kukie.auth.presentation.dto.request.ExchangeHandoffCodeRequest
 import com.duro.kukie.auth.presentation.dto.request.HandoffCodeRequest
+import com.duro.kukie.auth.presentation.dto.request.LinkGitHubAccountRequest
 import com.duro.kukie.auth.presentation.dto.request.LogInRequest
 import com.duro.kukie.auth.presentation.dto.request.OAuthLogInRequest
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
+import com.duro.kukie.auth.presentation.dto.request.ResetPasswordRequest
+import com.duro.kukie.auth.presentation.dto.request.SendPasswordResetCodeRequest
 import com.duro.kukie.global.config.properties.AuthCookieProperties
 import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.exception.GlobalErrorCode
 import com.duro.kukie.support.FakeOAuthClient
+import com.duro.kukie.support.FakePasswordResetCodeSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.user.UserFixture
+import com.duro.kukie.user.domain.GitHubAccount
+import com.duro.kukie.user.domain.VerificationCodeRepository
+import com.duro.kukie.user.domain.VerificationType
+import com.duro.kukie.user.exception.UserErrorCode
 import com.jayway.jsonpath.JsonPath
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -22,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
+import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -33,6 +43,15 @@ class AuthIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var cookies: AuthCookieProperties
+
+    @Autowired
+    private lateinit var fakePasswordResetCodeSender: FakePasswordResetCodeSender
+
+    @Autowired
+    private lateinit var verificationCodeRepository: VerificationCodeRepository
+
+    private val resetEmail = UserFixture.DEFAULT_EMAIL
+    private val resetNewPassword = "new-password1"
 
     @Test
     fun `정상적으로 로그인한다`() {
@@ -95,6 +114,153 @@ class AuthIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `GitHub 로 로그인하면 GitHub 계정을 회원에 저장한다`() {
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+        val request = OAuthLogInRequest("code", "http://127.0.0.1:3000/callback")
+
+        mockMvc.post("/auth/oauth/github") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect {
+            status { isOk() }
+        }
+
+        val user = userRepository.findByEmail(Email(FakeOAuthClient.DEFAULT_PROFILE.email)).shouldNotBeNull()
+        user.githubId shouldBe 583231L
+        user.githubLogin shouldBe "octocat"
+    }
+
+    @Test
+    fun `다른 회원이 쓰는 GitHub 계정으로 로그인해도 로그인은 되고 연결은 하지 않는다`() {
+        userRepository.save(UserFixture.oAuthUser(email = "owner@example.com").apply { linkGitHub(GITHUB) })
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+        val request = OAuthLogInRequest("code", "http://127.0.0.1:3000/callback")
+
+        mockMvc.post("/auth/oauth/github") {
+            contentType = MediaType.APPLICATION_JSON
+            content = request.toJson()
+        }.andExpect {
+            status { isOk() }
+        }
+
+        userRepository.findByEmail(Email(FakeOAuthClient.DEFAULT_PROFILE.email)).shouldNotBeNull().githubId shouldBe null
+    }
+
+    @Test
+    fun `로그인한 회원이 GitHub 계정을 연결한다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.profile = OAuthProfile(email = "github-only@example.com", name = "옥토캣", gitHub = GITHUB)
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(user.user.id.toString()) }
+            jsonPath("$.githubLogin") { value("octocat") }
+            jsonPath("$.email") { value(user.user.email.value) }
+        }
+
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect {
+            jsonPath("$.githubLogin") { value("octocat") }
+        }
+        userRepository.count() shouldBe 1
+    }
+
+    @Test
+    fun `다른 회원에 연결돼 있던 GitHub 계정을 연결하면 이 회원으로 옮긴다`() {
+        val previous = userRepository.save(UserFixture.oAuthUser(email = "previous@example.com").apply { linkGitHub(GITHUB) })
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.githubLogin") { value("octocat") }
+        }
+
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe GITHUB.id
+        with(userRepository.findByEmail(previous.email).shouldNotBeNull()) {
+            githubId shouldBe null
+            githubLogin shouldBe null
+        }
+    }
+
+    @Test
+    fun `이미 다른 GitHub 계정이 연결된 회원은 연결을 끊은 뒤에 다시 연결할 수 있다`() {
+        val user = loggedInUser(UserFixture.oAuthUser().apply { linkGitHub(GitHubAccount(id = 1, login = "old")) })
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value(AuthErrorCode.GITHUB_ALREADY_LINKED.code) }
+        }
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe 1L
+
+        mockMvc.delete("/auth/oauth/github/link") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isNoContent() }
+        }
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe null
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isOk() }
+            jsonPath("$.githubLogin") { value("octocat") }
+        }
+    }
+
+    @Test
+    fun `연결된 GitHub 계정이 없어도 연결 끊기는 성공한다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+
+        mockMvc.delete("/auth/oauth/github/link") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isNoContent() }
+        }
+    }
+
+    @Test
+    fun `인가 코드가 유효하지 않으면 GitHub 계정을 연결할 수 없다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.shouldFail = true
+
+        linkGitHub(user.accessToken).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(AuthErrorCode.GITHUB_LINK_FAILED.code) }
+        }
+    }
+
+    @Test
+    fun `PKCE code verifier 없이는 GitHub 계정을 연결할 수 없다`() {
+        val user = loggedInUser(UserFixture.oAuthUser())
+        fakeOAuthClient.profile = FakeOAuthClient.DEFAULT_PROFILE.copy(gitHub = GITHUB)
+
+        mockMvc.post("/auth/oauth/github/link") {
+            authorization(user.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = LinkGitHubAccountRequest("code", "http://127.0.0.1:3000/callback", " ").toJson()
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        userRepository.findByEmail(user.user.email).shouldNotBeNull().githubId shouldBe null
+    }
+
+    @Test
+    fun `로그인하지 않으면 GitHub 계정을 연결하거나 끊을 수 없다`() {
+        mockMvc.post("/auth/oauth/github/link") {
+            contentType = MediaType.APPLICATION_JSON
+            content = LinkGitHubAccountRequest("code", "http://127.0.0.1:3000/callback", "verifier").toJson()
+        }.andExpect {
+            status { isUnauthorized() }
+        }
+
+        mockMvc.delete("/auth/oauth/github/link").andExpect {
+            status { isUnauthorized() }
+        }
+    }
+
+    @Test
     fun `소셜 로그인 시 이미 가입된 이메일이면 기존 계정으로 로그인한다`() {
         val user = userRepository.save(UserFixture.user(email = FakeOAuthClient.DEFAULT_PROFILE.email))
         val request = OAuthLogInRequest("code", "http://127.0.0.1:3000/callback")
@@ -152,6 +318,7 @@ class AuthIntegrationTest : IntegrationTest() {
         val user = loggedInUser()
 
         refresh(user.refreshToken).andExpect { status { isOk() } }
+        passRefreshReuseGrace()
 
         refresh(user.refreshToken).andExpect {
             status { isUnauthorized() }
@@ -396,7 +563,8 @@ class AuthIntegrationTest : IntegrationTest() {
             }
         }
 
-        // 회전: 쿠키로 쓴 옛 리프레시 토큰도 더는 안 된다
+        // 회전: 겹침 시간이 지나면 쿠키로 쓴 옛 리프레시 토큰도 더는 안 된다
+        passRefreshReuseGrace()
         refresh(user.refreshToken).andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value(AuthErrorCode.INVALID_TOKEN.code) }
@@ -562,6 +730,80 @@ class AuthIntegrationTest : IntegrationTest() {
         }
     }
 
+    // ── 비밀번호 재설정 ──────────────────────────────────────
+
+    @Test
+    fun `재설정 코드로 비밀번호를 바꾸면 새 비밀번호로만 로그인된다`() {
+        // given
+        userRepository.save(UserFixture.user())
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // when
+        resetPassword(code = fakePasswordResetCodeSender.lastCodeFor(resetEmail)).andExpect { status { isNoContent() } }
+
+        // then
+        logInWith(resetNewPassword).andExpect { status { isOk() } }
+        logInWith(UserFixture.DEFAULT_PASSWORD).andExpect {
+            status { isUnauthorized() }
+            jsonPath("$.code") { value(AuthErrorCode.INVALID_CREDENTIALS.code) }
+        }
+    }
+
+    @Test
+    fun `로그인한 소셜 계정이 비밀번호를 설정해도 로그인이 유지된다`() {
+        // given
+        val user = loggedInUser(UserFixture.oAuthUser())
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // when
+        resetPassword(code = fakePasswordResetCodeSender.lastCodeFor(resetEmail)).andExpect { status { isNoContent() } }
+
+        // then
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.hasPassword") { value(true) }
+        }
+        refresh(user.refreshToken).andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `가입하지 않은 이메일도 같은 응답을 받지만 메일은 가지 않는다`() {
+        // when
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // then
+        fakePasswordResetCodeSender.sentCount(resetEmail) shouldBe 0
+    }
+
+    @Test
+    fun `잘못된 코드로는 비밀번호를 바꿀 수 없다`() {
+        // given
+        userRepository.save(UserFixture.user())
+        sendResetCode().andExpect { status { isNoContent() } }
+
+        // when & then
+        resetPassword(code = wrongResetCode()).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(UserErrorCode.INVALID_VERIFICATION_CODE.code) }
+        }
+        logInWith(UserFixture.DEFAULT_PASSWORD).andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `회원가입 인증 코드로는 비밀번호를 바꿀 수 없다`() {
+        // given
+        userRepository.save(UserFixture.user())
+        verificationCodeRepository.save(VerificationType.SIGN_UP, Email(resetEmail), "123456")
+
+        // when & then
+        resetPassword(code = "123456").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(UserErrorCode.INVALID_VERIFICATION_CODE.code) }
+        }
+    }
+
     private fun issueHandoffCode(accessToken: String, codeChallenge: String): String {
         val body = mockMvc.post("/auth/handoff") {
             authorization(accessToken)
@@ -570,6 +812,13 @@ class AuthIntegrationTest : IntegrationTest() {
         }.andExpect { status { isOk() } }.andReturn().response.contentAsString
         return JsonPath.read(body, "$.code")
     }
+
+    private fun linkGitHub(accessToken: String): ResultActionsDsl =
+        mockMvc.post("/auth/oauth/github/link") {
+            authorization(accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = LinkGitHubAccountRequest("code", "http://127.0.0.1:3000/callback", "verifier").toJson()
+        }
 
     private fun exchange(code: String, verifier: String) = mockMvc.post("/auth/exchange") {
         contentType = MediaType.APPLICATION_JSON
@@ -584,4 +833,31 @@ class AuthIntegrationTest : IntegrationTest() {
             contentType = MediaType.APPLICATION_JSON
             content = RefreshTokenRequest(refreshToken).toJson()
         }
+
+    private fun wrongResetCode(): String {
+        val actual = fakePasswordResetCodeSender.lastCodeFor(resetEmail)
+        return if (actual != "000000") "000000" else "999999"
+    }
+
+    private fun sendResetCode(): ResultActionsDsl =
+        mockMvc.post("/auth/password-reset/code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = SendPasswordResetCodeRequest(resetEmail).toJson()
+        }
+
+    private fun resetPassword(code: String, password: String = resetNewPassword): ResultActionsDsl =
+        mockMvc.post("/auth/password-reset") {
+            contentType = MediaType.APPLICATION_JSON
+            content = ResetPasswordRequest(email = resetEmail, verificationCode = code, newPassword = password).toJson()
+        }
+
+    private fun logInWith(password: String): ResultActionsDsl =
+        mockMvc.post("/auth/login") {
+            contentType = MediaType.APPLICATION_JSON
+            content = LogInRequest(resetEmail, password).toJson()
+        }
+
+    companion object {
+        private val GITHUB = GitHubAccount(id = 583231, login = "octocat")
+    }
 }

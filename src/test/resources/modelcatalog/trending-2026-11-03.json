@@ -1,0 +1,888 @@
+[
+ {
+  "id": "LiquidAI/LFM3-1.7B",
+  "likes": 938,
+  "downloads": 42384,
+  "gated": false,
+  "createdAt": "2026-10-23T21:35:42.000Z",
+  "library_name": "transformers",
+  "trendingScore": 715,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": {
+   "total": 1728801536
+  },
+  "config": {
+   "architectures": [
+    "Lfm3ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "Nanbeige/Nanbeige4.3-33B",
+  "likes": 1001,
+  "downloads": 16976,
+  "gated": false,
+  "createdAt": "2026-10-24T02:49:18.000Z",
+  "library_name": "transformers",
+  "trendingScore": 296,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 33118977024
+  },
+  "config": {
+   "architectures": [
+    "LlamaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "RecursiveSI/flint",
+  "likes": 1310,
+  "downloads": 29574,
+  "gated": false,
+  "createdAt": "2026-10-21T14:20:58.000Z",
+  "library_name": "transformers",
+  "trendingScore": 216,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 39785287456
+  },
+  "config": {
+   "architectures": [
+    "FlintForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "Diffuspace/Clover-35B-A3B-Preview",
+  "likes": 223,
+  "downloads": 2679,
+  "gated": false,
+  "createdAt": "2026-10-24T03:46:30.000Z",
+  "library_name": "transformers",
+  "trendingScore": 210,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 34661350848
+  },
+  "config": {
+   "architectures": [
+    "CloverMoeModelLM"
+   ]
+  }
+ },
+ {
+  "id": "XHToken/Spark-X2.6-4B",
+  "likes": 968,
+  "downloads": 18126,
+  "gated": false,
+  "createdAt": "2026-10-19T03:19:51.000Z",
+  "library_name": "transformers",
+  "trendingScore": 194,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 4112079360
+  },
+  "config": {
+   "architectures": [
+    "Spark2_5ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "OBLITERATUS/DeepSeek-V4.1-Flash-1017-obliterated",
+  "likes": 211,
+  "downloads": 1095,
+  "gated": false,
+  "createdAt": "2026-10-23T08:59:53.000Z",
+  "library_name": "transformers",
+  "trendingScore": 188,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": {
+   "total": 754638836864
+  },
+  "config": {
+   "architectures": [
+    "DeepseekV41ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "AtomicChat/LFM3-1.7B-Uncensored-GGUF",
+  "likes": 206,
+  "downloads": 59832,
+  "gated": false,
+  "createdAt": "2026-10-27T18:33:25.000Z",
+  "library_name": "gguf",
+  "trendingScore": 181,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "LiquidAI/LFM3-1.7B-GGUF",
+  "likes": 197,
+  "downloads": 174177,
+  "gated": false,
+  "createdAt": "2026-10-24T00:46:40.000Z",
+  "library_name": "gguf",
+  "trendingScore": 177,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "ISTA-DASLab/DeepSeek-V4.1-Flash-1017-GSQ-RCO-GGUF",
+  "likes": 554,
+  "downloads": 2408000,
+  "gated": false,
+  "createdAt": "2026-10-23T09:43:05.000Z",
+  "library_name": "gguf",
+  "trendingScore": 165,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": null,
+  "config": {
+   "architectures": null
+  }
+ },
+ {
+  "id": "AtomicChat/DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-GGUF",
+  "likes": 186,
+  "downloads": 30284,
+  "gated": false,
+  "createdAt": "2026-10-28T04:48:45.000Z",
+  "library_name": "gguf",
+  "trendingScore": 165,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB",
+  "likes": 339,
+  "downloads": 92742,
+  "gated": false,
+  "createdAt": "2026-10-05T04:26:43.000Z",
+  "library_name": "transformers",
+  "trendingScore": 136,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "divagr1925/Qwen3.5-4B-Qwenputer",
+  "likes": 138,
+  "downloads": 1043,
+  "gated": false,
+  "createdAt": "2026-10-19T18:51:39.000Z",
+  "library_name": "transformers",
+  "trendingScore": 133,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 9357602496
+  },
+  "config": {
+   "architectures": [
+    "Qwen3_5ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "LiquidAI/LFM3-1.7B-Base",
+  "likes": 128,
+  "downloads": 4520,
+  "gated": false,
+  "createdAt": "2026-10-26T16:28:49.000Z",
+  "library_name": "transformers",
+  "trendingScore": 114,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": {
+   "total": 1728801536
+  },
+  "config": {
+   "architectures": [
+    "Lfm3ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "orcarouter/DeepSeek-V4.1-Flash-1017-abliterated-GGUF",
+  "likes": 419,
+  "downloads": 32740,
+  "gated": "auto",
+  "createdAt": "2026-10-22T04:06:52.000Z",
+  "library_name": "gguf",
+  "trendingScore": 101,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "dealignai/GLM-5.3-CYBERSECURITY-FP8",
+  "likes": 842,
+  "downloads": 123743,
+  "gated": false,
+  "createdAt": "2026-08-30T10:46:54.000Z",
+  "library_name": null,
+  "trendingScore": 93,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": {
+   "total": 753329940480
+  },
+  "config": {
+   "architectures": [
+    "GlmMoeDsaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "inclusionAI/Ling-3.1-flash-1019",
+  "likes": 91,
+  "downloads": 1851,
+  "gated": false,
+  "createdAt": "2026-10-27T05:46:51.000Z",
+  "library_name": null,
+  "trendingScore": 91,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": {
+   "total": 572120680768
+  },
+  "config": {
+   "architectures": [
+    "BailingMoeV3ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "XHToken/Spark-X2.6-4B-GGUF",
+  "likes": 272,
+  "downloads": 355898,
+  "gated": false,
+  "createdAt": "2026-10-19T09:49:37.000Z",
+  "library_name": "transformers",
+  "trendingScore": 87,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "JonathanColetti/Qwen3.8-27B-Uncensored-GGUF",
+  "likes": 1861,
+  "downloads": 2619075,
+  "gated": false,
+  "createdAt": "2026-08-14T03:43:36.000Z",
+  "library_name": "llama.cpp",
+  "trendingScore": 75,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "XHToken/Spark-X2.6-1.7B",
+  "likes": 71,
+  "downloads": 2441,
+  "gated": false,
+  "createdAt": "2026-10-19T03:20:29.000Z",
+  "library_name": "transformers",
+  "trendingScore": 69,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 1707657216
+  },
+  "config": {
+   "architectures": [
+    "Spark2_5ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "ccore/Qwen3.5-4B-GLB-3D-Coder",
+  "likes": 67,
+  "downloads": 381,
+  "gated": false,
+  "createdAt": "2026-11-01T22:30:01.000Z",
+  "library_name": null,
+  "trendingScore": 67,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "HuggingFaceBio/Carbon-X",
+  "likes": 291,
+  "downloads": 3851,
+  "gated": false,
+  "createdAt": "2026-10-21T10:21:04.000Z",
+  "library_name": "transformers",
+  "trendingScore": 65,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 14822046720
+  },
+  "config": {
+   "architectures": [
+    "Qwen3ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "unsloth/flint-GGUF",
+  "likes": 356,
+  "downloads": 244152,
+  "gated": false,
+  "createdAt": "2026-10-20T03:26:14.000Z",
+  "library_name": null,
+  "trendingScore": 59,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "meta-llama/Llama-3.1-8B-Instruct",
+  "likes": 8751,
+  "downloads": 4463539,
+  "gated": "manual",
+  "createdAt": "2024-07-18T08:56:00.000Z",
+  "library_name": "transformers",
+  "trendingScore": 57,
+  "tags": [
+   "license:llama3.1"
+  ],
+  "safetensors": {
+   "total": 8030261248
+  },
+  "config": {
+   "architectures": [
+    "LlamaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "jialinyyzz/humanizer",
+  "likes": 2230,
+  "downloads": 281010,
+  "gated": false,
+  "createdAt": "2026-09-11T05:00:16.000Z",
+  "library_name": "gguf",
+  "trendingScore": 55,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 11959730224
+  },
+  "config": {
+   "architectures": [
+    "Gemma4UnifiedForConditionalGeneration"
+   ]
+  }
+ },
+ {
+  "id": "kaitchup/Qwen3.8-27B-SLQ-GGUF",
+  "likes": 56,
+  "downloads": 9570,
+  "gated": false,
+  "createdAt": "2026-10-27T00:29:38.000Z",
+  "library_name": "gguf",
+  "trendingScore": 55,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "InternScience/Sage-A1.5",
+  "likes": 385,
+  "downloads": 14049,
+  "gated": false,
+  "createdAt": "2026-10-15T08:34:39.000Z",
+  "library_name": "transformers",
+  "trendingScore": 54,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 35951822704
+  },
+  "config": {
+   "architectures": [
+    "Qwen3_5MoeForConditionalGeneration"
+   ]
+  }
+ },
+ {
+  "id": "Abiray/DeepSeek-V4.1-Flash-1017-Uncensored-GSQ-RCO-IQ2_XXS-GGUF",
+  "likes": 76,
+  "downloads": 366471,
+  "gated": false,
+  "createdAt": "2026-10-24T15:01:32.000Z",
+  "library_name": null,
+  "trendingScore": 53,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": null,
+  "config": {
+   "architectures": null
+  }
+ },
+ {
+  "id": "meta-llama/Meta-Llama-3-8B-Instruct",
+  "likes": 5679,
+  "downloads": 317893,
+  "gated": "manual",
+  "createdAt": "2024-04-17T09:35:12.000Z",
+  "library_name": "transformers",
+  "trendingScore": 52,
+  "tags": [
+   "license:llama3"
+  ],
+  "safetensors": {
+   "total": 8030261248
+  },
+  "config": {
+   "architectures": [
+    "LlamaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+  "likes": 2896,
+  "downloads": 1822774,
+  "gated": false,
+  "createdAt": "2026-09-16T23:40:56.000Z",
+  "library_name": "llama.cpp",
+  "trendingScore": 51,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "unsloth/NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF",
+  "likes": 163,
+  "downloads": 315003,
+  "gated": false,
+  "createdAt": "2026-10-23T09:47:55.000Z",
+  "library_name": null,
+  "trendingScore": 46,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "ConwayResearch/Underdog-Saluki-27B-1.0",
+  "likes": 686,
+  "downloads": 692758,
+  "gated": false,
+  "createdAt": "2026-10-08T01:47:26.000Z",
+  "library_name": "gguf",
+  "trendingScore": 41,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "summerAIO/Qwen3.8-27B-Longbook27-v2",
+  "likes": 42,
+  "downloads": 372,
+  "gated": false,
+  "createdAt": "2026-10-22T16:31:34.000Z",
+  "library_name": "transformers",
+  "trendingScore": 41,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 27072285696
+  },
+  "config": {
+   "architectures": [
+    "Qwen35GDN24ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "0bserverx/Qwen3.8-27B-Heretic-Abliterated-Uncensored-GGUF",
+  "likes": 820,
+  "downloads": 1129666,
+  "gated": false,
+  "createdAt": "2026-08-14T18:48:26.000Z",
+  "library_name": "transformers",
+  "trendingScore": 40,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": {
+   "architectures": null
+  }
+ },
+ {
+  "id": "Apexintelligence-AI/Apex-35B-V1.0",
+  "likes": 45,
+  "downloads": 1119,
+  "gated": false,
+  "createdAt": "2026-10-28T09:58:45.000Z",
+  "library_name": "transformers",
+  "trendingScore": 40,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 35951822704
+  },
+  "config": {
+   "architectures": [
+    "Qwen3_5MoeForConditionalGeneration"
+   ]
+  }
+ },
+ {
+  "id": "zai-org/GLM-5.3",
+  "likes": 2366,
+  "downloads": 2406057,
+  "gated": false,
+  "createdAt": "2026-08-25T06:42:50.000Z",
+  "library_name": "transformers",
+  "trendingScore": 39,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": {
+   "total": 753329940480
+  },
+  "config": {
+   "architectures": [
+    "GlmMoeDsaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "Octen/Octen-WebGR-4B",
+  "likes": 60,
+  "downloads": 850,
+  "gated": false,
+  "createdAt": "2026-10-26T09:00:19.000Z",
+  "library_name": "transformers",
+  "trendingScore": 38,
+  "tags": [
+   "license:cc-by-nc-4.0"
+  ],
+  "safetensors": {
+   "total": 4358012416
+  },
+  "config": {
+   "architectures": [
+    "Qwen3ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF",
+  "likes": 478,
+  "downloads": 1581592,
+  "gated": false,
+  "createdAt": "2026-09-24T13:13:45.000Z",
+  "library_name": "gguf",
+  "trendingScore": 37,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "XHToken/Spark-X2.6-1.7B-GGUF",
+  "likes": 39,
+  "downloads": 9166,
+  "gated": false,
+  "createdAt": "2026-10-19T09:50:22.000Z",
+  "library_name": "transformers",
+  "trendingScore": 37,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "reflection/Beam-1.0-501B-A23B",
+  "likes": 298,
+  "downloads": 9396,
+  "gated": false,
+  "createdAt": "2026-10-07T19:52:01.000Z",
+  "library_name": null,
+  "trendingScore": 36,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 501267612352
+  },
+  "config": {
+   "architectures": [
+    "BeamForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "HemmingwayAI/Hemmingway-1.5",
+  "likes": 40,
+  "downloads": 2201,
+  "gated": false,
+  "createdAt": "2026-10-24T21:01:56.000Z",
+  "library_name": "transformers",
+  "trendingScore": 36,
+  "tags": [
+   "license:cc-by-nc-4.0"
+  ],
+  "safetensors": {
+   "total": 26895998464
+  },
+  "config": {
+   "architectures": [
+    "Qwen3_5ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "Octen/Octen-WebGR-0.6B",
+  "likes": 56,
+  "downloads": 868,
+  "gated": false,
+  "createdAt": "2026-10-26T09:00:20.000Z",
+  "library_name": "transformers",
+  "trendingScore": 35,
+  "tags": [
+   "license:cc-by-nc-4.0"
+  ],
+  "safetensors": {
+   "total": 730267648
+  },
+  "config": {
+   "architectures": [
+    "Qwen3ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "deep-principle/Hydrogen-1.0",
+  "likes": 81,
+  "downloads": 0,
+  "gated": "auto",
+  "createdAt": "2026-10-31T15:54:37.000Z",
+  "library_name": null,
+  "trendingScore": 35,
+  "tags": [
+   "license:mit"
+  ],
+  "safetensors": {
+   "total": 753329940480
+  },
+  "config": {
+   "architectures": [
+    "GlmMoeDsaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "gugujiji/novel-humanize-4b",
+  "likes": 76,
+  "downloads": 1054,
+  "gated": false,
+  "createdAt": "2026-10-25T12:49:46.000Z",
+  "library_name": null,
+  "trendingScore": 34,
+  "tags": [
+   "license:cc-by-nc-4.0"
+  ],
+  "safetensors": {
+   "total": 4022468096
+  },
+  "config": {
+   "architectures": [
+    "Qwen3ForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "OBLITERATUS/Qwen3.8-27B-OBLITERATED",
+  "likes": 1610,
+  "downloads": 508898,
+  "gated": false,
+  "createdAt": "2026-08-19T14:53:08.000Z",
+  "library_name": "mlx",
+  "trendingScore": 31,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 27781427952
+  },
+  "config": {
+   "architectures": [
+    "Qwen3_5ForConditionalGeneration"
+   ]
+  }
+ },
+ {
+  "id": "Diffuspace/Clover-35B-A3B-Preview-GGUF",
+  "likes": 29,
+  "downloads": 33803,
+  "gated": false,
+  "createdAt": "2026-10-29T06:55:59.000Z",
+  "library_name": "llama.cpp",
+  "trendingScore": 29,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "meta-llama/Llama-3.1-8B",
+  "likes": 2744,
+  "downloads": 550531,
+  "gated": "manual",
+  "createdAt": "2024-07-14T22:20:15.000Z",
+  "library_name": "transformers",
+  "trendingScore": 26,
+  "tags": [
+   "license:llama3.1"
+  ],
+  "safetensors": {
+   "total": 8030261248
+  },
+  "config": {
+   "architectures": [
+    "LlamaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "openai/gpt-oss-120b",
+  "likes": 5480,
+  "downloads": 2475702,
+  "gated": false,
+  "createdAt": "2025-08-04T22:33:06.000Z",
+  "library_name": "transformers",
+  "trendingScore": 25,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 116829156672
+  },
+  "config": {
+   "architectures": [
+    "GptOssForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "audnai/penclaw-GLM-5.3-abliterated",
+  "likes": 521,
+  "downloads": 2860,
+  "gated": "manual",
+  "createdAt": "2026-09-01T17:52:24.000Z",
+  "library_name": "transformers",
+  "trendingScore": 25,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": {
+   "total": 753329940480
+  },
+  "config": {
+   "architectures": [
+    "GlmMoeDsaForCausalLM"
+   ]
+  }
+ },
+ {
+  "id": "dealignai/Nanbeige4.3-33B-UNCENSORED-GGUF",
+  "likes": 46,
+  "downloads": 34093,
+  "gated": false,
+  "createdAt": "2026-10-25T20:37:38.000Z",
+  "library_name": null,
+  "trendingScore": 25,
+  "tags": [
+   "license:other"
+  ],
+  "safetensors": null,
+  "config": null
+ },
+ {
+  "id": "MemTensor/MemT-1.0-Nano",
+  "likes": 169,
+  "downloads": 85184,
+  "gated": false,
+  "createdAt": "2026-10-15T03:46:11.000Z",
+  "library_name": "transformers",
+  "trendingScore": 24,
+  "tags": [
+   "license:apache-2.0"
+  ],
+  "safetensors": {
+   "total": 35111542048
+  },
+  "config": {
+   "architectures": [
+    "MemTQwen3_5MoeForCausalLM"
+   ]
+  }
+ }
+]

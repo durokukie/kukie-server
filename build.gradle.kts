@@ -37,6 +37,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
 
+    implementation("org.apache.httpcomponents.client5:httpclient5")
+
     // Database
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
@@ -53,6 +55,7 @@ dependencies {
     implementation("software.amazon.awssdk:eks:2.55.11")
     implementation("software.amazon.awssdk:ec2:2.55.11")
     implementation("software.amazon.awssdk:sqs:2.55.11")
+    implementation("software.amazon.awssdk:s3:2.55.11")
 
     // UUID
     implementation("com.github.f4b6a3:uuid-creator:6.1.1")

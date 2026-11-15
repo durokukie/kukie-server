@@ -23,4 +23,9 @@ object UserFixture {
         rawPassword = password,
         passwordEncoder = passwordEncoder,
     )
+
+    fun oAuthUser(
+        name: String = DEFAULT_NAME,
+        email: String = DEFAULT_EMAIL,
+    ): User = User(name = name, email = Email(email))
 }

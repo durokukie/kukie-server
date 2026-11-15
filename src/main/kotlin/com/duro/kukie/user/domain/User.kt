@@ -7,9 +7,13 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import org.hibernate.annotations.DynamicUpdate
 import org.springframework.security.crypto.password.PasswordEncoder
+import java.time.LocalDateTime
 import java.util.UUID
 
+// 바뀐 열만 쓴다. 이름·비밀번호를 고치는 요청이 먼저 읽어 둔 값으로 그사이 커밋된 GitHub 연결을 덮지 않게 한다
+@DynamicUpdate
 @Entity
 @Table(name = "tbl_user")
 class User private constructor(
@@ -46,14 +50,70 @@ class User private constructor(
     var password = password
         protected set
 
+    @Column(name = "avatar_url", length = AVATAR_URL_MAX_LENGTH)
+    var avatarUrl: String? = null
+        protected set
+
+    // 호스팅 앱의 주인은 이 숫자 id 로 가린다. 계정명은 바뀌고 다른 사람이 다시 쓸 수 있다
+    @Column(name = "github_id", unique = true)
+    var githubId: Long? = null
+        protected set
+
+    @Column(name = "github_login", length = GITHUB_LOGIN_MAX_LENGTH)
+    var githubLogin: String? = null
+        protected set
+
+    @Column(name = "deleted_at")
+    var deletedAt: LocalDateTime? = null
+        protected set
+
+    val isDeleted: Boolean
+        get() = deletedAt != null
+
+    val hasPassword: Boolean
+        get() = password != null
+
     fun matchesPassword(rawPassword: String, passwordEncoder: PasswordEncoder): Boolean =
         password?.let { passwordEncoder.matches(rawPassword, it) } ?: false
+
+    fun changePassword(rawPassword: String, passwordEncoder: PasswordEncoder) {
+        password = checkNotNull(passwordEncoder.encode(rawPassword))
+    }
 
     fun update(name: String) {
         this.name = name
     }
 
+    /** https 만 받는다(화면이 img 로 띄운다). 사진을 안 주는 로그인은 있던 사진을 지우지 않는다. */
+    fun changeAvatar(url: String?) {
+        if (url != null && url.startsWith("https://") && url.length <= AVATAR_URL_MAX_LENGTH) avatarUrl = url
+    }
+
+    fun linkGitHub(account: GitHubAccount) {
+        githubId = account.id
+        githubLogin = account.login.take(GITHUB_LOGIN_MAX_LENGTH)
+    }
+
+    fun unlinkGitHub() {
+        githubId = null
+        githubLogin = null
+    }
+
+    /** 탈퇴. 다른 표가 이 행을 가리키므로 행은 남기고 사람을 알아볼 수 있는 값만 지운다. 같은 이메일로 다시 가입하면 새 계정이다. */
+    fun anonymize(now: LocalDateTime) {
+        name = DELETED_NAME
+        email = Email("deleted+$id@deleted.invalid")
+        password = null
+        avatarUrl = null
+        unlinkGitHub()
+        deletedAt = now
+    }
+
     companion object {
+        const val DELETED_NAME = "탈퇴한 사용자"
         const val EMAIL_UNIQUE_CONSTRAINT = "tbl_user_email_key"
+        const val GITHUB_ID_UNIQUE_CONSTRAINT = "tbl_user_github_id_key"
+        private const val AVATAR_URL_MAX_LENGTH = 500
+        private const val GITHUB_LOGIN_MAX_LENGTH = 39
     }
 }

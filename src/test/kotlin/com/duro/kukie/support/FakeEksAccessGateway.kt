@@ -4,14 +4,23 @@ import com.duro.kukie.cluster.application.port.out.AwsTarget
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
 import com.duro.kukie.cluster.application.port.out.EksAddon
 import com.duro.kukie.cluster.application.port.out.EksClusterEndpoint
+import com.duro.kukie.cluster.application.port.out.PrecheckJobManifest
+import com.duro.kukie.cluster.application.port.out.PrecheckPodState
 import com.duro.kukie.cluster.application.port.out.EksClusterInventory
 import com.duro.kukie.cluster.application.port.out.EksClusterSetup
 import com.duro.kukie.cluster.application.port.out.EksClusterSummary
 import com.duro.kukie.cluster.application.port.out.EksNodegroup
+import com.duro.kukie.cluster.application.port.out.EksNodegroupState
 import com.duro.kukie.cluster.application.port.out.EksSubnet
+import com.duro.kukie.cluster.application.port.out.ModelChatStream
 import com.duro.kukie.cluster.application.port.out.NamespaceStatus
+import com.duro.kukie.cluster.application.port.out.ServedModelManifest
+import com.duro.kukie.cluster.application.port.out.ServedModelState
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.exception.EksAccessDeniedException
+import com.duro.kukie.cluster.exception.ServedModelNotFoundException
+import java.time.Duration
+import java.time.Instant
 
 class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
@@ -28,6 +37,15 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     /** 이 이름의 EKS 에 정책을 붙이는 호출(registerSelf·changeAccessLevel)만 거부된다. */
     var deniedClusters: Set<String> = emptySet()
+
+    /** 이 namespace 를 붙이는 registerSelf 만 거부된다. */
+    var deniedNamespaces: Set<String> = emptySet()
+
+    /** 설정하면 unregisterSelf 가 이 예외로 실패한다. */
+    var unregisterFailure: RuntimeException? = null
+
+    /** selfEntrySettled 가 돌려줄 값. */
+    var selfEntrySettled: Boolean = true
 
     val targets = mutableListOf<AwsTarget>()
 
@@ -46,10 +64,65 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     /** namespaceStatus 가 돌려줄 값. */
     var namespaceStatus: NamespaceStatus = NamespaceStatus.EXISTS
 
+    /** 있으면 namespaceStatus 보다 먼저 하나씩 돌려준다. */
+    val namespaceStatuses = ArrayDeque<NamespaceStatus>()
+
     val namespaceChecks = mutableListOf<NamespaceCheck>()
 
     /** registerSelf·namespaceStatus·unregisterSelf 를 부른 순서대로. */
     val accessChanges = mutableListOf<Any>()
+
+    /** listNodegroupStates·describeNodegroupState 가 돌려줄 노드 그룹. */
+    var nodegroupStates: List<EksNodegroupState> = DEFAULT_NODEGROUP_STATES
+
+    /** 설정하면 노드 그룹을 읽는 호출이 이 예외로 실패한다. */
+    var nodegroupReadFailure: RuntimeException? = null
+
+    /** 설정하면 updateNodegroupDesired 가 이 예외로 실패한다. */
+    var nodegroupUpdateFailure: RuntimeException? = null
+
+    val nodegroupUpdates = mutableListOf<NodegroupUpdate>()
+
+    /** hasServedModel 이 돌려줄 값. */
+    var servedModelPresent: Boolean = false
+
+    /** 설정하면 ServedModel 을 다루는 쿠버네티스 호출이 이 예외로 실패한다. */
+    var servedModelFailure: RuntimeException? = null
+
+    /** 설정하면 createServedModel 만 이 예외로 실패한다. */
+    var servedModelCreateFailure: RuntimeException? = null
+
+    val servedModelCreations = mutableListOf<ServedModelManifest>()
+
+    val servedModelDeletions = mutableListOf<ServedModelDeletion>()
+
+    /** 노드 그룹·ServedModel 을 다루는 호출에 넘어온 API 서버. */
+    val servedModelEndpoints = mutableListOf<EksClusterEndpoint>()
+
+    /** getServedModel 이 돌려줄 값. null 이면 ServedModelNotFoundException. */
+    var servedModelState: ServedModelState? = READY_MODEL
+
+    val keepUntilWrites = mutableListOf<KeepUntilWrite>()
+
+    /** keepServedModelUntil 이 이 횟수만큼 충돌(false)을 돌려준다. */
+    var keepUntilConflicts: Int = 0
+
+    val precheckJobs = mutableListOf<PrecheckJobManifest>()
+
+    /** getPrecheckPod 이 돌려줄 값. null 이면 Pod 가 없다. */
+    var precheckPod: PrecheckPodState? = null
+
+    val measureWrites = mutableListOf<MeasureWrite>()
+
+    /** requestServedModelMeasure 가 이 횟수만큼 충돌(false)을 돌려준다. */
+    var measureConflicts: Int = 0
+
+    /** 설정하면 측정 요청이 충돌할 때 ServedModel 이 이 값으로 바뀐다. 다시 읽는지 볼 때 쓴다. */
+    var servedModelStateAfterMeasureConflict: ServedModelState? = null
+
+    /** 설정하면 대화 관련 호출을 실제 구현과 로컬 가짜 API 서버로 넘긴다. */
+    var servingBackend: EksAccessGateway? = null
+    var servingBackendEndpoint: EksClusterEndpoint? = null
 
     override fun verify(target: AwsTarget) {
         record(target)
@@ -68,14 +141,22 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
 
     override fun describeCluster(target: AwsTarget, region: String, clusterName: String): EksClusterEndpoint {
         record(target)
-        return endpoint
+        if (endpoint != DEFAULT_ENDPOINT) return endpoint
+        // 실제 EKS 처럼 계정·리전·이름이 다르면 주소도 다르다
+        if (target.accountId == DEFAULT_ACCOUNT_ID && region == DEFAULT_REGION && clusterName == DEFAULT_CLUSTER_NAME) return endpoint
+        return endpoint.copy(endpoint = "https://$clusterName-${target.accountId}.gr7.$region.eks.amazonaws.com")
     }
 
     override fun registerSelf(target: AwsTarget, region: String, clusterName: String, namespace: String, accessLevel: AccessLevel) {
         record(target)
-        if (clusterName in deniedClusters) throw EksAccessDeniedException()
+        if (clusterName in deniedClusters || namespace in deniedNamespaces) throw EksAccessDeniedException()
         registrations += Registration(target, region, clusterName, namespace, accessLevel)
         accessChanges += Registration(target, region, clusterName, namespace, accessLevel)
+    }
+
+    override fun selfEntrySettled(target: AwsTarget, region: String, clusterName: String): Boolean {
+        record(target)
+        return selfEntrySettled
     }
 
     override fun unregisterSelf(
@@ -86,6 +167,7 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         accessLevel: AccessLevel,
     ) {
         record(target)
+        unregisterFailure?.let { throw it }
         unregistrations += Unregistration(target, region, clusterName, keepNamespaces, accessLevel)
         accessChanges += Unregistration(target, region, clusterName, keepNamespaces, accessLevel)
     }
@@ -114,7 +196,7 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         record(target)
         namespaceChecks += NamespaceCheck(namespace, waitForGrant)
         accessChanges += NamespaceCheck(namespace, waitForGrant)
-        return namespaceStatus
+        return namespaceStatuses.removeFirstOrNull() ?: namespaceStatus
     }
 
     override fun describeSetup(target: AwsTarget, region: String, clusterName: String): EksClusterSetup {
@@ -126,6 +208,169 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
     override fun issueToken(target: AwsTarget, region: String, clusterName: String): String {
         record(target)
         return tokenFor(clusterName)
+    }
+
+    override fun listNodegroupStates(target: AwsTarget, region: String, clusterName: String): List<EksNodegroupState> {
+        record(target)
+        nodegroupReadFailure?.let { throw it }
+        return nodegroupStates
+    }
+
+    override fun describeNodegroupState(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        nodegroupName: String,
+    ): EksNodegroupState? {
+        record(target)
+        nodegroupReadFailure?.let { throw it }
+        return nodegroupStates.firstOrNull { it.name == nodegroupName }
+    }
+
+    override fun updateNodegroupDesired(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        current: EksNodegroupState,
+        desired: Int,
+    ) {
+        record(target)
+        nodegroupUpdateFailure?.let { throw it }
+        nodegroupUpdates += NodegroupUpdate(target, region, clusterName, current.name, desired, current.min, current.max)
+    }
+
+    override fun hasServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+    ): Boolean {
+        record(target)
+        servedModelFailure?.let { throw it }
+        return servedModelPresent
+    }
+
+    override fun createServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        manifest: ServedModelManifest,
+    ) {
+        record(target)
+        servedModelFailure?.let { throw it }
+        servedModelCreateFailure?.let { throw it }
+        servedModelEndpoints += endpoint
+        servedModelCreations += manifest
+    }
+
+    override fun deleteServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    ) {
+        record(target)
+        servedModelFailure?.let { throw it }
+        servedModelEndpoints += endpoint
+        servedModelDeletions += ServedModelDeletion(namespace, name)
+    }
+
+    override fun getServedModel(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+    ): ServedModelState {
+        servingBackend?.let { return it.getServedModel(target, region, clusterName, servingBackendEndpoint!!, namespace, name) }
+        record(target)
+        servedModelFailure?.let { throw it }
+        return servedModelState ?: throw ServedModelNotFoundException()
+    }
+
+    override fun keepServedModelUntil(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        keepUntil: Instant,
+        resourceVersion: String,
+    ): Boolean {
+        record(target)
+        servedModelFailure?.let { throw it }
+        if (keepUntilConflicts > 0) {
+            keepUntilConflicts--
+            return false
+        }
+        keepUntilWrites += KeepUntilWrite(namespace, name, keepUntil, resourceVersion)
+        return true
+    }
+
+    override fun createPrecheckJob(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        manifest: PrecheckJobManifest,
+    ) {
+        record(target)
+        servedModelFailure?.let { throw it }
+        precheckJobs += manifest
+    }
+
+    override fun getPrecheckPod(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        jobName: String,
+    ): PrecheckPodState? {
+        record(target)
+        servedModelFailure?.let { throw it }
+        return precheckPod
+    }
+
+    override fun requestServedModelMeasure(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        request: String,
+        resourceVersion: String,
+    ): Boolean {
+        record(target)
+        servedModelFailure?.let { throw it }
+        if (measureConflicts > 0) {
+            measureConflicts--
+            servedModelStateAfterMeasureConflict?.let { servedModelState = it }
+            return false
+        }
+        measureWrites += MeasureWrite(namespace, name, request, resourceVersion)
+        return true
+    }
+
+    override fun openModelChat(
+        target: AwsTarget,
+        region: String,
+        clusterName: String,
+        endpoint: EksClusterEndpoint,
+        namespace: String,
+        name: String,
+        body: ByteArray,
+        timeout: Duration,
+    ): ModelChatStream {
+        val backend = checkNotNull(servingBackend) { "대화 흐름은 ModelChatStreamIntegrationTest 에서 실제 구현으로 시험한다" }
+        return backend.openModelChat(target, region, clusterName, servingBackendEndpoint!!, namespace, name, body, timeout)
     }
 
     private fun record(target: AwsTarget) {
@@ -140,6 +385,9 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         setupRequests.clear()
         failure = null
         deniedClusters = emptySet()
+        deniedNamespaces = emptySet()
+        unregisterFailure = null
+        selfEntrySettled = true
         targets.clear()
         roleExists = true
         roleChecks.clear()
@@ -147,9 +395,59 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
         unregistrations.clear()
         levelChanges.clear()
         namespaceStatus = NamespaceStatus.EXISTS
+        namespaceStatuses.clear()
         namespaceChecks.clear()
         accessChanges.clear()
+        nodegroupStates = DEFAULT_NODEGROUP_STATES
+        nodegroupReadFailure = null
+        nodegroupUpdateFailure = null
+        nodegroupUpdates.clear()
+        servedModelPresent = false
+        servedModelFailure = null
+        servedModelCreateFailure = null
+        servedModelCreations.clear()
+        servedModelDeletions.clear()
+        servedModelEndpoints.clear()
+        servedModelState = READY_MODEL
+        keepUntilWrites.clear()
+        keepUntilConflicts = 0
+        precheckJobs.clear()
+        precheckPod = null
+        measureWrites.clear()
+        measureConflicts = 0
+        servedModelStateAfterMeasureConflict = null
+        servingBackend = null
+        servingBackendEndpoint = null
     }
+
+    data class KeepUntilWrite(
+        val namespace: String,
+        val name: String,
+        val keepUntil: Instant,
+        val resourceVersion: String,
+    )
+
+    data class MeasureWrite(
+        val namespace: String,
+        val name: String,
+        val request: String,
+        val resourceVersion: String,
+    )
+
+    data class NodegroupUpdate(
+        val target: AwsTarget,
+        val region: String,
+        val clusterName: String,
+        val nodegroupName: String,
+        val desired: Int,
+        val min: Int,
+        val max: Int,
+    )
+
+    data class ServedModelDeletion(
+        val namespace: String,
+        val name: String,
+    )
 
     data class NamespaceCheck(
         val namespace: String,
@@ -195,9 +493,25 @@ class FakeEksAccessGateway : EksAccessGateway, Resettable {
             EksClusterSummary(name = "elsewhere", region = "us-east-1", status = "ACTIVE", version = "1.32"),
         )
 
+        const val DEFAULT_ACCOUNT_ID = "123456789012"
+
         val DEFAULT_ENDPOINT = EksClusterEndpoint(
             endpoint = "https://ABCDEF0123456789.gr7.ap-northeast-2.eks.amazonaws.com",
             caData = "ZWtzLWNh",
+        )
+
+        val READY_MODEL = ServedModelState(
+            model = "openai/gpt-oss-20b",
+            phase = "Ready",
+            deleting = false,
+            resourceVersion = "7",
+            keepUntil = null,
+            stopsAt = null,
+        )
+
+        val DEFAULT_NODEGROUP_STATES = listOf(
+            EksNodegroupState(name = "general", instanceTypes = listOf("t3.large"), status = "ACTIVE", desired = 2, min = 1, max = 3),
+            EksNodegroupState(name = "gpu", instanceTypes = listOf("g6e.xlarge"), status = "ACTIVE", desired = 0, min = 0, max = 2),
         )
 
         val DEFAULT_SETUP = EksClusterSetup(

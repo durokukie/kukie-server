@@ -1,10 +1,9 @@
 package com.duro.kukie.auth.application
 
 import com.duro.kukie.auth.application.port.`in`.LogInCommand
-import com.duro.kukie.auth.domain.RefreshTokenRepository
+import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.auth.exception.InvalidCredentialsException
 import com.duro.kukie.global.domain.Email
-import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.UserRepository
 import io.kotest.assertions.throwables.shouldThrow
@@ -29,10 +28,7 @@ class LogInServiceTest {
     private var passwordEncoder = BCryptPasswordEncoder()
 
     @MockK
-    private lateinit var jwtTokenProvider: JwtTokenProvider
-
-    @MockK(relaxUnitFun = true)
-    private lateinit var refreshTokenRepository: RefreshTokenRepository
+    private lateinit var logInSessions: LogInSessions
 
     @InjectMockKs
     private lateinit var logInService: LogInService
@@ -44,8 +40,7 @@ class LogInServiceTest {
         // given
         val user = UserFixture.user()
         every { userRepository.findByEmail(command.email) } returns user
-        every { jwtTokenProvider.generateAccessToken(user.id) } returns "access-token"
-        every { jwtTokenProvider.generateRefreshToken(user.id) } returns "refresh-token"
+        every { logInSessions.open(user.id) } returns TokenResponse("access-token", "refresh-token")
 
         // when
         val response = logInService(command)
@@ -53,7 +48,7 @@ class LogInServiceTest {
         // then
         response.accessToken shouldBe "access-token"
         response.refreshToken shouldBe "refresh-token"
-        verify { refreshTokenRepository.save(user.id, "refresh-token") }
+        verify { logInSessions.open(user.id) }
     }
 
     @Test

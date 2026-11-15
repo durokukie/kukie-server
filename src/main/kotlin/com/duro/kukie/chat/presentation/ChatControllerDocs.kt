@@ -1,6 +1,7 @@
 package com.duro.kukie.chat.presentation
 
 import com.duro.kukie.chat.exception.ActiveRunExistsException
+import com.duro.kukie.chat.exception.ChatNamespaceNotAllowedException
 import com.duro.kukie.chat.exception.ChatNotFoundException
 import com.duro.kukie.chat.exception.ClusterRequiredException
 import com.duro.kukie.chat.exception.ClusterTeamMismatchException
@@ -9,7 +10,9 @@ import com.duro.kukie.chat.presentation.dto.request.RenameChatRequest
 import com.duro.kukie.chat.presentation.dto.response.ChatDetailResponse
 import com.duro.kukie.chat.presentation.dto.response.ChatResponse
 import com.duro.kukie.chat.presentation.dto.response.CreateChatResponse
+import com.duro.kukie.chat.presentation.dto.response.WorklogResponse
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
+import com.duro.kukie.cluster.exception.InvalidNamespaceException
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.team.exception.NotTeamAdminException
 import io.swagger.v3.oas.annotations.Operation
@@ -21,16 +24,24 @@ interface ChatControllerDocs {
 
     @Operation(
         summary = "대화 생성",
-        description = "볼 수 있는 클러스터를 골라 대화를 만듭니다. 접속 대상(context·namespace·지문)은 클러스터에서 복사합니다. " +
-            "다른 namespace 를 쓰려면 그 namespace 로 클러스터를 따로 등록합니다. 제목을 비우면 \"새 대화\" 이고 첫 마디로 지어집니다.",
+        description = "볼 수 있는 클러스터를 골라 대화를 만듭니다. 접속 대상(context·지문)은 클러스터에서 복사합니다. " +
+            "namespace 는 고를 수 있고 비우면 클러스터에 등록한 namespace 입니다. 이름 꼴이 아니거나 kube- 로 시작하면 400 " +
+            "INVALID_NAMESPACE, limited 로 연결한 EKS 에서 등록한 것과 다르면 400 NAMESPACE_NOT_ALLOWED 입니다(권한이 그 하나에만 있습니다). " +
+            "제목을 비우면 \"새 대화\" 이고 첫 마디로 지어집니다.",
     )
     @ApiResponse(responseCode = "201", description = "Created")
-    @ApiErrorResponses(ClusterRequiredException::class, ClusterTeamMismatchException::class, ClusterNotFoundException::class)
+    @ApiErrorResponses(
+        ClusterRequiredException::class,
+        ClusterTeamMismatchException::class,
+        ClusterNotFoundException::class,
+        InvalidNamespaceException::class,
+        ChatNamespaceNotAllowedException::class,
+    )
     fun createChat(userId: UUID, request: CreateChatRequest): ResponseEntity<CreateChatResponse>
 
     @Operation(
         summary = "대화 목록 조회",
-        description = "볼 수 있는 대화를 최근에 바뀐 순으로 조회합니다. clusterId 를 주면 그 클러스터의 대화만 봅니다.",
+        description = "볼 수 있는 대화를 최근에 바뀐 순으로 조회합니다. clusterId 를 주면 그 클러스터의 대화만 봅니다. 대화마다 namespace 가 실려 앱이 namespace 별로 묶습니다.",
     )
     fun getChats(userId: UUID, clusterId: UUID?): ResponseEntity<List<ChatResponse>>
 
@@ -40,6 +51,23 @@ interface ChatControllerDocs {
     )
     @ApiErrorResponses(ChatNotFoundException::class)
     fun getChat(conversationId: UUID, userId: UUID): ResponseEntity<ChatDetailResponse>
+
+    @Operation(
+        summary = "작업내역 조회 (JSON)",
+        description = "대화의 턴마다 요청·실행한 명령·변경(조치 계획)·답을 모아 작업내역으로 돌려줍니다. schema 는 kukie.worklog/v1 이고, " +
+            "시각 값은 모두 UTC(ISO-8601, Z)입니다. tz(IANA 시간대, 예: Asia/Seoul)를 주면 timeZone·utcOffset 에 그 시간대를 적고, 비었거나 모르는 값이면 UTC 입니다. 명령 출력과 dry-run·실행 결과의 stdout·stderr 는 4000자에서 자릅니다. 에이전트 내부 메시지는 넣지 않습니다. 대화를 볼 수 있는 사람만 받습니다.",
+    )
+    @ApiErrorResponses(ChatNotFoundException::class)
+    fun getWorklog(conversationId: UUID, userId: UUID, tz: String?): ResponseEntity<WorklogResponse>
+
+    @Operation(
+        summary = "작업내역 내려받기 (Markdown)",
+        description = "같은 작업내역을 사람이 읽는 Markdown 파일(text/markdown, 첨부)로 돌려줍니다. " +
+            "시각은 tz(IANA 시간대, 예: Asia/Seoul)로 적고 옆에 시간대와 UTC 오프셋을 붙입니다. 비었거나 모르는 값이면 UTC 입니다. " +
+            "맨 위에 어느 시간대 기준인지(시간대를 받지 못해 UTC 로 그렸는지) 한 줄로 적습니다.",
+    )
+    @ApiErrorResponses(ChatNotFoundException::class)
+    fun getWorklogMarkdown(conversationId: UUID, userId: UUID, tz: String?): ResponseEntity<String>
 
     @Operation(
         summary = "대화 이름 변경",

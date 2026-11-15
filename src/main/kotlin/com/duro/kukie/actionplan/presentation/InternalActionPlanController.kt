@@ -5,10 +5,13 @@ import com.duro.kukie.actionplan.application.DecidePlanService
 import com.duro.kukie.actionplan.application.FailPlanService
 import com.duro.kukie.actionplan.application.GetPlanService
 import com.duro.kukie.actionplan.application.GetRunPlansService
+import com.duro.kukie.actionplan.application.GetUnsettledPlansService
+import com.duro.kukie.actionplan.application.MarkPlanStaleService
 import com.duro.kukie.actionplan.application.MarkPlanUnknownService
 import com.duro.kukie.actionplan.application.OfferPlanService
 import com.duro.kukie.actionplan.application.RecordDryRunService
 import com.duro.kukie.actionplan.application.RecordPlanResultService
+import com.duro.kukie.actionplan.application.RecordSyncResultService
 import com.duro.kukie.actionplan.application.StartPlanService
 import com.duro.kukie.actionplan.presentation.dto.request.CreatePlanRequest
 import com.duro.kukie.actionplan.presentation.dto.request.DecidePlanRequest
@@ -16,7 +19,9 @@ import com.duro.kukie.actionplan.presentation.dto.request.FailPlanRequest
 import com.duro.kukie.actionplan.presentation.dto.request.OfferPlanRequest
 import com.duro.kukie.actionplan.presentation.dto.request.RecordDryRunRequest
 import com.duro.kukie.actionplan.presentation.dto.request.RecordPlanResultRequest
+import com.duro.kukie.actionplan.presentation.dto.request.RecordSyncResultRequest
 import com.duro.kukie.actionplan.presentation.dto.response.PlanResponse
+import com.duro.kukie.actionplan.presentation.dto.response.UnsettledPlanResponse
 import com.duro.kukie.global.security.InternalApi
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -43,7 +48,10 @@ class InternalActionPlanController(
     private val startPlanService: StartPlanService,
     private val recordPlanResultService: RecordPlanResultService,
     private val failPlanService: FailPlanService,
+    private val markPlanStaleService: MarkPlanStaleService,
     private val markPlanUnknownService: MarkPlanUnknownService,
+    private val recordSyncResultService: RecordSyncResultService,
+    private val getUnsettledPlansService: GetUnsettledPlansService,
 ) : InternalActionPlanControllerDocs {
 
     @PostMapping("/runs/{runId}/plans")
@@ -63,6 +71,13 @@ class InternalActionPlanController(
         @RequestParam(required = false) toolCallId: String?,
     ): ResponseEntity<List<PlanResponse>> {
         return ResponseEntity.ok(getRunPlansService(runId, toolCallId))
+    }
+
+    @GetMapping("/plans/unsettled")
+    override fun getUnsettledPlans(
+        @RequestParam toolName: String,
+    ): ResponseEntity<List<UnsettledPlanResponse>> {
+        return ResponseEntity.ok(getUnsettledPlansService(toolName))
     }
 
     @GetMapping("/plans/{planId}")
@@ -111,12 +126,27 @@ class InternalActionPlanController(
         return ResponseEntity.ok(recordPlanResultService(request.toCommand(planId)))
     }
 
+    @PostMapping("/plans/{planId}/sync-result")
+    override fun recordSyncResult(
+        @PathVariable planId: UUID,
+        @RequestBody @Valid request: RecordSyncResultRequest,
+    ): ResponseEntity<PlanResponse> {
+        return ResponseEntity.ok(recordSyncResultService(request.toCommand(planId)))
+    }
+
     @PostMapping("/plans/{planId}/fail")
     override fun failPlan(
         @PathVariable planId: UUID,
         @RequestBody @Valid request: FailPlanRequest,
     ): ResponseEntity<PlanResponse> {
         return ResponseEntity.ok(failPlanService(request.toCommand(planId)))
+    }
+
+    @PostMapping("/plans/{planId}/stale")
+    override fun markPlanStale(
+        @PathVariable planId: UUID,
+    ): ResponseEntity<PlanResponse> {
+        return ResponseEntity.ok(markPlanStaleService(planId))
     }
 
     @PostMapping("/plans/{planId}/unknown")

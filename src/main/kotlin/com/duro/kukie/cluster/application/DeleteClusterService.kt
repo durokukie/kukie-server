@@ -1,15 +1,21 @@
 package com.duro.kukie.cluster.application
 
+import com.duro.kukie.actionplan.domain.ActionPlanRepository
+import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSessionRepository
+import com.duro.kukie.chat.domain.RunStatus
 import com.duro.kukie.cluster.application.port.out.CredentialCipher
 import com.duro.kukie.cluster.application.port.out.EksAccessGateway
 import com.duro.kukie.cluster.domain.AccessLevel
 import com.duro.kukie.cluster.domain.Cluster
 import com.duro.kukie.cluster.domain.ClusterProvider
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.cluster.exception.ClusterHasActiveRunException
 import com.duro.kukie.cluster.exception.ClusterInUseException
+import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import com.duro.kukie.global.util.logger
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
 
 @Service
@@ -17,6 +23,9 @@ class DeleteClusterService(
     private val clusterRepository: ClusterRepository,
     private val clusterPermission: ClusterPermission,
     private val chatSessionRepository: ChatSessionRepository,
+    private val chatRunRepository: ChatRunRepository,
+    private val actionPlanRepository: ActionPlanRepository,
+    private val transactionTemplate: TransactionTemplate,
     private val eksAccessGateway: EksAccessGateway,
     private val eksNamespaces: EksNamespaces,
     private val credentialCipher: CredentialCipher,
@@ -24,13 +33,27 @@ class DeleteClusterService(
 
     private val log = logger()
 
-    /** AWS 를 부르는 동안 DB 연결을 쥐지 않게 트랜잭션을 걸지 않는다(삭제는 delete 한 번). */
-    operator fun invoke(clusterId: UUID, userId: UUID) {
+    /** DB 를 먼저 지운 뒤 AWS 를 부른다 — DB 에서 실패하면 EKS 권한이 그대로 남고, AWS 를 부르는 동안 DB 연결을 쥐지 않는다. */
+    operator fun invoke(clusterId: UUID, userId: UUID, deleteConversations: Boolean = false) {
         val cluster = clusterPermission.requireWritable(clusterId, userId)
-        if (chatSessionRepository.existsByClusterId(cluster.id)) throw ClusterInUseException()
-        if (cluster.provider == ClusterProvider.EKS) releaseEksAccess(cluster)
+        transactionTemplate.executeWithoutResult { deleteFromDatabase(cluster.id, deleteConversations) }
 
-        clusterRepository.delete(cluster)
+        if (cluster.provider == ClusterProvider.EKS) releaseEksAccess(cluster)
+    }
+
+    private fun deleteFromDatabase(clusterId: UUID, deleteConversations: Boolean) {
+        // 요청 시작·갱신과 같은 순서(방 → run → 계획)로 방부터 잠가 그 사이 새 요청이 끼지 못하게 한다
+        clusterRepository.lockIdById(clusterId) ?: throw ClusterNotFoundException()
+        val sessionIds = chatSessionRepository.lockIdsByClusterId(clusterId)
+        if (sessionIds.isNotEmpty()) {
+            if (!deleteConversations) throw ClusterInUseException()
+            if (chatRunRepository.existsBySessionIdInAndStatusIn(sessionIds, RunStatus.ACTIVE)) throw ClusterHasActiveRunException()
+
+            actionPlanRepository.deleteAllByClusterId(clusterId)
+            chatRunRepository.deleteAllByClusterId(clusterId)
+            chatSessionRepository.deleteAllByClusterId(clusterId)
+        }
+        clusterRepository.deleteById(clusterId)
     }
 
     /**
