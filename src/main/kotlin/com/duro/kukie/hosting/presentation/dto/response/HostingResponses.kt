@@ -63,7 +63,7 @@ data class HostingAppResponse(
 
 data class SkippedPushResponse(
     val repository: String,
-    /** not_allowed, invalid_team_name, invalid_app_name, name_too_long, auto_deploy_off, queue_full, app_limit, app_name_taken, internal */
+    /** not_allowed, invalid_team_name, invalid_app_name, name_too_long, auto_deploy_off, queue_full, app_limit, app_name_taken, account_renamed, internal */
     val reason: String,
     val at: Instant,
 ) {
