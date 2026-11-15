@@ -68,7 +68,9 @@ class HostingApps(
     /** 배포기가 받아 주는 계정인지(apps/_allowed.json). 그 파일이 없으면 App 을 설치한 계정의 레포 목록에 적힌 값. */
     fun allowed(account: GitHubAccount): Boolean {
         val list = read<HostingAllowedList>("apps/_allowed.json") ?: return repoList(account)?.allowed == true
-        return list.logins.any { it.equals(account.team, ignoreCase = true) }
+        // ids 가 있으면 id 로만 본다(login 은 다른 계정이 가져갈 수 있다). 옛 배포기의 파일(logins 만)이면 계정명으로 본다
+        list.ids?.let { return account.id in it }
+        return list.logins.orEmpty().any { it.equals(account.team, ignoreCase = true) }
     }
 
     /** 계정이 GitHub App 에 허용한 레포. App 을 설치하지 않았으면 null. */

@@ -51,7 +51,7 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
     fun `허용하면 에이전트는 호스팅 에이전트 토큰을 한 번 받는다`() {
         // given
         val member = linkedUser()
-        allow("recklehs")
+        allow(GITHUB.id)
         val login = startLogin()
 
         // when
@@ -77,7 +77,7 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
     fun `기다리는 중에 허용되면 그 요청이 토큰을 받는다`() {
         // given
         val member = linkedUser()
-        allow("recklehs")
+        allow(GITHUB.id)
         val login = startLogin()
 
         // when
@@ -121,7 +121,7 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
     fun `허용 목록 밖 계정은 허용할 수 없고 에이전트도 그렇게 안다`() {
         // given
         val member = linkedUser()
-        allow("someone-else")
+        allow(1)
         val login = startLogin()
 
         // when & then
@@ -132,6 +132,32 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
             status { isForbidden() }
             jsonPath("$.code") { value("HOSTING_NOT_ALLOWED") }
         }
+    }
+
+    @Test
+    fun `허용 목록은 GitHub id 로 본다 - 같은 계정명이라도 id 가 다르면 허용하지 않는다`() {
+        // given: 목록에 이 계정명의 옛 주인 id 만 있다. logins 가 함께 있어도 ids 가 우선이다
+        val member = linkedUser()
+        store.files["apps/_allowed.json"] = """{ "version": 1, "ids": [1], "logins": ["recklehs"] }"""
+        val login = startLogin()
+
+        // when & then
+        mockMvc.post("/hosting/agent/login/${login.code}/approve") {
+            authorization(member.accessToken)
+        }.andExpect { status { isForbidden() } }
+    }
+
+    @Test
+    fun `옛 배포기의 계정명 허용 목록도 읽는다`() {
+        // given: kukie-hosting-platform#17 전 배포기가 쓴 형식
+        val member = linkedUser()
+        store.files["apps/_allowed.json"] = """{ "version": 1, "logins": ["recklehs"] }"""
+        val login = startLogin()
+
+        // when & then
+        mockMvc.post("/hosting/agent/login/${login.code}/approve") {
+            authorization(member.accessToken)
+        }.andExpect { status { isNoContent() } }
     }
 
     @Test
@@ -203,7 +229,7 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
     fun `처리한 요청이나 모르는 코드는 만료로 답한다`() {
         // given
         val member = linkedUser()
-        allow("recklehs")
+        allow(GITHUB.id)
         val login = startLogin()
         mockMvc.post("/hosting/agent/login/${login.code}/approve") { authorization(member.accessToken) }
 
@@ -237,8 +263,8 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
 
     private fun linkedUser(): LoggedInUser = loggedInUser(UserFixture.oAuthUser().apply { linkGitHub(GITHUB) })
 
-    private fun allow(vararg logins: String) {
-        store.files["apps/_allowed.json"] = """{ "version": 1, "logins": [${logins.joinToString(",") { "\"$it\"" }}] }"""
+    private fun allow(vararg ids: Long) {
+        store.files["apps/_allowed.json"] = """{ "version": 1, "ids": [${ids.joinToString(",")}] }"""
     }
 
     private data class Login(val code: String, val loginUrl: String, val pollToken: String)

@@ -102,10 +102,15 @@ data class HostingRepoList(
     val at: Instant,
 ) : HostingFile
 
-/** 배포할 수 있는 계정(소문자 계정명). 배포기가 시작할 때마다 다시 쓴다. */
+/**
+ * 배포할 수 있는 계정. 배포기가 시작할 때마다 다시 쓴다. 지금 배포기(kukie-hosting-platform#17 뒤)는 GitHub 숫자 id(ids)를 쓴다:
+ * login 은 바뀌고 다른 계정이 가져갈 수 있다. 그 전 배포기는 소문자 계정명(logins)을 썼다.
+ */
 data class HostingAllowedList(
     override val version: Int,
-    val logins: List<String>,
+    val ids: List<Long>? = null,
+    // TODO(kukie-hosting-platform#17 이미지가 dev·prod 배포기에 뜬 뒤): logins 와 HostingApps.allowed 의 logins 분기를 지운다
+    val logins: List<String>? = null,
 ) : HostingFile
 
 data class HostingRepoItem(val id: Long? = null, val fullName: String, val private: Boolean = false)
