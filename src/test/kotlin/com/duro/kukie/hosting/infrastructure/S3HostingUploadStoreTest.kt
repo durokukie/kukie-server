@@ -26,7 +26,7 @@ class S3HostingUploadStoreTest {
     @Test
     fun `올릴 주소는 크기와 형식을 서명해 다른 크기의 파일은 S3 가 거부한다`() {
         // given
-        val store = S3HostingUploadStore(HostingProperties(stateBucket = "test-bucket", commandsQueueUrl = "q"), AwsProperties("ap-northeast-2"))
+        val store = S3HostingUploadStore(HostingProperties(githubApp = "kukie-hosting-test", stateBucket = "test-bucket", commandsQueueUrl = "q"), AwsProperties("ap-northeast-2"))
 
         // when
         val url = URLDecoder.decode(store.presignPut("uploads/recklehs/shop/abc.tar.gz", 1234, Duration.ofMinutes(10)), Charsets.UTF_8)
