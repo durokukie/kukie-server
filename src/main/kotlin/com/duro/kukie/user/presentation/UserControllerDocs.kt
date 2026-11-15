@@ -33,7 +33,10 @@ interface UserControllerDocs {
 
     @Operation(
         summary = "회원 정보 조회",
-        description = "자신의 정보를 조회합니다. `hasPassword` 가 false 면 소셜 로그인으로만 가입해 비밀번호가 없는 계정입니다.",
+        description = "자신의 정보를 조회합니다. `hasPassword` 가 false 면 소셜 로그인으로만 가입해 비밀번호가 없는 계정입니다. " +
+            "`servingEnabled` 는 이 환경에 서빙 게이트웨이가 있는지(없으면 내 API·키 관리·커넥터 자격 화면을 숨긴다), " +
+            "`hostingEnabled` 는 앱 호스팅이 켜져 있는지(꺼져 있으면 `/hosting` API 가 503 `HOSTING_DISABLED`)입니다. " +
+            "두 칸은 이 조회에만 실리고, 회원 정보 수정 응답에는 없습니다.",
     )
     @ApiErrorResponses(UserNotFoundException::class)
     fun getMe(userId: UUID): ResponseEntity<UserResponse>
