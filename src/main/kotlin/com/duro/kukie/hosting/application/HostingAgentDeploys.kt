@@ -24,8 +24,8 @@ class HostingAgentDeploys(
         hostingAgentDeployRepository.activeOf(team)?.takeIf { hostingAgentDeployRepository.find(it)?.userId == userId }
 
     companion object {
-        /** 업로드가 지워지는 때(수명 규칙 7일)와 같다. */
-        val RECORD_TTL: Duration = Duration.ofDays(7)
+        /** 업로드가 지워지는 때(수명 규칙 1일, S3는 다음 UTC 자정까지 미뤄 1~2일)와 맞춘다. 대기는 길어야 3시간이다. */
+        val RECORD_TTL: Duration = Duration.ofDays(1)
         private val ID = Regex("[0-9a-f]{40}")
 
         /**

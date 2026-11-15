@@ -23,7 +23,7 @@ enum class HostingErrorCode(
     HOSTING_DEPLOY_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 배포가 있습니다. 그 배포가 끝난 뒤 다시 시도해 주세요."),
     HOSTING_UPLOAD_MISSING(HttpStatus.CONFLICT, "업로드가 없거나 크기가 배포를 만들 때와 다릅니다. 파일을 다시 올려 주세요."),
     HOSTING_DEPLOY_NOT_STARTED(HttpStatus.CONFLICT, "아직 시작하지 않은 배포입니다. 먼저 시작해 주세요."),
-    HOSTING_DEPLOY_NOT_FOUND(HttpStatus.NOT_FOUND, "배포를 찾을 수 없습니다. 7일이 지났거나 다른 계정의 배포입니다."),
+    HOSTING_DEPLOY_NOT_FOUND(HttpStatus.NOT_FOUND, "배포를 찾을 수 없습니다. 하루가 지났거나 다른 계정의 배포입니다."),
     HOSTING_TOO_MANY_DEPLOYS(HttpStatus.TOO_MANY_REQUESTS, "한 시간에 배포를 너무 많이 만들었습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_COMMAND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "방금 같은 요청을 보냈습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "호스팅 정보를 가져오지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
