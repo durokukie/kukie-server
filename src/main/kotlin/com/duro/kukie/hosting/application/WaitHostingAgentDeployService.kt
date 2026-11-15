@@ -152,6 +152,8 @@ class WaitHostingAgentDeployService(
             "invalid_app_name" to "앱 이름이 규칙에 맞지 않습니다. 이름을 바꿔 새 배포를 만드세요.",
             "name_too_long" to "계정 이름과 앱 이름을 합친 길이가 깁니다. 더 짧은 앱 이름으로 새 배포를 만드세요.",
             "source_mismatch" to "이 이름의 앱은 레포에 연결돼 있습니다. 그 레포에 push 하면 배포됩니다.",
+            "app_name_taken" to "이 이름의 앱은 다른 GitHub 계정이 올린 앱입니다. 다른 앱 이름으로 새 배포를 만드세요.",
+            "account_renamed" to "GitHub 계정 이름을 바꾸기 전 이름의 팀이 남아 있어 배포할 수 없습니다. 다시 시도하지 말고, 사용자에게 Kukie 에 문의해 예전 팀을 지운 뒤 배포하라고 전하세요.",
             APP_DELETED to "배포하는 동안 앱이 지워졌습니다. 다시 배포하려면 새 배포를 만드세요.",
             "internal" to "Kukie 쪽 문제입니다. 한 번만 새 배포를 만들어 다시 해 보고, 또 실패하면 멈추세요.",
             "deploy_failed" to "Kukie 쪽 문제입니다. 한 번만 새 배포를 만들어 다시 해 보고, 또 실패하면 멈추세요.",
