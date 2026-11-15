@@ -35,6 +35,16 @@ class WaitHostingAgentDeployService(
         return hostingLongPolls.hold { await(userId, id, Instant.now().plus(wait)) }
     }
 
+    /**
+     * 계정의 진행 중 표시가 가리키는 배포가 끝났으면 표시를 치운다. 에이전트가 결과를 받기 전에 끊겨도 그 배포가 다음 배포를 막지
+     * 않는다. 아직 시작 중인 배포(commandId 없음)는 건드리지 않는다.
+     */
+    fun settleActive(userId: UUID, team: String) {
+        val id = hostingAgentDeploys.activeOf(userId, team) ?: return
+        val deploy = hostingAgentDeployRepository.find(id) ?: return
+        if (deploy.commandId != null && status(deploy).done) hostingAgentDeployRepository.clearActive(team, id)
+    }
+
     private fun await(userId: UUID, id: String, deadline: Instant): HostingAgentDeployStatusResponse {
         while (true) {
             val deploy = hostingAgentDeploys.requireOwned(userId, id)
@@ -58,6 +68,15 @@ class WaitHostingAgentDeployService(
         if (app != null && app.latest.commandId == deploy.commandId && app.latest.deploymentId != deploy.deploymentId) {
             deploy = deploy.copy(deploymentId = app.latest.deploymentId, generation = app.generation)
             hostingAgentDeploys.save(deploy)
+        }
+        // 에이전트가 다시 부르기 전에 다른 배포(레포 연결 뒤 push 등)가 latest 를 덮었으면 배포 기록에서 이 명령의 배포를 찾는다.
+        // latest 가 시작보다 앞이면(배포기가 아직 받지 않음) 찾지 않는다: 3초마다 목록을 읽게 된다
+        val startedAt = deploy.startedAt
+        if (app != null && deploy.deploymentId == null && app.latest.commandId != deploy.commandId && startedAt != null && app.latest.at > startedAt) {
+            hostingApps.deployments(app).firstOrNull { it.commandId == deploy.commandId }?.let {
+                deploy = deploy.copy(deploymentId = it.deploymentId, generation = app.generation)
+                hostingAgentDeploys.save(deploy)
+            }
         }
         val deploymentId = deploy.deploymentId
         if (deploymentId != null) {

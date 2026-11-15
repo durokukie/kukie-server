@@ -9,6 +9,7 @@ import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.GitHubAccount
+import com.duro.kukie.user.domain.UserRepository
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldMatch
@@ -32,6 +33,9 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var jwt: JwtTokenProvider
+
+    @Autowired
+    private lateinit var users: UserRepository
 
     @Test
     fun `배포를 만들면 서버가 정한 키로 올릴 주소를 준다`() {
@@ -301,6 +305,67 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         mockMvc.post("/hosting/agent/deploys/$id/start") { authorization(jwt.generateHostingAgentToken(stranger.user.id)) }.andExpect { status { isNotFound() } }
     }
 
+    @Test
+    fun `결과를 받기 전에 끊긴 배포가 끝났으면 다음 배포를 막지 않는다`() {
+        // given: 에이전트가 wait 하지 않은 채 배포가 끝났다
+        val agent = agent()
+        val commandId = start(agent, uploaded(agent, "my-shop"))
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "succeeded")
+        putDeployment("my-shop", DEPLOYMENT_ID, "succeeded")
+
+        // when & then
+        create(agent, "my-shop", 1234).andExpect { status { isCreated() } }
+    }
+
+    @Test
+    fun `다른 배포가 latest 를 덮어도 이 명령의 배포를 기록에서 찾는다`() {
+        // given: 이 업로드가 끝난 뒤, 에이전트가 다시 부르기 전에 다른 배포가 latest 가 됐다
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putDeployment("my-shop", DEPLOYMENT_ID, "succeeded", commandId = commandId)
+        putUploadApp("my-shop", commandId = "c-other", deploymentId = RETRIED_ID, phase = "building", at = "2099-01-01T00:00:00Z")
+        putDeployment("my-shop", RETRIED_ID, "building")
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.status") { value("succeeded") }
+        }
+    }
+
+    @Test
+    fun `명령을 보내지 못하면 되돌려서 다시 시작할 수 있다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        queue.shouldFail = true
+
+        // when
+        mockMvc.post("/hosting/agent/deploys/$id/start") { authorization(agent.token) }.andExpect { status { isBadGateway() } }
+        queue.shouldFail = false
+
+        // then: 시작 전으로 돌아가 있고, 다시 부르면 보낸다
+        waitFor(agent, id).andExpect { status { isConflict() } }
+        val commandId = start(agent, id)
+        queue.commands.single().commandId shouldBe commandId
+    }
+
+    @Test
+    fun `배포를 만든 뒤 GitHub 계정 연결이 풀렸으면 시작하지 않는다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        users.findById(agent.member.user.id).get().also { it.unlinkGitHub() }.let(users::save)
+
+        // when & then
+        mockMvc.post("/hosting/agent/deploys/$id/start") { authorization(agent.token) }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_GITHUB_NOT_LINKED") }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
     private fun agent(github: GitHubAccount = GITHUB): Agent {
         val member = loggedInUser(UserFixture.oAuthUser(email = "${github.login}@test.com").apply { linkGitHub(github) })
         store.files["apps/_allowed.json"] = """{ "version": 1, "logins": ["${github.login.lowercase()}"] }"""
@@ -340,11 +405,11 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         store.files["apps/recklehs/$app.json"] = appJson(app, """"repo": { "id": 987654321, "fullName": "Recklehs/$app" }""", null, "20261110T011744Z-0123456", "succeeded")
     }
 
-    private fun putUploadApp(app: String, commandId: String? = null, deploymentId: String = "20261110T011744Z-0123456", phase: String = "succeeded") {
-        store.files["apps/recklehs/$app.json"] = appJson(app, """"source": { "type": "upload" }""", commandId, deploymentId, phase)
+    private fun putUploadApp(app: String, commandId: String? = null, deploymentId: String = "20261110T011744Z-0123456", phase: String = "succeeded", at: String = "2026-11-10T01:19:36Z") {
+        store.files["apps/recklehs/$app.json"] = appJson(app, """"source": { "type": "upload" }""", commandId, deploymentId, phase, at)
     }
 
-    private fun appJson(app: String, origin: String, commandId: String?, deploymentId: String, phase: String) = """
+    private fun appJson(app: String, origin: String, commandId: String?, deploymentId: String, phase: String, at: String = "2026-11-10T01:19:36Z") = """
         {
           "version": 1,
           "owner": { "id": ${GITHUB.id}, "login": "Recklehs", "type": "User" },
@@ -359,18 +424,18 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
             ${commandId?.let { "\"commandId\": \"$it\"," } ?: ""}
             "phase": "$phase",
             "commit": { "sha": "0123456789abcdef", "message": "upload" },
-            "at": "2026-11-10T01:19:36Z"
+            "at": "$at"
           }
         }
     """.trimIndent()
 
-    private fun putDeployment(app: String, id: String, phase: String, failure: String = "null", hasLog: Boolean = false, updatedAt: String = "2099-11-13T01:17:51Z") {
+    private fun putDeployment(app: String, id: String, phase: String, failure: String = "null", hasLog: Boolean = false, updatedAt: String = "2099-11-13T01:17:51Z", commandId: String? = null) {
         store.files["deployments/recklehs/$app/$GENERATION/$id.json"] = """
             {
               "version": 1,
               "deploymentId": "$id",
               "phase": "$phase",
-              "trigger": "upload",
+              "trigger": "upload", ${commandId?.let { "\"commandId\": \"$it\"," } ?: ""}
               "commit": { "sha": "0123456789abcdef", "message": "upload" },
               "config": { "port": 3000, "size": "S", "source": "default" },
               "imageReused": false,
