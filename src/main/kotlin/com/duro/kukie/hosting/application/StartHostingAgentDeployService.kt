@@ -49,7 +49,14 @@ class StartHostingAgentDeployService(
         }
 
         val command = HostingCommand.upload(GitHubAccount(deploy.githubId, deploy.login), deploy)
-        val commandId = hostingAgentDeployRepository.claimStart(deploy.id, command.commandId, HostingAgentDeploys.RECORD_TTL)
+        var commandId = hostingAgentDeployRepository.claimStart(deploy.id, command.commandId, HostingAgentDeploys.RECORD_TTL)
+        // 먼저 정한 쪽이 기록하기 전에 멈췄으면(정한 지 오래됐는데 기록에 commandId 가 없음) 그 표시를 풀고 다시 정한다
+        if (commandId != command.commandId && hostingAgentDeploys.requireOwned(userId, id).commandId == null &&
+            (hostingAgentDeployRepository.startClaimAge(deploy.id, HostingAgentDeploys.RECORD_TTL) ?: Duration.ZERO) > STALE_START
+        ) {
+            hostingAgentDeployRepository.releaseStart(deploy.id)
+            commandId = hostingAgentDeployRepository.claimStart(deploy.id, command.commandId, HostingAgentDeploys.RECORD_TTL)
+        }
         // 겹쳐 부른 쪽은 먼저 정한 명령을 받는다. 기록하고 보내는 것은 먼저 정한 쪽이 한다
         if (commandId != command.commandId) return HostingCommandResponse(commandId)
         // 보내기 전에 기록한다. 보낸 뒤 기록하지 못하면 보냈는지 알 수 없어 다시 불러도 고칠 수 없다. 기록하거나 보내지 못하면
@@ -71,5 +78,8 @@ class StartHostingAgentDeployService(
     companion object {
         // 배포기가 업로드 명령을 받아 주는 동안(2시간)과 서버가 대기를 응답 없음으로 끝내는 때를 덮는다
         private val ACTIVE_TTL: Duration = Duration.ofHours(3)
+
+        // 정하고 기록하기까지는 Redis 호출 한 번 사이다. 이보다 오래 기록이 없으면 정한 쪽이 멈춘 것이다
+        private val STALE_START: Duration = Duration.ofMinutes(1)
     }
 }

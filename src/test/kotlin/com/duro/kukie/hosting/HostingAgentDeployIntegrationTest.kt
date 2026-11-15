@@ -1,6 +1,8 @@
 package com.duro.kukie.hosting
 
 import com.duro.kukie.global.security.JwtTokenProvider
+import com.duro.kukie.hosting.application.HostingAgentDeploys
+import com.duro.kukie.hosting.domain.HostingAgentDeployRepository
 import com.duro.kukie.hosting.domain.HostingCommand
 import com.duro.kukie.support.FakeHostingCommandQueue
 import com.duro.kukie.support.FakeHostingStateStore
@@ -12,13 +14,16 @@ import com.duro.kukie.user.domain.GitHubAccount
 import com.duro.kukie.user.domain.UserRepository
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldMatch
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import tools.jackson.databind.json.JsonMapper
+import java.time.Duration
 
 class HostingAgentDeployIntegrationTest : IntegrationTest() {
 
@@ -33,6 +38,12 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var jwt: JwtTokenProvider
+
+    @Autowired
+    private lateinit var deploys: HostingAgentDeployRepository
+
+    @Autowired
+    private lateinit var redis: StringRedisTemplate
 
     @Autowired
     private lateinit var users: UserRepository
@@ -349,6 +360,25 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         waitFor(agent, id).andExpect { status { isConflict() } }
         val commandId = start(agent, id)
         queue.commands.single().commandId shouldBe commandId
+    }
+
+    @Test
+    fun `시작을 정하고 기록하기 전에 멈춘 표시는 오래되면 풀고 다시 시작한다`() {
+        // given: 먼저 부른 쪽이 명령을 정한 뒤 기록하기 전에 멈췄다
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        deploys.claimStart(id, "c-dead", HostingAgentDeploys.RECORD_TTL)
+
+        // when & then: 방금 정한 표시는 겹쳐 부른 것으로 보고 그 명령을 준다
+        start(agent, id) shouldBe "c-dead"
+        queue.commands.shouldBeEmpty()
+
+        // when & then: 2분 지난 표시는 풀고 새로 정해 보낸다
+        redis.expire("hosting:agent:start:$id", HostingAgentDeploys.RECORD_TTL.minus(Duration.ofMinutes(2)))
+        val commandId = start(agent, id)
+        commandId shouldNotBe "c-dead"
+        queue.commands.single().commandId shouldBe commandId
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("queued") } }
     }
 
     @Test

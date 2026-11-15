@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 /** 배포 하나를 문자열 값 하나로 둔다(SET EX 한 번). 이름·계정에는 "|" 가 들어갈 수 없다. */
 @Repository
@@ -54,6 +55,11 @@ class RedisHostingAgentDeployRepository(
     override fun claimStart(id: String, commandId: String, ttl: Duration): String {
         if (redisTemplate.opsForValue().setIfAbsent(startKey(id), commandId, ttl) == true) return commandId
         return redisTemplate.opsForValue().get(startKey(id)) ?: commandId
+    }
+
+    override fun startClaimAge(id: String, ttl: Duration): Duration? {
+        val left = redisTemplate.getExpire(startKey(id), TimeUnit.MILLISECONDS)
+        return if (left < 0) null else ttl.minusMillis(left)
     }
 
     override fun releaseStart(id: String) {
