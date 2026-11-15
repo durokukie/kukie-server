@@ -102,6 +102,12 @@ data class HostingRepoList(
     val at: Instant,
 ) : HostingFile
 
+/** 배포할 수 있는 계정(소문자 계정명). 배포기가 시작할 때마다 다시 쓴다. */
+data class HostingAllowedList(
+    override val version: Int,
+    val logins: List<String>,
+) : HostingFile
+
 data class HostingRepoItem(val id: Long? = null, val fullName: String, val private: Boolean = false)
 
 /** repo 는 업로드 명령에 없다. 명령의 결과는 commandId 로 찾는다(push 가 같은 파일을 덮어쓴다). */

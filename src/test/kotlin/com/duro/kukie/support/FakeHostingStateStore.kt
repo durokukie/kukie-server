@@ -17,6 +17,8 @@ class FakeHostingStateStore : HostingStateStore, Resettable {
         return files[key]
     }
 
+    override fun readTail(key: String, bytes: Int): String? = read(key)?.toByteArray()?.takeLast(bytes)?.toByteArray()?.decodeToString()
+
     override fun clear() {
         files.clear()
         shouldFail = false

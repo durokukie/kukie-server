@@ -3,6 +3,7 @@ package com.duro.kukie.hosting.application
 import com.duro.kukie.global.config.properties.HostingProperties
 import com.duro.kukie.global.util.logger
 import com.duro.kukie.hosting.application.port.out.HostingStateStore
+import com.duro.kukie.hosting.domain.HostingAllowedList
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFile
@@ -41,11 +42,33 @@ class HostingApps(
             .mapNotNull { read<HostingApp>(it) }
             .filter { it.owner.id == account.id }
 
+    /** 팀 폴더에 있는 앱 파일, 주인이 누구든. 계정명을 다른 사람이 다시 쓴 경우를 가리는 데 쓴다. */
+    fun appInTeam(account: GitHubAccount, app: String): HostingApp? =
+        app.takeIf { APP_NAME.matches(it) }?.let { read<HostingApp>("apps/${account.team}/$it.json") }
+
+    /** 계정의 앱. 없거나 주인이 다르면 null. */
+    fun appOf(account: GitHubAccount, app: String): HostingApp? =
+        app.takeIf { APP_NAME.matches(it) }?.let { read<HostingApp>("apps/${account.team}/$it.json") }?.takeIf { it.owner.id == account.id }
+
+    /** 지금 세대의 배포 기록 하나. 30일이 지났으면 null. */
+    fun deployment(app: HostingApp, deploymentId: String): HostingDeployment? =
+        deploymentId.takeIf { DEPLOYMENT_ID.matches(it) }?.let { read<HostingDeployment>("${app.deploymentPrefix}$it.json") }
+
+    /** 거절한 마지막 push 나 명령(가리지 않은 그대로). */
+    fun lastSkipped(account: GitHubAccount): SkippedPush? =
+        read<SkippedPush>("apps/_skipped/${account.team}.json")?.takeIf { it.sender.id == account.id }
+
     fun requireOwned(userId: UUID, app: String): HostingApp {
         val account = accountOf(userId) ?: throw HostingAppNotFoundException()
         if (!APP_NAME.matches(app)) throw HostingAppNotFoundException()
         return read<HostingApp>("apps/${account.team}/$app.json")?.takeIf { it.owner.id == account.id }
             ?: throw HostingAppNotFoundException()
+    }
+
+    /** 배포기가 받아 주는 계정인지(apps/_allowed.json). 그 파일이 없으면 App 을 설치한 계정의 레포 목록에 적힌 값. */
+    fun allowed(account: GitHubAccount): Boolean {
+        val list = read<HostingAllowedList>("apps/_allowed.json") ?: return repoList(account)?.allowed == true
+        return list.logins.any { it.equals(account.team, ignoreCase = true) }
     }
 
     /** 계정이 GitHub App 에 허용한 레포. App 을 설치하지 않았으면 null. */
@@ -74,6 +97,11 @@ class HostingApps(
             .takeLast(MAX_DEPLOYMENTS)
             .reversed()
             .mapNotNull { read<HostingDeployment>(it) }
+
+    fun buildLogTail(app: HostingApp, deploymentId: String, bytes: Int): String? {
+        if (!DEPLOYMENT_ID.matches(deploymentId)) return null
+        return hostingStateStore.readTail("${app.deploymentPrefix}$deploymentId.log", bytes)
+    }
 
     fun buildLog(app: HostingApp, deploymentId: String): String? {
         if (!DEPLOYMENT_ID.matches(deploymentId)) return null

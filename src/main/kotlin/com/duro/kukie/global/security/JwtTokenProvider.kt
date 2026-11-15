@@ -27,6 +27,11 @@ class JwtTokenProvider(
     fun generateRefreshToken(userId: UUID, sessionId: String): String =
         generateToken(userId, sessionId, TokenType.REFRESH, jwtProperties.refreshTokenExpiration)
 
+    fun generateHostingAgentToken(userId: UUID): String =
+        generateToken(userId, null, TokenType.HOSTING_AGENT, HOSTING_AGENT_TOKEN_EXPIRATION)
+
+    fun getUserIdFromHostingAgentToken(token: String): UUID? = parseByTokenType(token, TokenType.HOSTING_AGENT)?.userId
+
     fun getUserIdFromAccessToken(token: String): UUID? = parseAccessToken(token)?.userId
 
     fun parseAccessToken(token: String): TokenSubject? = parseByTokenType(token, TokenType.ACCESS)
@@ -71,6 +76,9 @@ class JwtTokenProvider(
     companion object {
         private const val TOKEN_TYPE = "type"
         private const val SESSION_ID = "sid"
+
+        /** 에이전트 대화 기록에 남을 수 있어 짧게 둔다. 갱신 토큰은 없고, 만료되면 사용자가 다시 허용한다. */
+        val HOSTING_AGENT_TOKEN_EXPIRATION: Duration = Duration.ofHours(1)
     }
 }
 
