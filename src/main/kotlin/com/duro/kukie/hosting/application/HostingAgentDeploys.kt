@@ -28,18 +28,21 @@ class HostingAgentDeploys(
         val RECORD_TTL: Duration = Duration.ofDays(7)
         private val ID = Regex("[0-9a-f]{40}")
 
-        /** 배포기의 앱 이름 규칙(appName(x) == x): 영소문자로 시작, 영소문자·숫자·하이픈, 하이픈 연속 금지, 30자 이하. */
+        /**
+         * 배포기의 앱 이름 규칙(appName(x) == x): 영소문자로 시작, 영소문자·숫자·하이픈, 하이픈 연속 금지, 30자 이하, 2자가 아님.
+         * 2자면 주소 `<앱>--<팀>`의 3·4번째가 "--"가 되어 IDNA가 punycode로 읽으므로 배포기는 `app-`을 붙인다.
+         */
         private val APP_NAME = Regex("[a-z][a-z0-9]*(-[a-z0-9]+)*")
         private const val MAX_APP = 30
         private const val MAX_TEAM_APP = 50
 
         fun validName(team: String, app: String): Boolean =
-            APP_NAME.matches(app) && app.length <= MAX_APP && team.length + app.length <= MAX_TEAM_APP
+            APP_NAME.matches(app) && app.length != 2 && app.length <= MAX_APP && team.length + app.length <= MAX_TEAM_APP
 
         /** 폴더 이름을 앱 이름으로: 배포기가 레포 이름에서 앱 이름을 만드는 방법에, 팀 이름과 합친 길이 제한을 더했다. 못 만들면 null. */
         fun suggest(name: String, team: String): String? {
             var app = name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
-            if (app.firstOrNull()?.isDigit() == true) app = "app-$app"
+            if (app.firstOrNull()?.isDigit() == true || app.length == 2) app = "app-$app"
             if (app.isEmpty()) app = "app"
             return app.take(minOf(MAX_APP, MAX_TEAM_APP - team.length)).trimEnd('-').takeIf { validName(team, it) }
         }

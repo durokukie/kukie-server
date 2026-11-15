@@ -75,6 +75,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
             jsonPath("$.message") { value(org.hamcrest.Matchers.endsWith("예: my-shop")) }
         }
         create(agent, "2048-game", 1234).andExpect { jsonPath("$.message") { value(org.hamcrest.Matchers.endsWith("예: app-2048-game")) } }
+        create(agent, "go", 1234).andExpect { jsonPath("$.message") { value(org.hamcrest.Matchers.endsWith("예: app-go")) } }
     }
 
     @Test
