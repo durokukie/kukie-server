@@ -70,9 +70,12 @@ class WaitHostingAgentDeployService(
             hostingAgentDeploys.save(deploy)
         }
         // 에이전트가 다시 부르기 전에 다른 배포(레포 연결 뒤 push 등)가 latest 를 덮었으면 배포 기록에서 이 명령의 배포를 찾는다.
-        // latest 가 시작보다 앞이면(배포기가 아직 받지 않음) 찾지 않는다: 3초마다 목록을 읽게 된다
+        // latest 가 시작보다 앞이면(배포기가 아직 받지 않음) 찾지 않는다. 찾지 못해도 이 명령이 아직 처리되지 않은 것이라 나중에
+        // latest 가 되어 위에서 잡히므로, 목록 읽기는 배포마다 SEARCH_INTERVAL 에 한 번으로 줄인다
         val startedAt = deploy.startedAt
-        if (app != null && deploy.deploymentId == null && app.latest.commandId != deploy.commandId && startedAt != null && app.latest.at > startedAt) {
+        if (app != null && deploy.deploymentId == null && app.latest.commandId != deploy.commandId && startedAt != null && app.latest.at > startedAt &&
+            hostingAgentRateLimit.tryAcquire("search:${deploy.id}", 1, SEARCH_INTERVAL)
+        ) {
             hostingApps.deployments(app).firstOrNull { it.commandId == deploy.commandId }?.let {
                 deploy = deploy.copy(deploymentId = it.deploymentId, generation = app.generation)
                 hostingAgentDeploys.save(deploy)
@@ -126,6 +129,7 @@ class WaitHostingAgentDeployService(
         private const val LOG_TAIL_BYTES = 8192
         private const val WAITS_PER_MINUTE = 30
         private val CHECK_INTERVAL: Duration = Duration.ofSeconds(3)
+        private val SEARCH_INTERVAL: Duration = Duration.ofSeconds(30)
 
         // 배포기가 멈추면 받은 명령은 30분 뒤 다시 나와 새 배포가 된다. 그보다 길게 두어 다시 한 배포를 따라갈 틈을 준다
         private val STALLED: Duration = Duration.ofMinutes(45)
