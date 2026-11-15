@@ -23,7 +23,8 @@ interface HostingControllerDocs {
         summary = "내 호스팅 앱 목록",
         description = "연결한 GitHub 계정이 주인인 앱을 줍니다. 계정을 연결하지 않았으면 githubLogin 이 null 이고 목록은 비어 있습니다. " +
             "조직 소유 레포의 앱은 아직 누구에게도 보이지 않습니다. skippedPush 는 배포를 시작하지 못한 마지막 요청이나 push 입니다. " +
-            "installation 은 GitHub App 에 읽기를 허용한 레포이고, App 을 설치하지 않았으면 null 입니다. 설치한 뒤 몇 초 지나야 보일 수 있습니다.",
+            "installation 은 GitHub App 에 읽기를 허용한 레포이고, App 을 설치하지 않았으면 null 입니다. 설치한 뒤 몇 초 지나야 보일 수 있습니다. " +
+            "installUrl 은 이 환경의 GitHub App 설치 페이지이고(HOSTING_GITHUB_APP, 기본 kukie-hosting-dev), 허용 레포 바꾸기도 같은 주소입니다.",
     )
     @ApiErrorResponses(HostingUnavailableException::class, HostingDisabledException::class)
     fun getApps(userId: UUID): ResponseEntity<HostingAppsResponse>

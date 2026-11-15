@@ -67,6 +67,23 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `목록은 설정한 GitHub App 의 설치 주소를 준다`() {
+        // given
+        val linked = linkedUser()
+        val notLinked = loggedInUser(UserFixture.user(email = "other@example.com"))
+
+        // when & then
+        listOf(linked, notLinked).forEach { member ->
+            mockMvc.get("/hosting/apps") {
+                authorization(member.accessToken)
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.installUrl") { value("https://github.com/apps/kukie-hosting-test/installations/new") }
+            }
+        }
+    }
+
+    @Test
     fun `모르는 버전이거나 깨진 앱 파일은 목록에서 뺀다`() {
         // given
         val member = linkedUser()

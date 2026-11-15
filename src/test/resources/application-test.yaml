@@ -24,5 +24,6 @@ cluster:
   allow-local: false
 
 hosting:
+  github-app: kukie-hosting-test
   state-bucket: test-hosting-state
   commands-queue-url: http://localhost/test-hosting-commands
