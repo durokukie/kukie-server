@@ -151,6 +151,48 @@ class InternalRunIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `모델이 지은 제목이 오면 첫 마디 대신 그것을 쓴다`() {
+        // given
+        val session = savedSession()
+        val run = savedRun(session, inputText = "마지막 sync 실패한 거 왜 그런지 봐 줘")
+
+        // when
+        patchRun(run, mapOf("status" to "completed", "titleFrom" to "마지막 sync 실패한 거 왜 그런지 봐 줘", "title" to "“ArgoCD sync 실패 원인”"))
+            .andExpect { status { isOk() } }
+
+        // then
+        chatSessionRepository.findByIdOrNull(session.id)!!.title shouldBe "ArgoCD sync 실패 원인"
+    }
+
+    @Test
+    fun `모델 제목이 비었으면 첫 마디로 짓는다`() {
+        // given
+        val session = savedSession()
+        val run = savedRun(session, inputText = "파드 몇개있음")
+
+        // when
+        patchRun(run, mapOf("status" to "completed", "titleFrom" to "파드 몇개있음", "title" to "  "))
+            .andExpect { status { isOk() } }
+
+        // then
+        chatSessionRepository.findByIdOrNull(session.id)!!.title shouldBe "파드 몇개있음"
+    }
+
+    @Test
+    fun `사용자가 바꾼 제목은 모델 제목으로 덮지 않는다`() {
+        // given
+        val session = chatSessionRepository.save(ChatFixture.session(owner, clusterId(), title = "내가 지은 이름"))
+        val run = savedRun(session, inputText = "파드 몇개있음")
+
+        // when
+        patchRun(run, mapOf("status" to "completed", "titleFrom" to "파드 몇개있음", "title" to "파드 수 확인"))
+            .andExpect { status { isOk() } }
+
+        // then
+        chatSessionRepository.findByIdOrNull(session.id)!!.title shouldBe "내가 지은 이름"
+    }
+
+    @Test
     fun `옛 에이전트가 보내는 currentMode 는 무시한다`() {
         // given
         val session = savedSession()

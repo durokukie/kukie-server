@@ -81,9 +81,12 @@ interface AuthControllerDocs {
     @ApiErrorResponses(UnauthorizedException::class, InvalidTokenException::class, ExpiredTokenException::class)
     fun refresh(request: RefreshTokenRequest?, httpRequest: HttpServletRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
 
-    @Operation(summary = "로그아웃", description = "로그아웃하고 리프레시 토큰을 삭제합니다. 토큰 쿠키도 지웁니다.")
+    @Operation(
+        summary = "로그아웃",
+        description = "지금 쓰는 로그인(세션)만 끊고 그 리프레시 토큰을 삭제합니다. 같은 계정의 다른 창·기기 로그인은 유지됩니다. 토큰 쿠키도 지웁니다.",
+    )
     @ApiResponse(responseCode = "204", description = "No Content")
-    fun logOut(userId: UUID, response: HttpServletResponse): ResponseEntity<Unit>
+    fun logOut(userId: UUID, httpRequest: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Unit>
 
     @Operation(
         summary = "앱 넘겨주기 코드 발급",

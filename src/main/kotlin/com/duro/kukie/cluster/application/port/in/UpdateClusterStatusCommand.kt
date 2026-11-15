@@ -8,4 +8,5 @@ data class UpdateClusterStatusCommand(
     val clusterId: UUID,
     val status: ClusterStatus,
     val checkedAt: LocalDateTime,
+    val fingerprint: String,
 )

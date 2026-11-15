@@ -92,6 +92,21 @@ class UserIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `내 정보에 서빙 게이트웨이와 호스팅이 켜져 있는지 함께 준다`() {
+        // given — 테스트 설정은 호스팅 버킷·큐가 있고 게이트웨이 토큰은 없다
+        val user = loggedInUser()
+
+        // when then
+        mockMvc.get("/users/me") {
+            authorization(user.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.servingEnabled") { value(false) }
+            jsonPath("$.hostingEnabled") { value(true) }
+        }
+    }
+
+    @Test
     fun `로그인 한 유저가 이름을 변경한다`() {
         // given
         val user = loggedInUser()
