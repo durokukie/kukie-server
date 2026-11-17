@@ -3,6 +3,7 @@ package com.duro.kukie.hosting.application
 import com.duro.kukie.global.config.properties.HostingProperties
 import com.duro.kukie.global.util.logger
 import com.duro.kukie.hosting.application.port.out.HostingStateStore
+import com.duro.kukie.hosting.domain.HostingAllowedList
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFile
@@ -41,6 +42,22 @@ class HostingApps(
             .mapNotNull { read<HostingApp>(it) }
             .filter { it.owner.id == account.id }
 
+    /** 팀 폴더에 있는 앱 파일, 주인이 누구든. 계정명을 다른 사람이 다시 쓴 경우를 가리는 데 쓴다. */
+    fun appInTeam(account: GitHubAccount, app: String): HostingApp? =
+        app.takeIf { APP_NAME.matches(it) }?.let { read<HostingApp>("apps/${account.team}/$it.json") }
+
+    /** 계정의 앱. 없거나 주인이 다르면 null. */
+    fun appOf(account: GitHubAccount, app: String): HostingApp? =
+        app.takeIf { APP_NAME.matches(it) }?.let { read<HostingApp>("apps/${account.team}/$it.json") }?.takeIf { it.owner.id == account.id }
+
+    /** 지금 세대의 배포 기록 하나. 30일이 지났으면 null. */
+    fun deployment(app: HostingApp, deploymentId: String): HostingDeployment? =
+        deploymentId.takeIf { DEPLOYMENT_ID.matches(it) }?.let { read<HostingDeployment>("${app.deploymentPrefix}$it.json") }
+
+    /** 거절한 마지막 push 나 명령(가리지 않은 그대로). */
+    fun lastSkipped(account: GitHubAccount): SkippedPush? =
+        read<SkippedPush>("apps/_skipped/${account.team}.json")?.takeIf { it.sender.id == account.id }
+
     fun requireOwned(userId: UUID, app: String): HostingApp {
         val account = accountOf(userId) ?: throw HostingAppNotFoundException()
         if (!APP_NAME.matches(app)) throw HostingAppNotFoundException()
@@ -48,17 +65,31 @@ class HostingApps(
             ?: throw HostingAppNotFoundException()
     }
 
+    /** 배포기가 받아 주는 계정인지(apps/_allowed.json). 그 파일이 없으면 App 을 설치한 계정의 레포 목록에 적힌 값. */
+    fun allowed(account: GitHubAccount): Boolean {
+        val list = read<HostingAllowedList>("apps/_allowed.json") ?: return repoList(account)?.allowed == true
+        // ids 가 있으면 id 로만 본다(login 은 다른 계정이 가져갈 수 있다). 옛 배포기의 파일(logins 만)이면 계정명으로 본다
+        list.ids?.let { return account.id in it }
+        return list.logins.orEmpty().any { it.equals(account.team, ignoreCase = true) }
+    }
+
     /** 계정이 GitHub App 에 허용한 레포. App 을 설치하지 않았으면 null. */
     fun repoList(account: GitHubAccount): HostingRepoList? =
         read<HostingRepoList>("apps/_repos/${account.team}.json")?.takeIf { it.owner.id == account.id }
 
-    /** 배포를 시작하지 못한 마지막 push. 그 뒤 같은 레포의 앱이 배포됐으면 지난 일이라 주지 않는다. */
+    /**
+     * 배포를 시작하지 못한 마지막 push 나 명령. 그 뒤 같은 레포(업로드 명령이면 같은 이름)의 앱이 배포됐으면 지난 일이라 주지 않는다.
+     * 앱의 출처가 맞지 않거나 레포를 이미 다른 앱이 써서 거절한 것은 다른 앱이 배포돼도 풀리지 않아 가리지 않는다.
+     */
     fun skippedPush(account: GitHubAccount, apps: List<HostingApp>): SkippedPush? =
         read<SkippedPush>("apps/_skipped/${account.team}.json")
             ?.takeIf { it.sender.id == account.id }
-            ?.takeUnless { skipped ->
-                apps.any { it.repo.fullName.equals(skipped.repo.fullName, ignoreCase = true) && it.latest.at > skipped.at }
-            }
+            ?.takeUnless { skipped -> skipped.reason !in UNRESOLVED_BY_DEPLOYS && apps.any { it.isFor(skipped) && it.latest.at > skipped.at } }
+
+    private fun HostingApp.isFor(skipped: SkippedPush): Boolean {
+        val skippedRepo = skipped.repo?.fullName ?: return skipped.app == app
+        return repo?.fullName.equals(skippedRepo, ignoreCase = true)
+    }
 
     /** 지금 세대의 배포를 최신순으로 준다. 기록은 30일 뒤 지워지므로 비어 있을 수 있다. */
     fun deployments(app: HostingApp): List<HostingDeployment> =
@@ -68,6 +99,11 @@ class HostingApps(
             .takeLast(MAX_DEPLOYMENTS)
             .reversed()
             .mapNotNull { read<HostingDeployment>(it) }
+
+    fun buildLogTail(app: HostingApp, deploymentId: String, bytes: Int): String? {
+        if (!DEPLOYMENT_ID.matches(deploymentId)) return null
+        return hostingStateStore.readTail("${app.deploymentPrefix}$deploymentId.log", bytes)
+    }
 
     fun buildLog(app: HostingApp, deploymentId: String): String? {
         if (!DEPLOYMENT_ID.matches(deploymentId)) return null
@@ -95,6 +131,7 @@ class HostingApps(
 
     companion object {
         private const val MAX_DEPLOYMENTS = 20
+        private val UNRESOLVED_BY_DEPLOYS = setOf("source_mismatch", "repository_in_use")
 
         // 경로에서 받은 값을 버킷 키에 넣기 전에 배포기가 만드는 이름 모양인지 본다
         private val APP_NAME = Regex("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")

@@ -2,15 +2,18 @@ package com.duro.kukie.team.presentation
 
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.team.application.AcceptTeamInvitationLinkService
 import com.duro.kukie.team.application.AcceptTeamInvitationService
 import com.duro.kukie.team.application.CancelTeamInvitationService
 import com.duro.kukie.team.application.DeclineTeamInvitationService
 import com.duro.kukie.team.application.GetTeamInvitationsService
 import com.duro.kukie.team.application.InviteTeamMemberService
 import com.duro.kukie.team.domain.TeamRole
+import com.duro.kukie.team.presentation.dto.request.AcceptTeamInvitationLinkRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.response.SentTeamInvitationResponse
 import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
+import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -30,6 +33,7 @@ class TeamInvitationController(
     private val inviteTeamMemberService: InviteTeamMemberService,
     private val getTeamInvitationsService: GetTeamInvitationsService,
     private val cancelTeamInvitationService: CancelTeamInvitationService,
+    private val acceptTeamInvitationLinkService: AcceptTeamInvitationLinkService,
     private val acceptTeamInvitationService: AcceptTeamInvitationService,
     private val declineTeamInvitationService: DeclineTeamInvitationService,
 ) : TeamInvitationControllerDocs {
@@ -61,6 +65,14 @@ class TeamInvitationController(
         cancelTeamInvitationService(teamId, invitationId)
 
         return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/invitations/accept")
+    override fun acceptTeamInvitationLink(
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: AcceptTeamInvitationLinkRequest,
+    ): ResponseEntity<TeamResponse> {
+        return ResponseEntity.ok(acceptTeamInvitationLinkService(request.toCommand(userId)))
     }
 
     @PostMapping("/invitations/{invitationId}/accept")

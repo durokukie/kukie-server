@@ -1,5 +1,6 @@
 package com.duro.kukie.hosting.domain
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import java.time.Instant
 
 /** 배포기가 적는 파일의 모양. 모르는 필드는 무시하고, 모르는 version 의 파일은 읽지 않는다. */
@@ -14,6 +15,13 @@ interface HostingFile {
 data class HostingAccount(val id: Long, val login: String? = null, val type: String? = null)
 
 data class HostingRepo(val id: Long? = null, val fullName: String)
+
+/** 레포 없이 만든 앱의 출처. 코딩 에이전트가 올린 폴더로 만든 앱은 type 이 upload 다. */
+data class HostingSource(val type: String) {
+    companion object {
+        const val UPLOAD = "upload"
+    }
+}
 
 data class HostingCommit(val sha: String, val message: String? = null)
 
@@ -50,17 +58,22 @@ data class HostingLatest(
     val at: Instant,
 )
 
+/** repo 와 source 가운데 하나만 있다. 업로드로 만든 앱은 repo 가 없다. */
 data class HostingApp(
     override val version: Int,
     val owner: HostingAccount,
-    val repo: HostingRepo,
+    val repo: HostingRepo? = null,
+    val source: HostingSource? = null,
     val team: String,
     val app: String,
     val generation: String,
     val url: String,
     val config: HostingConfig,
     val latest: HostingLatest,
-) : HostingFile
+) : HostingFile {
+    val uploaded: Boolean
+        @JsonIgnore get() = source?.type == HostingSource.UPLOAD
+}
 
 data class HostingDeployment(
     override val version: Int,
@@ -89,12 +102,26 @@ data class HostingRepoList(
     val at: Instant,
 ) : HostingFile
 
-data class HostingRepoItem(val fullName: String, val private: Boolean = false)
+/**
+ * 배포할 수 있는 계정. 배포기가 시작할 때마다 다시 쓴다. 지금 배포기(kukie-hosting-platform#17 뒤)는 GitHub 숫자 id(ids)를 쓴다:
+ * login 은 바뀌고 다른 계정이 가져갈 수 있다. 그 전 배포기는 소문자 계정명(logins)을 썼다.
+ */
+data class HostingAllowedList(
+    override val version: Int,
+    val ids: List<Long>? = null,
+    // TODO(kukie-hosting-platform#17 이미지가 dev·prod 배포기에 뜬 뒤): logins 와 HostingApps.allowed 의 logins 분기를 지운다
+    val logins: List<String>? = null,
+) : HostingFile
 
+data class HostingRepoItem(val id: Long? = null, val fullName: String, val private: Boolean = false)
+
+/** repo 는 업로드 명령에 없다. 명령의 결과는 commandId 로 찾는다(push 가 같은 파일을 덮어쓴다). */
 data class SkippedPush(
     override val version: Int,
     val sender: HostingAccount,
-    val repo: HostingRepo,
+    val repo: HostingRepo? = null,
+    val commandId: String? = null,
+    val app: String? = null,
     val reason: String,
     val at: Instant,
 ) : HostingFile
