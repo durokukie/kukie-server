@@ -1,6 +1,7 @@
 package com.duro.kukie.hosting.infrastructure
 
 import com.duro.kukie.global.config.properties.OAuthProperties
+import com.duro.kukie.hosting.application.port.out.GitHubAccountNow
 import com.duro.kukie.hosting.exception.HostingUnavailableException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -37,7 +38,7 @@ class RestGitHubAccountAgeTest {
             .andRespond(withSuccess("""{"id": 583231, "login": "octocat", "created_at": "2011-01-25T18:44:36Z"}""", MediaType.APPLICATION_JSON))
 
         // when & then
-        accountAge.createdAt(583231) shouldBe Instant.parse("2011-01-25T18:44:36Z")
+        accountAge.read(583231) shouldBe GitHubAccountNow("octocat", Instant.parse("2011-01-25T18:44:36Z"))
         server.verify()
     }
 
@@ -53,7 +54,7 @@ class RestGitHubAccountAgeTest {
             server.expect(requestTo("https://api.github.com/user/583231")).andRespond(response)
 
             // when & then
-            shouldThrow<HostingUnavailableException> { accountAge.createdAt(583231) }
+            shouldThrow<HostingUnavailableException> { accountAge.read(583231) }
         }
     }
 }

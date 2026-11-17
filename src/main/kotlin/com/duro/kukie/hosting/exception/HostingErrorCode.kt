@@ -12,6 +12,7 @@ enum class HostingErrorCode(
     HOSTING_REPOSITORY_NOT_FOUND(HttpStatus.NOT_FOUND, "배포할 수 있는 레포가 아닙니다. GitHub App 에 이 레포를 허용했는지 확인해 주세요."),
     HOSTING_NOT_ALLOWED(HttpStatus.FORBIDDEN, "이 GitHub 계정은 아직 호스팅을 쓸 수 있는 계정이 아닙니다. Kukie 의 앱 배포 화면에서 사용 신청을 먼저 해 주세요."),
     HOSTING_ACCOUNT_TOO_NEW(HttpStatus.FORBIDDEN, "GitHub 계정을 만든 지 30일이 지나야 호스팅을 쓸 수 있습니다."),
+    HOSTING_GITHUB_LOGIN_CHANGED(HttpStatus.CONFLICT, "GitHub 계정 이름이 연결했을 때와 다릅니다. GitHub 계정 연결을 끊고 다시 연결한 뒤 신청해 주세요."),
     HOSTING_NOTICE_NOT_AGREED(HttpStatus.BAD_REQUEST, "서비스 종료일 안내에 동의해야 신청할 수 있습니다."),
     HOSTING_APP_SOURCE_MISMATCH(HttpStatus.CONFLICT, "앱을 만든 방법과 맞지 않는 요청입니다. 업로드로 만든 앱은 다시 올리거나 레포를 연결하고, 레포에 연결된 앱은 그 레포에 push 해 주세요."),
     HOSTING_REPOSITORY_IN_USE(HttpStatus.CONFLICT, "이 레포는 이미 다른 앱을 배포하고 있습니다. 레포 하나에 앱 하나만 연결할 수 있습니다."),

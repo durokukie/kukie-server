@@ -1,5 +1,6 @@
 package com.duro.kukie.hosting
 
+import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.hosting.domain.HostingCommand
 import com.duro.kukie.support.FakeGitHubAccountAge
 import com.duro.kukie.support.FakeHostingCommandQueue
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 
 class HostingIntegrationTest : IntegrationTest() {
 
@@ -30,6 +32,9 @@ class HostingIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var accountAge: FakeGitHubAccountAge
+
+    @Autowired
+    private lateinit var jwtTokenProvider: JwtTokenProvider
 
     @Test
     fun `연결한 GitHub 계정이 주인인 앱만 목록에 나온다`() {
@@ -489,7 +494,9 @@ class HostingIntegrationTest : IntegrationTest() {
     fun `GitHub 계정을 만든 지 30일이 안 됐으면 신청을 거절하고 신청할 수 있는 날을 알려 준다`() {
         // given
         val member = linkedUser()
-        accountAge.createdAt = Instant.now().minus(Duration.ofDays(30)).plusSeconds(60)
+        val createdAt = Instant.now().minus(Duration.ofDays(30)).plusSeconds(60)
+        accountAge.createdAt = createdAt
+        val eligibleOn = createdAt.plus(Duration.ofDays(30)).atZone(ZoneId.of("Asia/Seoul")).toLocalDate().plusDays(1)
 
         // when & then
         mockMvc.post("/hosting/membership") {
@@ -499,12 +506,29 @@ class HostingIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value("HOSTING_ACCOUNT_TOO_NEW") }
-            jsonPath("$.message") { value(org.hamcrest.Matchers.containsString("부터 신청할 수 있습니다")) }
+            jsonPath("$.message") { value("GitHub 계정을 만든 지 30일이 지나야 호스팅을 쓸 수 있습니다. 이 계정은 ${eligibleOn}부터 신청할 수 있습니다.") }
         }
         queue.commands.shouldBeEmpty()
 
-        // 30일이 지난 계정은 통과한다
+        // 거절된 신청도 1분에 한 번이다: 되풀이해도 GitHub 에 다시 묻지 않는다
+        accountAge.createdAt = FakeGitHubAccountAge.OLD
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isTooManyRequests() }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `GitHub 계정을 만든 지 꼭 30일이 지났으면 신청할 수 있다`() {
+        // given
+        val member = linkedUser()
         accountAge.createdAt = Instant.now().minus(Duration.ofDays(30)).minusSeconds(60)
+
+        // when & then
         mockMvc.post("/hosting/membership") {
             authorization(member.accessToken)
             contentType = MediaType.APPLICATION_JSON
@@ -512,6 +536,41 @@ class HostingIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isAccepted() }
         }
+        queue.commands.single().type shouldBe HostingCommand.JOIN
+    }
+
+    @Test
+    fun `연결한 뒤 GitHub 계정 이름을 바꿨으면 신청할 수 없다`() {
+        // given
+        val member = linkedUser()
+        accountAge.login = "renamed"
+
+        // when & then
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_GITHUB_LOGIN_CHANGED") }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `에이전트 토큰으로는 신청할 수 없다`() {
+        // given
+        val member = linkedUser()
+
+        // when & then
+        mockMvc.post("/hosting/membership") {
+            authorization(jwtTokenProvider.generateHostingAgentToken(member.user.id))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isUnauthorized() }
+        }
+        queue.commands.shouldBeEmpty()
     }
 
     @Test

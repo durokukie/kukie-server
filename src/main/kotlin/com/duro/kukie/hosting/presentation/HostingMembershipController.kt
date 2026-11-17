@@ -22,6 +22,6 @@ class HostingMembershipController(
 
     @PostMapping
     override fun join(@AuthUser userId: UUID, @RequestBody @Valid request: JoinHostingRequest): ResponseEntity<HostingCommandResponse> {
-        return ResponseEntity.accepted().body(joinHostingService(userId, request))
+        return ResponseEntity.accepted().body(joinHostingService(request.toCommand(userId)))
     }
 }
