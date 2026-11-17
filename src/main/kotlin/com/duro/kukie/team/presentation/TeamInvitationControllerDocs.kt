@@ -3,15 +3,18 @@ package com.duro.kukie.team.presentation
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.team.exception.AlreadyTeamMemberException
 import com.duro.kukie.team.exception.InsufficientTeamRoleException
+import com.duro.kukie.team.exception.InvalidInvitationLinkException
 import com.duro.kukie.team.exception.InvitationAlreadySentException
 import com.duro.kukie.team.exception.InvitationExpiredException
 import com.duro.kukie.team.exception.InvitationNotFoundException
 import com.duro.kukie.team.exception.InvitationNotPendingException
 import com.duro.kukie.team.exception.NotMyInvitationException
 import com.duro.kukie.team.exception.NotTeamMemberException
+import com.duro.kukie.team.presentation.dto.request.AcceptTeamInvitationLinkRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.response.SentTeamInvitationResponse
 import com.duro.kukie.team.presentation.dto.response.TeamInvitationResponse
+import com.duro.kukie.team.presentation.dto.response.TeamResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
@@ -60,6 +63,23 @@ interface TeamInvitationControllerDocs {
         InvitationNotPendingException::class,
     )
     fun cancelTeamInvitation(teamId: UUID, invitationId: UUID): ResponseEntity<Unit>
+
+    @Operation(
+        summary = "초대 링크로 팀 초대 수락",
+        description = "초대 메일의 링크에 실린 토큰으로 초대를 수락하고 그 팀을 돌려줍니다. " +
+            "이미 그 팀의 구성원이면 그대로 팀을 돌려줍니다.",
+    )
+    @ApiErrorResponses(
+        InvalidInvitationLinkException::class,
+        InvitationNotFoundException::class,
+        NotMyInvitationException::class,
+        InvitationNotPendingException::class,
+        InvitationExpiredException::class,
+    )
+    fun acceptTeamInvitationLink(
+        userId: UUID,
+        request: AcceptTeamInvitationLinkRequest,
+    ): ResponseEntity<TeamResponse>
 
     @Operation(
         summary = "팀 초대 수락",

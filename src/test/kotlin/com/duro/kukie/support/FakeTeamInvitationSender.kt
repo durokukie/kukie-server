@@ -1,6 +1,7 @@
 package com.duro.kukie.support
 
 import com.duro.kukie.team.application.port.out.TeamInvitationSender
+import java.util.UUID
 
 class FakeTeamInvitationSender : TeamInvitationSender, Resettable {
 
@@ -9,9 +10,15 @@ class FakeTeamInvitationSender : TeamInvitationSender, Resettable {
     /** 메일 발송이 실패한 상황을 흉내낸다. */
     var shouldFail = false
 
-    override fun send(email: String, teamName: String, inviterName: String, registered: Boolean) {
+    override fun send(email: String, teamName: String, inviterName: String, registered: Boolean, invitationId: UUID) {
         if (shouldFail) throw IllegalStateException("메일 서버에 연결할 수 없다")
-        sent += SentInvitation(email = email, teamName = teamName, inviterName = inviterName, registered = registered)
+        sent += SentInvitation(
+            email = email,
+            teamName = teamName,
+            inviterName = inviterName,
+            registered = registered,
+            invitationId = invitationId,
+        )
     }
 
     fun sentTo(email: String): List<SentInvitation> = sent.filter { it.email == email }
@@ -28,5 +35,6 @@ class FakeTeamInvitationSender : TeamInvitationSender, Resettable {
         val teamName: String,
         val inviterName: String,
         val registered: Boolean,
+        val invitationId: UUID,
     )
 }

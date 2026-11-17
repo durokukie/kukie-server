@@ -6,6 +6,7 @@ import com.duro.kukie.notification.exception.NotificationErrorCode
 import com.duro.kukie.support.FakeTeamInvitationSender
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
+import com.duro.kukie.team.application.port.out.TeamInvitationLinkCodec
 import com.duro.kukie.team.domain.InvitationStatus
 import com.duro.kukie.team.domain.TeamInvitation
 import com.duro.kukie.team.domain.TeamInvitationRepository
@@ -14,6 +15,7 @@ import com.duro.kukie.team.domain.TeamRepository
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.domain.findByIdOrThrow
 import com.duro.kukie.team.exception.TeamErrorCode
+import com.duro.kukie.team.presentation.dto.request.AcceptTeamInvitationLinkRequest
 import com.duro.kukie.team.presentation.dto.request.InviteTeamMemberRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import com.duro.kukie.user.UserFixture
@@ -46,6 +48,9 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var invitationSender: FakeTeamInvitationSender
+
+    @Autowired
+    private lateinit var teamInvitationLinkCodec: TeamInvitationLinkCodec
 
     // ── 초대 보내기 ────────────────────────────────────────────
 
@@ -687,6 +692,55 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
         }
     }
 
+    // ── 초대 링크로 수락 ───────────────────────────────────────
+
+    @Test
+    fun `초대 링크로 수락하면 구성원이 되고 그 팀을 돌려준다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+
+        // when
+        acceptByLink(invitee, teamInvitationLinkCodec.encode(invitation.id)).andExpect {
+            // then
+            status { isOk() }
+            jsonPath("$.id") { value(admin.teamId.toString()) }
+            jsonPath("$.role") { value(TeamRole.MEMBER.name) }
+        }
+
+        teamInvitationRepository.findAll().first().status shouldBe InvitationStatus.ACCEPTED
+    }
+
+    @Test
+    fun `이미 구성원이면 같은 링크를 다시 눌러도 그 팀을 돌려준다`() {
+        // given
+        val admin = adminOfNewTeam()
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+        val invitation = savedInvitation(admin.teamId, INVITEE_EMAIL, admin.userId)
+        val token = teamInvitationLinkCodec.encode(invitation.id)
+        acceptByLink(invitee, token).andExpect { status { isOk() } }
+
+        // when & then
+        acceptByLink(invitee, token).andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(admin.teamId.toString()) }
+        }
+        teamMembershipRepository.findAllByTeamId(admin.teamId).size shouldBe 2
+    }
+
+    @Test
+    fun `올바르지 않은 토큰은 거부한다`() {
+        // given
+        val invitee = loggedInUser(UserFixture.user(email = INVITEE_EMAIL))
+
+        // when & then
+        acceptByLink(invitee, invitee.accessToken).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value(TeamErrorCode.INVALID_INVITATION_LINK.code) }
+        }
+    }
+
     // ── 초대 거절 ──────────────────────────────────────────────
 
     @Test
@@ -903,6 +957,13 @@ class TeamInvitationIntegrationTest : IntegrationTest() {
             content = InviteTeamMemberRequest(email).toJson()
         }.andExpect { status { isCreated() } }
     }
+
+    private fun acceptByLink(user: LoggedInUser, token: String) =
+        mockMvc.post("/teams/invitations/accept") {
+            authorization(user.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = AcceptTeamInvitationLinkRequest(token).toJson()
+        }
 
     private fun savedInvitation(
         teamId: UUID,

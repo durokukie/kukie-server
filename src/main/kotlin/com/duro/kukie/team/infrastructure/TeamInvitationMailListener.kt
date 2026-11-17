@@ -18,7 +18,13 @@ class TeamInvitationMailListener(
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun on(event: TeamMemberInvited) {
         try {
-            teamInvitationSender.send(event.email, event.teamName, event.inviterName, event.registered)
+            teamInvitationSender.send(
+                event.email,
+                event.teamName,
+                event.inviterName,
+                event.registered,
+                event.invitationId,
+            )
         } catch (exception: Exception) {
             log.error("초대 메일을 보내지 못했다 — 초대는 그대로 남는다: {} ({} 팀)", event.email, event.teamName, exception)
         }

@@ -43,7 +43,9 @@ class InviteTeamMemberService(
         )
         // 메일은 커밋 뒤에 나간다 (TeamInvitationMailListener)
         val inviterName = userRepository.findByIdOrThrow(command.userId).name
-        events.publishEvent(TeamMemberInvited(command.email.value, team.name, inviterName, registered = invitee != null))
+        events.publishEvent(
+            TeamMemberInvited(invitation.id, command.email.value, team.name, inviterName, registered = invitee != null),
+        )
 
         return TeamInvitationResponse.of(invitation)
     }
