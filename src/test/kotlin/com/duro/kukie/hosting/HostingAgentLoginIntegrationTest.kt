@@ -34,7 +34,7 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
 
         // then
         login.code shouldMatch Regex("[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}")
-        login.loginUrl shouldBe "http://localhost:5173/?go=agent"
+        login.loginUrl shouldBe "http://localhost:5173/?go=agent&code=${login.code}"
         login.pollToken shouldStartWith "pt_"
     }
 
