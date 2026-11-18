@@ -1,0 +1,20 @@
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    # 프록시가 /member 를 떼고 넘긴다. 접두사가 있어야 화면이 설정과 명세를 찾는다
+    config-url: /member/v3/api-docs/swagger-config
+    url: /member/v3/api-docs
+
+swagger:
+  server-url: /member
+
+web-app:
+  url: https://dev.durokukie.com
+
+hosting:
+  github-app: kukie-hosting-dev
+
+cluster:
+  allow-local: true

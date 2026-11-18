@@ -17,11 +17,10 @@ internal:
 
 github-app:
   id: 5531779
-  private-key: test-not-a-key
+  private-key: github-test-token
 
 cluster:
   credential-key: dGVzdC1jcmVkZW50aWFsLWtleS0zMi1ieXRlcy1vayE=
-  allow-local: false
 
 hosting:
   github-app: kukie-hosting-test
@@ -29,3 +28,7 @@ hosting:
   commands-queue-url: http://localhost/test-hosting-commands
   agent-poll-wait: 2s
   agent-deploy-wait: 2s
+
+springdoc:
+  api-docs:
+    enabled: true

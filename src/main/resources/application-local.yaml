@@ -1,0 +1,18 @@
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+auth:
+  cookie:
+    secure: false
+
+web-app:
+  url: http://localhost:5173
+
+hosting:
+  github-app: kukie-hosting-dev
+
+cluster:
+  allow-local: true
