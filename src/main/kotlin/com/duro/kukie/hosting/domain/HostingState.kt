@@ -102,8 +102,14 @@ data class HostingRepoList(
     val at: Instant,
 ) : HostingFile
 
+/** 가입한 계정 하나(apps/_members/<GitHub id>.json). 배포기가 가입 명령을 처리하고 쓴다. */
+data class HostingMember(
+    override val version: Int,
+    val owner: HostingAccount,
+) : HostingFile
+
 /**
- * 배포할 수 있는 계정. 배포기가 시작할 때마다 다시 쓴다. 지금 배포기(kukie-hosting-platform#17 뒤)는 GitHub 숫자 id(ids)를 쓴다:
+ * 운영자가 가입 절차 없이 넣어 준 계정. 배포기가 시작할 때마다 다시 쓴다. 지금 배포기(kukie-hosting-platform#17 뒤)는 GitHub 숫자 id(ids)를 쓴다:
  * login 은 바뀌고 다른 계정이 가져갈 수 있다. 그 전 배포기는 소문자 계정명(logins)을 썼다.
  */
 data class HostingAllowedList(

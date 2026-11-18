@@ -54,4 +54,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeHostingUploadStore(): FakeHostingUploadStore = FakeHostingUploadStore()
+
+    @Bean
+    @Primary
+    fun fakeGitHubAccountAge(): FakeGitHubAccountAge = FakeGitHubAccountAge()
 }

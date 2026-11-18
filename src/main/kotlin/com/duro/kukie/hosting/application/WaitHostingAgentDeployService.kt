@@ -147,7 +147,7 @@ class WaitHostingAgentDeployService(
             "build_timeout" to "빌드가 15분을 넘었습니다. 빌드를 가볍게 하거나 Dockerfile 을 만든 뒤 새 배포를 만드세요.",
             "start_failed" to "앱이 뜨지 않았습니다. logTail 의 === app === 아래 출력을 보고, 앱이 PORT 환경변수의 포트에서 받는지와 빠진 의존성이 없는지 확인하세요.",
             "app_limit" to "앱이 이미 3개입니다. 앱을 지우거나 있는 앱 이름으로 배포하세요.",
-            "not_allowed" to "아직 호스팅을 쓸 수 없는 계정입니다.",
+            "not_allowed" to "아직 호스팅을 쓸 수 없는 계정입니다. 사용자에게 Kukie 의 앱 배포 화면에서 사용 신청을 먼저 하라고 전하세요.",
             "invalid_team_name" to "이 GitHub 계정 이름으로는 앱을 만들 수 없습니다.",
             "invalid_app_name" to "앱 이름이 규칙에 맞지 않습니다. 이름을 바꿔 새 배포를 만드세요.",
             "name_too_long" to "계정 이름과 앱 이름을 합친 길이가 깁니다. 더 짧은 앱 이름으로 새 배포를 만드세요.",
