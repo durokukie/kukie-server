@@ -28,3 +28,7 @@ hosting:
   commands-queue-url: http://localhost/test-hosting-commands
   agent-poll-wait: 2s
   agent-deploy-wait: 2s
+
+springdoc:
+  api-docs:
+    enabled: true
