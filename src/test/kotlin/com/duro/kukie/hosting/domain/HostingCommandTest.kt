@@ -134,4 +134,19 @@ class HostingCommandTest {
         json.has("repo") shouldBe false
         json.has("generation") shouldBe false
     }
+
+    @Test
+    fun `가입 명령에는 계정과 팀만 있다`() {
+        // when
+        val mapper = JsonMapper.builder().build()
+        val json = mapper.readTree(mapper.writeValueAsString(HostingCommand.join(GitHubAccount(127021195, "Recklehs"))))
+
+        // then
+        json.path("type").stringValue() shouldBe "join"
+        json.path("owner").path("id").longValue() shouldBe 127021195
+        json.path("owner").path("login").stringValue() shouldBe "Recklehs"
+        json.path("team").stringValue() shouldBe "recklehs"
+        json.has("app") shouldBe false
+        json.has("repo") shouldBe false
+    }
 }

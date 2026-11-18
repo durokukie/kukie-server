@@ -16,6 +16,7 @@ class GetHostingAppsService(
         val account = hostingApps.accountOf(userId) ?: return HostingAppsResponse.notLinked(githubApp)
         val apps = hostingApps.ownedBy(account)
 
-        return HostingAppsResponse.of(githubApp, account, apps, hostingApps.skippedPush(account, apps), hostingApps.repoList(account))
+        val skipped = hostingApps.skippedPush(account, apps)
+        return HostingAppsResponse.of(githubApp, account, hostingApps.allowed(account), apps, skipped, hostingApps.repoList(account))
     }
 }

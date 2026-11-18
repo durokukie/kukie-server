@@ -18,8 +18,10 @@ class HostingCommandSender(
 
     private val log = logger()
 
-    fun send(userId: UUID, command: HostingCommand): HostingCommandResponse {
+    /** check 는 대기 시간을 잡은 뒤, 큐에 넣기 전에 부른다. 여기서 거절하면 대기 시간은 풀지 않는다. */
+    fun send(userId: UUID, command: HostingCommand, check: () -> Unit = {}): HostingCommandResponse {
         if (!hostingCommandCooldown.tryStart(command)) throw HostingCommandTooSoonException()
+        check()
         try {
             hostingCommandQueue.send(command)
         } catch (exception: RuntimeException) {

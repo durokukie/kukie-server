@@ -6,13 +6,19 @@ import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingLatest
 import com.duro.kukie.hosting.domain.HostingRepoItem
 import com.duro.kukie.hosting.domain.HostingRepoList
+import com.duro.kukie.hosting.domain.HostingTerms
 import com.duro.kukie.hosting.domain.SkippedPush
 import com.duro.kukie.user.domain.GitHubAccount
 import java.time.Instant
+import java.time.LocalDate
 
 data class HostingAppsResponse(
     /** 연결한 GitHub 계정명. null 이면 먼저 계정을 연결해야 한다. */
     val githubLogin: String?,
+    /** 호스팅을 쓸 수 있는 계정인지. false 면 사용 신청(POST /hosting/membership)을 먼저 해야 한다. */
+    val joined: Boolean,
+    /** 서비스 종료일. 이날 앱과 데이터가 지워진다. 신청 전에 보여 준다. */
+    val closesOn: LocalDate,
     val appLimit: Int,
     val apps: List<HostingAppResponse>,
     /** 배포를 시작하지 못한 마지막 요청이나 push. 없으면 null. */
@@ -27,10 +33,19 @@ data class HostingAppsResponse(
 
         private fun installUrl(githubApp: String) = "https://github.com/apps/$githubApp/installations/new"
 
-        fun notLinked(githubApp: String) = HostingAppsResponse(null, APP_LIMIT, emptyList(), null, null, installUrl(githubApp))
+        fun notLinked(githubApp: String) = HostingAppsResponse(null, false, HostingTerms.CLOSES_ON, APP_LIMIT, emptyList(), null, null, installUrl(githubApp))
 
-        fun of(githubApp: String, account: GitHubAccount, apps: List<HostingApp>, skipped: SkippedPush?, repos: HostingRepoList?) = HostingAppsResponse(
+        fun of(
+            githubApp: String,
+            account: GitHubAccount,
+            joined: Boolean,
+            apps: List<HostingApp>,
+            skipped: SkippedPush?,
+            repos: HostingRepoList?,
+        ) = HostingAppsResponse(
             githubLogin = account.login,
+            joined = joined,
+            closesOn = HostingTerms.CLOSES_ON,
             appLimit = APP_LIMIT,
             apps = apps.map(HostingAppResponse::from),
             skippedPush = skipped?.let(SkippedPushResponse::from),
@@ -69,7 +84,7 @@ data class SkippedPushResponse(
     val repository: String?,
     /** 배포기가 앱 이름을 알았을 때만. */
     val app: String?,
-    /** 거절한 명령의 id. push 였으면 null. 명령의 결과는 이것으로 찾는다. */
+    /** 거절한 명령의 id. push 였으면 null. 명령의 결과는 이것으로 찾는다. 사용 신청이 거절됐으면 repository 와 app 이 없다. */
     val commandId: String?,
     /**
      * not_allowed, invalid_team_name, invalid_app_name, name_too_long, queue_full, auto_deploy_off, app_limit,

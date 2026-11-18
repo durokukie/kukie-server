@@ -7,6 +7,7 @@ import com.duro.kukie.hosting.domain.HostingAllowedList
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFile
+import com.duro.kukie.hosting.domain.HostingMember
 import com.duro.kukie.hosting.domain.HostingRepoList
 import com.duro.kukie.hosting.domain.SkippedPush
 import com.duro.kukie.hosting.exception.HostingAppNotFoundException
@@ -65,8 +66,12 @@ class HostingApps(
             ?: throw HostingAppNotFoundException()
     }
 
-    /** 배포기가 받아 주는 계정인지(apps/_allowed.json). 그 파일이 없으면 App 을 설치한 계정의 레포 목록에 적힌 값. */
+    /**
+     * 배포기가 받아 주는 계정인지: 가입했거나(apps/_members/<id>.json) 운영자가 넣어 준 계정(apps/_allowed.json).
+     * 둘 다 없으면 App 을 설치한 계정의 레포 목록에 적힌 값.
+     */
     fun allowed(account: GitHubAccount): Boolean {
+        if (read<HostingMember>("apps/_members/${account.id}.json")?.owner?.id == account.id) return true
         val list = read<HostingAllowedList>("apps/_allowed.json") ?: return repoList(account)?.allowed == true
         // ids 가 있으면 id 로만 본다(login 은 다른 계정이 가져갈 수 있다). 옛 배포기의 파일(logins 만)이면 계정명으로 본다
         list.ids?.let { return account.id in it }

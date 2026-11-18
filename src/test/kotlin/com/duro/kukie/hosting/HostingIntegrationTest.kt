@@ -1,12 +1,15 @@
 package com.duro.kukie.hosting
 
+import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.support.FakeGitHubAccountAge
 import com.duro.kukie.support.FakeHostingCommandQueue
 import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
 import com.duro.kukie.user.UserFixture
 import com.duro.kukie.user.domain.GitHubAccount
+import com.duro.kukie.user.domain.User
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -15,6 +18,9 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 
 class HostingIntegrationTest : IntegrationTest() {
 
@@ -23,6 +29,12 @@ class HostingIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var queue: FakeHostingCommandQueue
+
+    @Autowired
+    private lateinit var accountAge: FakeGitHubAccountAge
+
+    @Autowired
+    private lateinit var jwtTokenProvider: JwtTokenProvider
 
     @Test
     fun `연결한 GitHub 계정이 주인인 앱만 목록에 나온다`() {
@@ -406,6 +418,203 @@ class HostingIntegrationTest : IntegrationTest() {
             status { isForbidden() }
         }
 
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `호스팅 사용을 신청하면 배포기에 가입 명령을 보낸다`() {
+        // given
+        val member = linkedUser()
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            jsonPath("$.joined") { value(false) }
+            jsonPath("$.closesOn") { value("2026-12-13") }
+        }
+
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isAccepted() }
+            jsonPath("$.commandId") { value(queue.commands.single().commandId) }
+        }
+
+        with(queue.commands.single()) {
+            type shouldBe HostingCommand.JOIN
+            owner.id shouldBe GITHUB.id
+            owner.login shouldBe "Recklehs"
+            team shouldBe "recklehs"
+            app shouldBe null
+            repo shouldBe null
+        }
+
+        // 배포기가 팀을 만들고 회원 파일을 쓰면 가입된 것이다
+        store.files["apps/_members/${GITHUB.id}.json"] =
+            """{ "version": 1, "owner": { "id": ${GITHUB.id}, "login": "Recklehs" }, "at": "2026-11-17T03:00:00Z" }"""
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            jsonPath("$.joined") { value(true) }
+        }
+    }
+
+    @Test
+    fun `운영자가 넣어 준 계정은 신청하지 않아도 가입된 계정이다`() {
+        // given
+        val member = linkedUser()
+        store.files["apps/_allowed.json"] = """{ "version": 1, "ids": [${GITHUB.id}] }"""
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            jsonPath("$.joined") { value(true) }
+        }
+    }
+
+    @Test
+    fun `다른 계정의 회원 파일로는 가입된 계정이 되지 않는다`() {
+        // given
+        val member = linkedUser()
+        store.files["apps/_members/${GITHUB.id}.json"] = """{ "version": 1, "owner": { "id": 999, "login": "Recklehs" }, "at": "2026-11-17T03:00:00Z" }"""
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            jsonPath("$.joined") { value(false) }
+        }
+    }
+
+    @Test
+    fun `GitHub 계정을 만든 지 30일이 안 됐으면 신청을 거절하고 신청할 수 있는 날을 알려 준다`() {
+        // given
+        val member = linkedUser()
+        val createdAt = Instant.now().minus(Duration.ofDays(30)).plusSeconds(60)
+        accountAge.createdAt = createdAt
+        val eligibleOn = createdAt.plus(Duration.ofDays(30)).atZone(ZoneId.of("Asia/Seoul")).toLocalDate().plusDays(1)
+
+        // when & then
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("HOSTING_ACCOUNT_TOO_NEW") }
+            jsonPath("$.message") { value("GitHub 계정을 만든 지 30일이 지나야 호스팅을 쓸 수 있습니다. 이 계정은 ${eligibleOn}부터 신청할 수 있습니다.") }
+        }
+        queue.commands.shouldBeEmpty()
+
+        // 거절된 신청도 1분에 한 번이다: 되풀이해도 GitHub 에 다시 묻지 않는다
+        accountAge.createdAt = FakeGitHubAccountAge.OLD
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isTooManyRequests() }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `GitHub 계정을 만든 지 꼭 30일이 지났으면 신청할 수 있다`() {
+        // given
+        val member = linkedUser()
+        accountAge.createdAt = Instant.now().minus(Duration.ofDays(30)).minusSeconds(60)
+
+        // when & then
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isAccepted() }
+        }
+        queue.commands.single().type shouldBe HostingCommand.JOIN
+    }
+
+    @Test
+    fun `연결한 뒤 GitHub 계정 이름을 바꿨으면 신청할 수 없다`() {
+        // given
+        val member = linkedUser()
+        accountAge.login = "renamed"
+
+        // when & then
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_GITHUB_LOGIN_CHANGED") }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `에이전트 토큰으로는 신청할 수 없다`() {
+        // given
+        val member = linkedUser()
+
+        // when & then
+        mockMvc.post("/hosting/membership") {
+            authorization(jwtTokenProvider.generateHostingAgentToken(member.user.id))
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isUnauthorized() }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `종료일 안내에 동의하지 않으면 신청할 수 없다`() {
+        // given
+        val member = linkedUser()
+
+        // when & then
+        listOf("""{"agreed": false}""", "{}").forEach { body ->
+            mockMvc.post("/hosting/membership") {
+                authorization(member.accessToken)
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }.andExpect {
+                status { isBadRequest() }
+            }
+        }
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `GitHub 계정을 연결하지 않았거나 GitHub 이 답하지 않으면 신청할 수 없다`() {
+        // given
+        val notLinked = loggedInUser()
+        val member = linkedUser(UserFixture.oAuthUser(email = "linked@example.com"))
+        accountAge.createdAt = null
+
+        // when & then
+        mockMvc.post("/hosting/membership") {
+            authorization(notLinked.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_GITHUB_NOT_LINKED") }
+        }
+        mockMvc.post("/hosting/membership") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"agreed": true}"""
+        }.andExpect {
+            status { isBadGateway() }
+            jsonPath("$.code") { value("HOSTING_UNAVAILABLE") }
+        }
         queue.commands.shouldBeEmpty()
     }
 
@@ -841,7 +1050,7 @@ class HostingIntegrationTest : IntegrationTest() {
         queue.commands.shouldBeEmpty()
     }
 
-    private fun linkedUser(): LoggedInUser = loggedInUser(UserFixture.oAuthUser().apply { linkGitHub(GITHUB) })
+    private fun linkedUser(user: User = UserFixture.oAuthUser()): LoggedInUser = loggedInUser(user.apply { linkGitHub(GITHUB) })
 
     private fun putApp(app: String, ownerId: Long = GITHUB.id) {
         store.files["apps/recklehs/$app.json"] = appJson(app, ownerId)

@@ -10,7 +10,7 @@ import java.util.UUID
 /**
  * 배포기에 보내는 명령. 삭제는 그사이 같은 이름으로 다시 만든 앱을 지우지 않게 앱의 세대를 함께 보낸다.
  * 배포 시작에는 앱 이름과 세대가 없다. 앱 이름은 배포기가 레포 이름으로 정한다. 업로드로 만든 앱의 명령에는 repo 가 없다.
- * owner 의 login 은 업로드·연결에서 배포기가 앱의 주인으로 쓴다.
+ * owner 의 login 은 업로드·연결·가입에서 배포기가 앱(가입은 팀)의 주인으로 쓴다.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class HostingCommand(
@@ -42,6 +42,20 @@ data class HostingCommand(
         const val DELETE = "delete"
         const val CONNECT = "connect"
         const val UPLOAD = "upload"
+        const val JOIN = "join"
+
+        /** 가입. 배포기가 이 계정의 팀을 만든다. 앱도 레포도 없다. */
+        fun join(account: GitHubAccount) = HostingCommand(
+            version = HostingFile.VERSION,
+            commandId = UUID.randomUUID().toString(),
+            type = JOIN,
+            at = Instant.now().truncatedTo(ChronoUnit.SECONDS),
+            owner = HostingAccount(account.id, account.login),
+            repo = null,
+            team = account.login.lowercase(),
+            app = null,
+            generation = null,
+        )
 
         fun of(type: String, app: HostingApp) = HostingCommand(
             version = HostingFile.VERSION,
