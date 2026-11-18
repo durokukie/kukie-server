@@ -16,7 +16,8 @@ Kukie server — Kotlin 2.3 / Spring Boot 4.1 / Java 25 REST API backed by Postg
 ```
 
 - Integration tests use Testcontainers (PostgreSQL + Redis, wired via `TestcontainersConfig`) and the `test` profile (`src/test/resources/application-test.yaml`), so Docker must be running.
-- Runtime env vars come from `.env` (see `.env.example` and `application.yaml`). Required properties (`@NotBlank` on OAuth credentials, `WEB_APP_URL`, `KUKIE_INTERNAL_TOKEN`, and a 32-byte base64 `KUKIE_CREDENTIAL_KEY`) are validated at startup; missing or blank values fail startup.
+- Secrets come from `.env` (see `.env.example`). Required properties (`@NotBlank` on OAuth credentials, `KUKIE_INTERNAL_TOKEN`, and a 32-byte base64 `KUKIE_CREDENTIAL_KEY`) are validated at startup; missing or blank values fail startup.
+- Environment-specific settings live in Spring profiles (`application-{local,dev,prod}.yaml`). `application.yaml` holds the strict defaults (Swagger off, `Secure` cookies, private cluster addresses rejected); profiles relax them or fill in per-environment values (`web-app.url`, `hosting.github-app`). With no active profile the app runs as `local`; deployed environments set `SPRING_PROFILES_ACTIVE`.
 
 ## Architecture
 
