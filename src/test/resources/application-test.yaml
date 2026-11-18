@@ -17,11 +17,10 @@ internal:
 
 github-app:
   id: 5531779
-  private-key: test-not-a-key
+  private-key: github-test-token
 
 cluster:
   credential-key: dGVzdC1jcmVkZW50aWFsLWtleS0zMi1ieXRlcy1vayE=
-  allow-local: false
 
 hosting:
   github-app: kukie-hosting-test

@@ -1,0 +1,14 @@
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+web-app:
+  url: https://dev.durokukie.com
+
+hosting:
+  github-app: kukie-hosting-dev
+
+cluster:
+  allow-local: true
