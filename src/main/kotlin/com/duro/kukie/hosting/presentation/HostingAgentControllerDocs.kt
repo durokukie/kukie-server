@@ -19,7 +19,7 @@ interface HostingAgentControllerDocs {
     @Operation(
         summary = "에이전트 로그인 시작",
         description = "코딩 에이전트(Claude Code, Codex)가 부릅니다. 인증이 없습니다. 에이전트는 code 와 loginUrl 을 사용자에게 보여 주고, " +
-            "사용자는 loginUrl 에서 code 를 입력해 허용합니다. 에이전트는 pollToken 으로 토큰을 받습니다. 10분 뒤 만료됩니다.",
+            "loginUrl 에 code 가 들어 있어 사용자는 그 주소를 열고 허용만 누릅니다. 에이전트는 pollToken 으로 토큰을 받습니다. 10분 뒤 만료됩니다.",
     )
     @ApiErrorResponses(HostingTooManyRequestsException::class)
     fun startLogin(): ResponseEntity<HostingAgentLoginResponse>

@@ -23,7 +23,7 @@ class StartHostingAgentLoginService(
     private val random = SecureRandom()
 
     /**
-     * 에이전트의 로그인을 시작한다. loginUrl 에는 code 를 넣지 않는다: 남이 만든 링크를 누르기만 해서 허용되지 않게 사용자가 직접 입력한다.
+     * 에이전트의 로그인을 시작한다. loginUrl 에 code 가 들어 있어 사용자는 열고 허용만 누른다. 허용 화면이 요청 시각을 보여 주고 확인을 받는다.
      * ponytail: 서버 전체 1분 120번. 앞단(CloudFront)이 시청자 주소 헤더를 붙이게 되면 IP 마다로 바꾼다.
      */
     operator fun invoke(): HostingAgentLoginResponse {
@@ -38,7 +38,7 @@ class StartHostingAgentLoginService(
         return HostingAgentLoginResponse(
             code = HostingAgentLogins.display(code),
             // 웹은 라우터가 없어 ?go= 로 열 화면을 받는다(로그인을 다녀와도 남는다)
-            loginUrl = webAppProperties.url.trimEnd('/') + "/?go=agent",
+            loginUrl = webAppProperties.url.trimEnd('/') + "/?go=agent&code=" + HostingAgentLogins.display(code),
             pollToken = pollToken,
             expiresIn = LOGIN_TTL.seconds,
         )

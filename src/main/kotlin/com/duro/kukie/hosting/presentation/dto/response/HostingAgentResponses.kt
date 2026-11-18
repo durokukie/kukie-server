@@ -6,9 +6,9 @@ import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
 
 data class HostingAgentLoginResponse(
-    /** 사용자가 허용 화면에 입력할 코드. 에이전트가 사용자에게 보여 준다. */
+    /** 허용 화면에 보이는 코드. 사용자는 화면의 코드가 이것과 같은지 본다. */
     val code: String,
-    /** 허용 화면 주소({WEB_APP_URL}/?go=agent). 코드는 들어 있지 않다. */
+    /** 허용 화면 주소({WEB_APP_URL}/?go=agent&code=<code>). 사용자는 열고 허용만 누른다. */
     val loginUrl: String,
     /** 에이전트가 토큰을 받을 때 쓰는 값. 사용자에게 보여 주지 않는다. */
     val pollToken: String,
