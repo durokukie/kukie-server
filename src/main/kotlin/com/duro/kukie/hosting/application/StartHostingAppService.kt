@@ -18,7 +18,7 @@ class StartHostingAppService(
      * 배포기는 누가 요청했는지 보지 않으므로, 회원의 목록에 있는 레포인지 여기서 확인한다.
      */
     operator fun invoke(userId: UUID, repository: String): HostingCommandResponse {
-        val account = hostingApps.accountOf(userId) ?: throw HostingRepositoryNotFoundException()
+        val account = hostingApps.accountOf(userId)
         val repos = hostingApps.repoList(account) ?: throw HostingRepositoryNotFoundException()
         if (!repos.allowed) throw HostingNotAllowedException()
         val repo = repos.repos.firstOrNull { it.fullName.equals(repository, ignoreCase = true) } ?: throw HostingRepositoryNotFoundException()

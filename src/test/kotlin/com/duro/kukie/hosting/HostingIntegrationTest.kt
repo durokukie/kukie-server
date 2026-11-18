@@ -2,6 +2,7 @@ package com.duro.kukie.hosting
 
 import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.support.FakeGitHubAccountAge
 import com.duro.kukie.support.FakeHostingCommandQueue
 import com.duro.kukie.support.FakeHostingStateStore
@@ -18,9 +19,6 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
-import java.time.Duration
-import java.time.Instant
-import java.time.ZoneId
 
 class HostingIntegrationTest : IntegrationTest() {
 
@@ -63,10 +61,13 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `GitHub 계정을 연결하지 않은 회원의 목록은 비어 있다`() {
+    fun `GitHub 계정을 연결하지 않은 회원은 Kukie 계정의 앱만 본다`() {
         // given
         val member = loggedInUser()
+        val kukie = HostingIdentity.kukie(member.user.id)
         putApp("shop")
+        putRepos("Recklehs/shop")
+        store.files["apps/${kukie.team}/notes.json"] = appJson("notes", kukie.id).replace("recklehs", kukie.team)
 
         // when & then
         mockMvc.get("/hosting/apps") {
@@ -74,7 +75,10 @@ class HostingIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isOk() }
             jsonPath("$.githubLogin") { value(null) }
-            jsonPath("$.apps.length()") { value(0) }
+            jsonPath("$.team") { value(kukie.team) }
+            jsonPath("$.apps.length()") { value(1) }
+            jsonPath("$.apps[0].app") { value("notes") }
+            jsonPath("$.installation") { value(null) }
         }
     }
 
@@ -491,42 +495,11 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `GitHub 계정을 만든 지 30일이 안 됐으면 신청을 거절하고 신청할 수 있는 날을 알려 준다`() {
+    fun `GitHub 계정을 연결하지 않은 회원은 Kukie 계정으로 신청한다`() {
         // given
-        val member = linkedUser()
-        val createdAt = Instant.now().minus(Duration.ofDays(30)).plusSeconds(60)
-        accountAge.createdAt = createdAt
-        val eligibleOn = createdAt.plus(Duration.ofDays(30)).atZone(ZoneId.of("Asia/Seoul")).toLocalDate().plusDays(1)
-
-        // when & then
-        mockMvc.post("/hosting/membership") {
-            authorization(member.accessToken)
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"agreed": true}"""
-        }.andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value("HOSTING_ACCOUNT_TOO_NEW") }
-            jsonPath("$.message") { value("GitHub 계정을 만든 지 30일이 지나야 호스팅을 쓸 수 있습니다. 이 계정은 ${eligibleOn}부터 신청할 수 있습니다.") }
-        }
-        queue.commands.shouldBeEmpty()
-
-        // 거절된 신청도 1분에 한 번이다: 되풀이해도 GitHub 에 다시 묻지 않는다
-        accountAge.createdAt = FakeGitHubAccountAge.OLD
-        mockMvc.post("/hosting/membership") {
-            authorization(member.accessToken)
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"agreed": true}"""
-        }.andExpect {
-            status { isTooManyRequests() }
-        }
-        queue.commands.shouldBeEmpty()
-    }
-
-    @Test
-    fun `GitHub 계정을 만든 지 꼭 30일이 지났으면 신청할 수 있다`() {
-        // given
-        val member = linkedUser()
-        accountAge.createdAt = Instant.now().minus(Duration.ofDays(30)).minusSeconds(60)
+        val member = loggedInUser()
+        val kukie = HostingIdentity.kukie(member.user.id)
+        accountAge.createdAt = null
 
         // when & then
         mockMvc.post("/hosting/membership") {
@@ -536,7 +509,13 @@ class HostingIntegrationTest : IntegrationTest() {
         }.andExpect {
             status { isAccepted() }
         }
-        queue.commands.single().type shouldBe HostingCommand.JOIN
+
+        with(queue.commands.single()) {
+            type shouldBe HostingCommand.JOIN
+            owner.id shouldBe kukie.id
+            owner.login shouldBe kukie.login
+            team shouldBe kukie.team
+        }
     }
 
     @Test
@@ -592,21 +571,12 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `GitHub 계정을 연결하지 않았거나 GitHub 이 답하지 않으면 신청할 수 없다`() {
+    fun `GitHub 이 답하지 않으면 GitHub 계정으로 신청할 수 없다`() {
         // given
-        val notLinked = loggedInUser()
-        val member = linkedUser(UserFixture.oAuthUser(email = "linked@example.com"))
+        val member = linkedUser()
         accountAge.createdAt = null
 
         // when & then
-        mockMvc.post("/hosting/membership") {
-            authorization(notLinked.accessToken)
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"agreed": true}"""
-        }.andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("HOSTING_GITHUB_NOT_LINKED") }
-        }
         mockMvc.post("/hosting/membership") {
             authorization(member.accessToken)
             contentType = MediaType.APPLICATION_JSON

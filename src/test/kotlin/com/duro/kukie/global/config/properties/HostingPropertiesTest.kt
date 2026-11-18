@@ -2,6 +2,7 @@ package com.duro.kukie.global.config.properties
 
 import com.duro.kukie.hosting.application.GetHostingAppsService
 import com.duro.kukie.hosting.application.HostingApps
+import com.duro.kukie.hosting.domain.HostingIdentity
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -26,7 +27,14 @@ class HostingPropertiesTest {
         runner.withPropertyValues(*enabled, "hosting.github-app=kukie-hosting-prod").run { context ->
             // given
             context.startupFailure.shouldBeNull()
-            val hostingApps = mockk<HostingApps> { every { accountOf(any()) } returns null }
+            val account = HostingIdentity.kukie(UUID.randomUUID())
+            val hostingApps = mockk<HostingApps> {
+                every { accountOf(any()) } returns account
+                every { ownedBy(account) } returns emptyList()
+                every { skippedPush(account, emptyList()) } returns null
+                every { allowed(account) } returns false
+                every { repoList(account) } returns null
+            }
 
             // when
             val response = GetHostingAppsService(hostingApps, context.getBean(HostingProperties::class.java))(UUID.randomUUID())

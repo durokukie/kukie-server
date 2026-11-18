@@ -18,7 +18,7 @@ class RedisHostingAgentDeployRepository(
 
     override fun save(deploy: HostingAgentDeploy, ttl: Duration) {
         val value = listOf(
-            deploy.userId, deploy.githubId, deploy.login, deploy.team, deploy.app, deploy.bytes, deploy.createdAt,
+            deploy.userId, deploy.ownerId, deploy.login, deploy.team, deploy.app, deploy.bytes, deploy.createdAt,
             deploy.commandId, deploy.startedAt, deploy.deploymentId, deploy.generation,
         ).joinToString("|") { it?.toString().orEmpty() }
         redisTemplate.opsForValue().set(deployKey(deploy.id), value, ttl)
@@ -30,7 +30,7 @@ class RedisHostingAgentDeployRepository(
         return HostingAgentDeploy(
             id = id,
             userId = UUID.fromString(f[0]),
-            githubId = f[1].toLong(),
+            ownerId = f[1].toLong(),
             login = f[2],
             team = f[3],
             app = f[4],

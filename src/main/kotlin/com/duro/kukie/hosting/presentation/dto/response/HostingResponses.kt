@@ -3,18 +3,20 @@ package com.duro.kukie.hosting.presentation.dto.response
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingConfig
 import com.duro.kukie.hosting.domain.HostingDeployment
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingLatest
 import com.duro.kukie.hosting.domain.HostingRepoItem
 import com.duro.kukie.hosting.domain.HostingRepoList
 import com.duro.kukie.hosting.domain.HostingTerms
 import com.duro.kukie.hosting.domain.SkippedPush
-import com.duro.kukie.user.domain.GitHubAccount
 import java.time.Instant
 import java.time.LocalDate
 
 data class HostingAppsResponse(
-    /** 연결한 GitHub 계정명. null 이면 먼저 계정을 연결해야 한다. */
+    /** 연결한 GitHub 계정명. null 이면 Kukie 계정으로 쓰고 있어 업로드로만 배포한다(레포 배포는 GitHub 를 연결한 뒤). */
     val githubLogin: String?,
+    /** 앱 주소에 들어가는 팀 이름(<앱>--<팀>). */
+    val team: String,
     /** 호스팅을 쓸 수 있는 계정인지. false 면 사용 신청(POST /hosting/membership)을 먼저 해야 한다. */
     val joined: Boolean,
     /** 서비스 종료일. 이날 앱과 데이터가 지워진다. 신청 전에 보여 준다. */
@@ -33,17 +35,16 @@ data class HostingAppsResponse(
 
         private fun installUrl(githubApp: String) = "https://github.com/apps/$githubApp/installations/new"
 
-        fun notLinked(githubApp: String) = HostingAppsResponse(null, false, HostingTerms.CLOSES_ON, APP_LIMIT, emptyList(), null, null, installUrl(githubApp))
-
         fun of(
             githubApp: String,
-            account: GitHubAccount,
+            account: HostingIdentity,
             joined: Boolean,
             apps: List<HostingApp>,
             skipped: SkippedPush?,
             repos: HostingRepoList?,
         ) = HostingAppsResponse(
-            githubLogin = account.login,
+            githubLogin = account.login.takeIf { account.gitHub },
+            team = account.team,
             joined = joined,
             closesOn = HostingTerms.CLOSES_ON,
             appLimit = APP_LIMIT,

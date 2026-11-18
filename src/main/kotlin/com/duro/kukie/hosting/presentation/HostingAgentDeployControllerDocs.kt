@@ -1,13 +1,13 @@
 package com.duro.kukie.hosting.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
+import com.duro.kukie.hosting.exception.HostingAccountChangedException
 import com.duro.kukie.hosting.exception.HostingAppLimitException
 import com.duro.kukie.hosting.exception.HostingAppSourceMismatchException
 import com.duro.kukie.hosting.exception.HostingDeployInProgressException
 import com.duro.kukie.hosting.exception.HostingDeployNotFoundException
 import com.duro.kukie.hosting.exception.HostingDeployNotStartedException
 import com.duro.kukie.hosting.exception.HostingDisabledException
-import com.duro.kukie.hosting.exception.HostingGitHubNotLinkedException
 import com.duro.kukie.hosting.exception.HostingInvalidAppNameException
 import com.duro.kukie.hosting.exception.HostingNotAllowedException
 import com.duro.kukie.hosting.exception.HostingTooManyDeploysException
@@ -39,7 +39,6 @@ interface HostingAgentDeployControllerDocs {
         HostingAppLimitException::class,
         HostingDeployInProgressException::class,
         HostingTooManyDeploysException::class,
-        HostingGitHubNotLinkedException::class,
         HostingNotAllowedException::class,
         HostingUnavailableException::class,
         HostingDisabledException::class,
@@ -56,6 +55,7 @@ interface HostingAgentDeployControllerDocs {
         HostingDeployNotFoundException::class,
         HostingUploadMissingException::class,
         HostingDeployInProgressException::class,
+        HostingAccountChangedException::class,
         HostingUnavailableException::class,
     )
     fun start(userId: UUID, deployId: String): ResponseEntity<HostingCommandResponse>

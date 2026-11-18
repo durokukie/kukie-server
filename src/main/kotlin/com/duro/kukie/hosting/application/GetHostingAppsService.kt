@@ -13,10 +13,10 @@ class GetHostingAppsService(
 
     operator fun invoke(userId: UUID): HostingAppsResponse {
         val githubApp = hostingProperties.githubApp
-        val account = hostingApps.accountOf(userId) ?: return HostingAppsResponse.notLinked(githubApp)
+        val account = hostingApps.accountOf(userId)
         val apps = hostingApps.ownedBy(account)
 
         val skipped = hostingApps.skippedPush(account, apps)
-        return HostingAppsResponse.of(githubApp, account, hostingApps.allowed(account), apps, skipped, hostingApps.repoList(account))
+        return HostingAppsResponse.of(githubApp, account, hostingApps.allowed(account), apps, skipped, hostingApps.repoList(account).takeIf { account.gitHub })
     }
 }
