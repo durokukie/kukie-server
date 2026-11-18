@@ -4,6 +4,7 @@ import com.duro.kukie.global.config.properties.HostingProperties
 import com.duro.kukie.global.util.logger
 import com.duro.kukie.hosting.application.port.out.HostingCommandQueue
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.user.application.UserWithdrawn
 import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionPhase
@@ -23,10 +24,11 @@ class HostingWithdrawalListener(
     fun on(event: UserWithdrawn) {
         if (!hostingProperties.enabled) return
         // 실패해도 탈퇴는 되돌리지 않는다 — 그 앱은 남으므로 로그를 보고 사람이 지운다
+        val account = HostingIdentity.of(event.userId, event.gitHub)
         val apps = try {
-            hostingApps.ownedBy(event.gitHub)
+            hostingApps.ownedBy(account)
         } catch (exception: Exception) {
-            log.error("탈퇴한 회원의 호스팅 앱을 읽지 못했다 — 앱이 남는다: user={}, github={}", event.userId, event.gitHub.id, exception)
+            log.error("탈퇴한 회원의 호스팅 앱을 읽지 못했다 — 앱이 남는다: user={}, team={}", event.userId, account.team, exception)
             return
         }
         apps.forEach { app ->
