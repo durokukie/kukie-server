@@ -1,6 +1,7 @@
 package com.duro.kukie.hosting
 
 import com.duro.kukie.global.security.JwtTokenProvider
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
@@ -161,18 +162,27 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `GitHub 계정을 연결하지 않았으면 허용할 수 없다`() {
+    fun `GitHub 계정을 연결하지 않은 회원은 Kukie 계정으로 가입했으면 허용한다`() {
         // given
         val member = loggedInUser()
-        val login = startLogin()
+        val kukie = HostingIdentity.kukie(member.user.id)
+        val before = startLogin()
 
         // when & then
-        mockMvc.post("/hosting/agent/login/${login.code}/approve") {
+        mockMvc.post("/hosting/agent/login/${before.code}/approve") {
             authorization(member.accessToken)
         }.andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("HOSTING_GITHUB_NOT_LINKED") }
+            status { isForbidden() }
+            jsonPath("$.code") { value("HOSTING_NOT_ALLOWED") }
         }
+
+        store.files["apps/_members/${kukie.id}.json"] =
+            """{ "version": 1, "owner": { "id": ${kukie.id}, "login": "${kukie.login}" }, "at": "2026-11-18T03:00:00Z" }"""
+        val after = startLogin()
+        mockMvc.post("/hosting/agent/login/${after.code}/approve") {
+            authorization(member.accessToken)
+        }.andExpect { status { isNoContent() } }
+        token(after).andExpect { status { isOk() } }
     }
 
     @Test

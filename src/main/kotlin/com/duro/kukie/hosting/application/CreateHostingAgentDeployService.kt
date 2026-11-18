@@ -8,7 +8,6 @@ import com.duro.kukie.hosting.domain.HostingAgentDeploy
 import com.duro.kukie.hosting.exception.HostingAppLimitException
 import com.duro.kukie.hosting.exception.HostingAppSourceMismatchException
 import com.duro.kukie.hosting.exception.HostingDeployInProgressException
-import com.duro.kukie.hosting.exception.HostingGitHubNotLinkedException
 import com.duro.kukie.hosting.exception.HostingInvalidAppNameException
 import com.duro.kukie.hosting.exception.HostingNotAllowedException
 import com.duro.kukie.hosting.exception.HostingTooManyDeploysException
@@ -36,12 +35,12 @@ class CreateHostingAgentDeployService(
 
     /** 에이전트가 폴더를 올릴 주소를 준다. 업로드 키는 서버가 정한다. 같은 이름의 업로드 앱이 있으면 그 앱의 새 버전이 된다. */
     operator fun invoke(command: CreateHostingAgentDeployCommand): HostingAgentDeployResponse {
-        val account = hostingApps.accountOf(command.userId) ?: throw HostingGitHubNotLinkedException()
+        val account = hostingApps.accountOf(command.userId)
         if (!hostingApps.allowed(account)) throw HostingNotAllowedException()
-        val team = account.login.lowercase()
+        val team = account.team
         if (!HostingAgentDeploys.validName(team, command.name)) {
             val suggestion = HostingAgentDeploys.suggest(command.name, team)
-                ?: throw HostingInvalidAppNameException("GitHub 계정 이름이 길어 앱을 만들 수 없습니다.")
+                ?: throw HostingInvalidAppNameException("계정 이름이 길어 앱을 만들 수 없습니다.")
             throw HostingInvalidAppNameException("앱 이름이 규칙에 맞지 않거나 계정 이름과 합쳐 너무 깁니다. 예: $suggestion")
         }
         if (command.bytes > MAX_UPLOAD_BYTES) throw HostingUploadTooLargeException()
@@ -62,7 +61,7 @@ class CreateHostingAgentDeployService(
         val deploy = HostingAgentDeploy(
             id = ByteArray(20).also(random::nextBytes).joinToString("") { "%02x".format(it) },
             userId = command.userId,
-            githubId = account.id,
+            ownerId = account.id,
             login = account.login,
             team = team,
             app = command.name,

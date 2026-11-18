@@ -1,6 +1,8 @@
 spring:
   application:
     name: kukie
+  profiles:
+    default: local
   jpa:
     # DNS 조회나 메일 발송을 기다리는 동안 DB 연결을 쥐지 않게 끈다
     open-in-view: false
@@ -9,6 +11,10 @@ spring:
 
 springdoc:
   default-produces-media-type: application/json
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 
 jwt:
   secret: ${JWT_SECRET}
@@ -25,17 +31,12 @@ oauth:
 
 auth:
   cookie:
-    # https 에서만 쿠키가 실린다. 로컬 http 개발에서만 false (AuthCookieProperties)
-    secure: ${AUTH_COOKIE_SECURE:true}
+    secure: true
 
 aws:
   region: ${AWS_REGION:ap-northeast-2}
   ses:
     from: Kukie <noreply@durokukie.com>
-
-# 메일 버튼이 여는 웹 주소
-web-app:
-  url: ${WEB_APP_URL}
 
 internal:
   gateway-token: ${KUKIE_GATEWAY_INTERNAL_TOKEN:}
@@ -67,15 +68,13 @@ hugging-face:
   refresh-lock-timeout: PT5M
 
 # 호스팅 앱의 상태 파일 버킷과 명령 큐 (kukie-infra 가 만든다). 둘 중 하나라도 비어 있으면 호스팅 API 는 503 을 준다
-# 둘 다 있으면 그 환경의 GitHub App slug(HOSTING_GITHUB_APP)도 있어야 서버가 뜬다
 hosting:
-  github-app: ${HOSTING_GITHUB_APP:}
   state-bucket: ${HOSTING_STATE_BUCKET:}
   commands-queue-url: ${HOSTING_COMMANDS_QUEUE_URL:}
 
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}
-  allow-local: ${KUKIE_ALLOW_LOCAL_CLUSTER:false}
+  allow-local: false
   aws:
     # 고객이 CloudFormation 으로 만드는 KukieAccess-<ExternalId> 역할 템플릿 (kukie-infra 가 게시한다)
     template-url: https://kukie-templates-320343233643-ap-northeast-2.s3.ap-northeast-2.amazonaws.com/kukie-access/v5.yaml

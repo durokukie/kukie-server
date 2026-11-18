@@ -1,0 +1,5 @@
+web-app:
+  url: https://durokukie.com
+
+hosting:
+  github-app: kukie-hosting

@@ -1,5 +1,6 @@
 package com.duro.kukie.global.config
 
+import com.duro.kukie.global.config.properties.SwaggerProperties
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.global.exception.ErrorCode
 import com.duro.kukie.global.exception.ErrorResponse
@@ -19,6 +20,7 @@ import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.responses.ApiResponse
 import io.swagger.v3.oas.models.security.SecurityRequirement
 import io.swagger.v3.oas.models.security.SecurityScheme
+import io.swagger.v3.oas.models.servers.Server
 import org.springdoc.core.customizers.OperationCustomizer
 import org.springdoc.core.utils.SpringDocUtils
 import org.springframework.context.annotation.Bean
@@ -28,7 +30,9 @@ import org.springframework.web.method.HandlerMethod
 import kotlin.reflect.full.createInstance
 
 @Configuration
-class SwaggerConfig {
+class SwaggerConfig(
+    private val swaggerProperties: SwaggerProperties,
+) {
 
     init {
         SpringDocUtils.getConfig().addAnnotationsToIgnore(AuthUser::class.java)
@@ -61,6 +65,7 @@ class SwaggerConfig {
                     )
                     .addSchemas(ERROR_RESPONSE_SCHEMA_NAME, errorResponseSchema()),
             )
+            .apply { swaggerProperties.serverUrl?.let { addServersItem(Server().url(it)) } }
 
     @Bean
     fun authenticatedOperationCustomizer(): OperationCustomizer =

@@ -1,6 +1,5 @@
 package com.duro.kukie.hosting.domain
 
-import com.duro.kukie.user.domain.GitHubAccount
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
@@ -45,14 +44,14 @@ data class HostingCommand(
         const val JOIN = "join"
 
         /** 가입. 배포기가 이 계정의 팀을 만든다. 앱도 레포도 없다. */
-        fun join(account: GitHubAccount) = HostingCommand(
+        fun join(account: HostingIdentity) = HostingCommand(
             version = HostingFile.VERSION,
             commandId = UUID.randomUUID().toString(),
             type = JOIN,
             at = Instant.now().truncatedTo(ChronoUnit.SECONDS),
             owner = HostingAccount(account.id, account.login),
             repo = null,
-            team = account.login.lowercase(),
+            team = account.team,
             app = null,
             generation = null,
         )
@@ -69,19 +68,19 @@ data class HostingCommand(
             generation = app.generation,
         )
 
-        fun deploy(account: GitHubAccount, repository: String) = HostingCommand(
+        fun deploy(account: HostingIdentity, repository: String) = HostingCommand(
             version = HostingFile.VERSION,
             commandId = UUID.randomUUID().toString(),
             type = DEPLOY,
             at = Instant.now().truncatedTo(ChronoUnit.SECONDS),
             owner = HostingAccount(account.id, account.login),
             repo = HostingRepo(fullName = repository),
-            team = account.login.lowercase(),
+            team = account.team,
             app = null,
             generation = null,
         )
 
-        fun upload(account: GitHubAccount, deploy: HostingAgentDeploy) = HostingCommand(
+        fun upload(account: HostingIdentity, deploy: HostingAgentDeploy) = HostingCommand(
             version = HostingFile.VERSION,
             commandId = UUID.randomUUID().toString(),
             type = UPLOAD,
@@ -95,7 +94,7 @@ data class HostingCommand(
         )
 
         /** 업로드로 만든 앱에 레포를 잇는다. 세대는 화면이 본 앱이 그사이 지웠다 다시 만든 앱이 아닌지 배포기가 확인하는 데 쓴다. */
-        fun connect(account: GitHubAccount, app: HostingApp, repository: String) = HostingCommand(
+        fun connect(account: HostingIdentity, app: HostingApp, repository: String) = HostingCommand(
             version = HostingFile.VERSION,
             commandId = UUID.randomUUID().toString(),
             type = CONNECT,

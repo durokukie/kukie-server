@@ -1,6 +1,6 @@
 package com.duro.kukie.hosting.domain
 
-import com.duro.kukie.user.domain.GitHubAccount
+import com.duro.kukie.hosting.domain.HostingIdentity
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldMatch
 import org.junit.jupiter.api.Test
@@ -43,7 +43,7 @@ class HostingCommandTest {
     @Test
     fun `배포 시작 명령에는 앱 이름과 세대가 없다`() {
         // when
-        val command = HostingCommand.deploy(GitHubAccount(127021195, "Recklehs"), "Recklehs/Shop")
+        val command = HostingCommand.deploy(HostingIdentity(127021195, "Recklehs"), "Recklehs/Shop")
         val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(command))
 
         // then
@@ -71,7 +71,7 @@ class HostingCommandTest {
         )
 
         // when
-        val command = HostingCommand.connect(GitHubAccount(127021195, "Recklehs"), app, "Recklehs/shop-frontend")
+        val command = HostingCommand.connect(HostingIdentity(127021195, "Recklehs"), app, "Recklehs/shop-frontend")
         val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(command))
 
         // then
@@ -112,7 +112,7 @@ class HostingCommandTest {
         val deploy = HostingAgentDeploy(
             id = "3f9a1c0e7b2d4a6f8c1e5b9d0a2c4e6f8b1d3a5c",
             userId = java.util.UUID.randomUUID(),
-            githubId = 127021195,
+            ownerId = 127021195,
             login = "Recklehs",
             team = "recklehs",
             app = "my-shop",
@@ -121,7 +121,7 @@ class HostingCommandTest {
         )
 
         // when
-        val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(HostingCommand.upload(GitHubAccount(127021195, "Recklehs"), deploy)))
+        val json = JsonMapper.builder().build().readTree(JsonMapper.builder().build().writeValueAsString(HostingCommand.upload(HostingIdentity(127021195, "Recklehs"), deploy)))
 
         // then
         json.path("type").stringValue() shouldBe "upload"
@@ -139,7 +139,7 @@ class HostingCommandTest {
     fun `가입 명령에는 계정과 팀만 있다`() {
         // when
         val mapper = JsonMapper.builder().build()
-        val json = mapper.readTree(mapper.writeValueAsString(HostingCommand.join(GitHubAccount(127021195, "Recklehs"))))
+        val json = mapper.readTree(mapper.writeValueAsString(HostingCommand.join(HostingIdentity(127021195, "Recklehs"))))
 
         // then
         json.path("type").stringValue() shouldBe "join"

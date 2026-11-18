@@ -7,10 +7,10 @@ import com.duro.kukie.hosting.domain.HostingAgentDeploy
 import com.duro.kukie.hosting.domain.HostingAgentDeployRepository
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingFailure
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.exception.HostingDeployNotStartedException
 import com.duro.kukie.hosting.exception.HostingTooManyRequestsException
 import com.duro.kukie.hosting.presentation.dto.response.HostingAgentDeployStatusResponse
-import com.duro.kukie.user.domain.GitHubAccount
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
@@ -62,7 +62,7 @@ class WaitHostingAgentDeployService(
      */
     private fun status(start: HostingAgentDeploy): HostingAgentDeployStatusResponse {
         var deploy = start
-        val account = GitHubAccount(deploy.githubId, deploy.login)
+        val account = HostingIdentity(deploy.ownerId, deploy.login)
         val elapsed = Duration.between(deploy.startedAt ?: deploy.createdAt, Instant.now()).seconds
         val app = hostingApps.appOf(account, deploy.app)
         if (app != null && app.latest.commandId == deploy.commandId && app.latest.deploymentId != deploy.deploymentId) {
