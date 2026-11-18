@@ -5,11 +5,11 @@ import com.duro.kukie.hosting.application.port.out.HostingCommandQueue
 import com.duro.kukie.hosting.application.port.out.HostingUploadStore
 import com.duro.kukie.hosting.domain.HostingAgentDeployRepository
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.hosting.domain.HostingIdentity
+import com.duro.kukie.hosting.exception.HostingAccountChangedException
 import com.duro.kukie.hosting.exception.HostingDeployInProgressException
-import com.duro.kukie.hosting.exception.HostingGitHubNotLinkedException
 import com.duro.kukie.hosting.exception.HostingUploadMissingException
 import com.duro.kukie.hosting.presentation.dto.response.HostingCommandResponse
-import com.duro.kukie.user.domain.GitHubAccount
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
@@ -35,9 +35,9 @@ class StartHostingAgentDeployService(
     operator fun invoke(userId: UUID, id: String): HostingCommandResponse {
         val deploy = hostingAgentDeploys.requireOwned(userId, id)
         deploy.commandId?.let { return HostingCommandResponse(it) }
-        // 배포를 만든 뒤 GitHub 계정 연결이 풀리거나 다른 회원에게 옮겨졌으면 저장해 둔 계정으로 보내지 않는다
+        // 배포를 만든 뒤 GitHub 계정 연결이 바뀌었으면(다른 팀이 됨) 저장해 둔 계정으로 보내지 않는다
         val account = hostingApps.accountOf(userId)
-        if (account == null || account.id != deploy.githubId || account.login.lowercase() != deploy.team) throw HostingGitHubNotLinkedException()
+        if (account.id != deploy.ownerId || account.team != deploy.team) throw HostingAccountChangedException()
         if (hostingUploadStore.size(deploy.key) != deploy.bytes) throw HostingUploadMissingException()
         waitHostingAgentDeployService.settleActive(userId, deploy.team)
         // 다른 회원의 진행 중 표시(GitHub 계정을 옮긴 경우)는 이 회원이 끝낼 수 없으니 치운다
@@ -48,7 +48,7 @@ class StartHostingAgentDeployService(
             throw HostingDeployInProgressException("진행 중인 배포가 있습니다: ${hostingAgentDeployRepository.activeOf(deploy.team)}. 그 배포가 끝난 뒤 다시 시도해 주세요.")
         }
 
-        val command = HostingCommand.upload(GitHubAccount(deploy.githubId, deploy.login), deploy)
+        val command = HostingCommand.upload(HostingIdentity(deploy.ownerId, deploy.login), deploy)
         var commandId = hostingAgentDeployRepository.claimStart(deploy.id, command.commandId, HostingAgentDeploys.RECORD_TTL)
         // 먼저 정한 쪽이 기록하기 전에 멈췄으면(정한 지 오래됐는데 기록에 commandId 가 없음) 그 표시를 풀고 다시 정한다
         if (commandId != command.commandId && hostingAgentDeploys.requireOwned(userId, id).commandId == null &&

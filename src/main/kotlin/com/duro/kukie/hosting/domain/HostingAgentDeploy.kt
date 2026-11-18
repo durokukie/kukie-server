@@ -11,7 +11,7 @@ import java.util.UUID
 data class HostingAgentDeploy(
     val id: String,
     val userId: UUID,
-    val githubId: Long,
+    val ownerId: Long,
     val login: String,
     val team: String,
     val app: String,

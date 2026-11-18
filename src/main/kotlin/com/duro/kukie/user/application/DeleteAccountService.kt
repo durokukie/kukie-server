@@ -53,7 +53,7 @@ class DeleteAccountService(
         val gitHub = user.githubId?.let { id -> user.githubLogin?.let { GitHubAccount(id, it) } }
         user.anonymize(utcNow())
         refreshTokenRepository.deleteAll(userId)
-        gitHub?.let { events.publishEvent(UserWithdrawn(userId, it)) }
+        events.publishEvent(UserWithdrawn(userId, gitHub))
     }
 
     // 팀 삭제·관리자 변경과 같은 순서로 팀부터 잠근 뒤 구성원을 읽는다

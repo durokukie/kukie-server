@@ -9,6 +9,7 @@ import com.duro.kukie.global.config.properties.AuthCookieProperties
 import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.util.utcNow
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.notification.domain.Notification
 import com.duro.kukie.notification.domain.NotificationRepository
 import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
@@ -151,6 +152,21 @@ class DeleteAccountIntegrationTest : IntegrationTest() {
         hostingQueue.commands.map { it.type to it.app }.toSet() shouldBe
             setOf(HostingCommand.DELETE to "shop", HostingCommand.DELETE to "blog")
         hostingQueue.commands.map { it.generation }.toSet() shouldBe setOf(HOSTING_GENERATION)
+    }
+
+    @Test
+    fun `GitHub 를 연결하지 않은 회원이 탈퇴하면 Kukie 계정의 앱마다 삭제 명령을 보낸다`() {
+        val me = loggedInUser()
+        val kukie = HostingIdentity.kukie(me.user.id)
+        hostingStore.files["apps/${kukie.team}/notes.json"] = hostingAppJson("notes", kukie.id).replace("recklehs", kukie.team)
+
+        deleteMe(me.accessToken).andExpect { status { isNoContent() } }
+
+        with(hostingQueue.commands.single()) {
+            type shouldBe HostingCommand.DELETE
+            team shouldBe kukie.team
+            app shouldBe "notes"
+        }
     }
 
     @Test

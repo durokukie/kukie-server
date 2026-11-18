@@ -7,6 +7,7 @@ import com.duro.kukie.hosting.domain.HostingAllowedList
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFile
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingMember
 import com.duro.kukie.hosting.domain.HostingRepoList
 import com.duro.kukie.hosting.domain.SkippedPush
@@ -19,7 +20,7 @@ import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
-/** 배포기가 적은 상태 파일에서 회원의 앱을 읽는다. 앱의 주인은 계정명이 아니라 GitHub 숫자 id 로 가린다. */
+/** 배포기가 적은 상태 파일에서 회원의 앱을 읽는다. 앱의 주인은 계정명이 아니라 숫자 id 로 가린다. */
 @Component
 class HostingApps(
     private val hostingProperties: HostingProperties,
@@ -30,25 +31,26 @@ class HostingApps(
 
     private val log = logger()
 
-    /** 연결하지 않았으면 null. */
-    fun accountOf(userId: UUID): GitHubAccount? {
+    /** GitHub 를 연결했으면 그 계정, 아니면 회원의 Kukie 계정. 연결을 바꾸면 다른 팀이 되어 그 전 팀의 앱은 보이지 않는다. */
+    fun accountOf(userId: UUID): HostingIdentity {
         if (!hostingProperties.enabled) throw HostingDisabledException()
         val user = userRepository.findByIdOrThrow(userId)
-        return GitHubAccount(user.githubId ?: return null, user.githubLogin ?: return null)
+        val gitHub = user.githubId?.let { id -> user.githubLogin?.let { GitHubAccount(id, it) } }
+        return HostingIdentity.of(userId, gitHub)
     }
 
-    fun ownedBy(account: GitHubAccount): List<HostingApp> =
+    fun ownedBy(account: HostingIdentity): List<HostingApp> =
         hostingStateStore.list("apps/${account.team}/")
             .filter { it.endsWith(".json") }
             .mapNotNull { read<HostingApp>(it) }
             .filter { it.owner.id == account.id }
 
     /** 팀 폴더에 있는 앱 파일, 주인이 누구든. 계정명을 다른 사람이 다시 쓴 경우를 가리는 데 쓴다. */
-    fun appInTeam(account: GitHubAccount, app: String): HostingApp? =
+    fun appInTeam(account: HostingIdentity, app: String): HostingApp? =
         app.takeIf { APP_NAME.matches(it) }?.let { read<HostingApp>("apps/${account.team}/$it.json") }
 
     /** 계정의 앱. 없거나 주인이 다르면 null. */
-    fun appOf(account: GitHubAccount, app: String): HostingApp? =
+    fun appOf(account: HostingIdentity, app: String): HostingApp? =
         app.takeIf { APP_NAME.matches(it) }?.let { read<HostingApp>("apps/${account.team}/$it.json") }?.takeIf { it.owner.id == account.id }
 
     /** 지금 세대의 배포 기록 하나. 30일이 지났으면 null. */
@@ -56,11 +58,11 @@ class HostingApps(
         deploymentId.takeIf { DEPLOYMENT_ID.matches(it) }?.let { read<HostingDeployment>("${app.deploymentPrefix}$it.json") }
 
     /** 거절한 마지막 push 나 명령(가리지 않은 그대로). */
-    fun lastSkipped(account: GitHubAccount): SkippedPush? =
+    fun lastSkipped(account: HostingIdentity): SkippedPush? =
         read<SkippedPush>("apps/_skipped/${account.team}.json")?.takeIf { it.sender.id == account.id }
 
     fun requireOwned(userId: UUID, app: String): HostingApp {
-        val account = accountOf(userId) ?: throw HostingAppNotFoundException()
+        val account = accountOf(userId)
         if (!APP_NAME.matches(app)) throw HostingAppNotFoundException()
         return read<HostingApp>("apps/${account.team}/$app.json")?.takeIf { it.owner.id == account.id }
             ?: throw HostingAppNotFoundException()
@@ -70,7 +72,7 @@ class HostingApps(
      * 배포기가 받아 주는 계정인지: 가입했거나(apps/_members/<id>.json) 운영자가 넣어 준 계정(apps/_allowed.json).
      * 둘 다 없으면 App 을 설치한 계정의 레포 목록에 적힌 값.
      */
-    fun allowed(account: GitHubAccount): Boolean {
+    fun allowed(account: HostingIdentity): Boolean {
         if (read<HostingMember>("apps/_members/${account.id}.json")?.owner?.id == account.id) return true
         val list = read<HostingAllowedList>("apps/_allowed.json") ?: return repoList(account)?.allowed == true
         // ids 가 있으면 id 로만 본다(login 은 다른 계정이 가져갈 수 있다). 옛 배포기의 파일(logins 만)이면 계정명으로 본다
@@ -79,14 +81,14 @@ class HostingApps(
     }
 
     /** 계정이 GitHub App 에 허용한 레포. App 을 설치하지 않았으면 null. */
-    fun repoList(account: GitHubAccount): HostingRepoList? =
+    fun repoList(account: HostingIdentity): HostingRepoList? =
         read<HostingRepoList>("apps/_repos/${account.team}.json")?.takeIf { it.owner.id == account.id }
 
     /**
      * 배포를 시작하지 못한 마지막 push 나 명령. 그 뒤 같은 레포(업로드 명령이면 같은 이름)의 앱이 배포됐으면 지난 일이라 주지 않는다.
      * 앱의 출처가 맞지 않거나 레포를 이미 다른 앱이 써서 거절한 것은 다른 앱이 배포돼도 풀리지 않아 가리지 않는다.
      */
-    fun skippedPush(account: GitHubAccount, apps: List<HostingApp>): SkippedPush? =
+    fun skippedPush(account: HostingIdentity, apps: List<HostingApp>): SkippedPush? =
         read<SkippedPush>("apps/_skipped/${account.team}.json")
             ?.takeIf { it.sender.id == account.id }
             ?.takeUnless { skipped -> skipped.reason !in UNRESOLVED_BY_DEPLOYS && apps.any { it.isFor(skipped) && it.latest.at > skipped.at } }
@@ -127,9 +129,6 @@ class HostingApps(
                     if (!known) log.warn("모르는 버전의 호스팅 상태 파일입니다: key={}, version={}", key, file.version)
                 }
             }
-
-    private val GitHubAccount.team: String
-        get() = login.lowercase()
 
     private val HostingApp.deploymentPrefix: String
         get() = "deployments/$team/$app/$generation/"

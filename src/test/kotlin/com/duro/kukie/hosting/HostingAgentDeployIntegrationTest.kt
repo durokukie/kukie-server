@@ -4,6 +4,7 @@ import com.duro.kukie.global.security.JwtTokenProvider
 import com.duro.kukie.hosting.application.HostingAgentDeploys
 import com.duro.kukie.hosting.domain.HostingAgentDeployRepository
 import com.duro.kukie.hosting.domain.HostingCommand
+import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.support.FakeHostingCommandQueue
 import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.FakeHostingUploadStore
@@ -169,6 +170,31 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
             owner.login shouldBe "Recklehs"
             source?.key shouldBe "uploads/recklehs/my-shop/$id.tar.gz"
             source?.sha shouldBe id
+        }
+    }
+
+    @Test
+    fun `GitHub 계정을 연결하지 않은 회원은 Kukie 계정의 팀으로 배포한다`() {
+        // given
+        val member = loggedInUser(UserFixture.oAuthUser(email = "kukie@test.com"))
+        val kukie = HostingIdentity.kukie(member.user.id)
+        store.files["apps/_members/${kukie.id}.json"] =
+            """{ "version": 1, "owner": { "id": ${kukie.id}, "login": "${kukie.login}" }, "at": "2026-11-18T03:00:00Z" }"""
+        val agent = Agent(member, jwt.generateHostingAgentToken(member.user.id))
+        val id = deployId(agent, "my-shop", 1234)
+        uploads.sizes["uploads/${kukie.team}/my-shop/$id.tar.gz"] = 1234
+
+        // when
+        val commandId = start(agent, id)
+
+        // then
+        with(queue.commands.single()) {
+            this.commandId shouldBe commandId
+            type shouldBe HostingCommand.UPLOAD
+            team shouldBe kukie.team
+            owner.id shouldBe kukie.id
+            owner.login shouldBe kukie.login
+            source?.key shouldBe "uploads/${kukie.team}/my-shop/$id.tar.gz"
         }
     }
 
@@ -387,7 +413,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `배포를 만든 뒤 GitHub 계정 연결이 풀렸으면 시작하지 않는다`() {
+    fun `배포를 만든 뒤 GitHub 계정 연결이 바뀌었으면 시작하지 않는다`() {
         // given
         val agent = agent()
         val id = uploaded(agent, "my-shop")
@@ -396,7 +422,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         // when & then
         mockMvc.post("/hosting/agent/deploys/$id/start") { authorization(agent.token) }.andExpect {
             status { isConflict() }
-            jsonPath("$.code") { value("HOSTING_GITHUB_NOT_LINKED") }
+            jsonPath("$.code") { value("HOSTING_ACCOUNT_CHANGED") }
         }
         queue.commands.shouldBeEmpty()
     }

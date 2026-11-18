@@ -4,7 +4,6 @@ import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.hosting.exception.HostingAgentDeniedException
 import com.duro.kukie.hosting.exception.HostingAgentExpiredException
 import com.duro.kukie.hosting.exception.HostingDisabledException
-import com.duro.kukie.hosting.exception.HostingGitHubNotLinkedException
 import com.duro.kukie.hosting.exception.HostingNotAllowedException
 import com.duro.kukie.hosting.exception.HostingTooManyRequestsException
 import com.duro.kukie.hosting.exception.HostingUnavailableException
@@ -51,13 +50,12 @@ interface HostingAgentControllerDocs {
 
     @Operation(
         summary = "에이전트 로그인 허용",
-        description = "그 에이전트가 1시간 동안 내 GitHub 계정으로 호스팅 앱을 배포할 수 있게 합니다. GitHub 계정을 연결하지 않았으면 409, " +
+        description = "그 에이전트가 1시간 동안 내 계정으로 호스팅 앱을 배포할 수 있게 합니다. " +
             "아직 호스팅을 쓸 수 없는 계정이면 403 이고 에이전트도 그렇게 알게 됩니다.",
     )
     @ApiResponse(responseCode = "204", description = "No Content")
     @ApiErrorResponses(
         HostingAgentExpiredException::class,
-        HostingGitHubNotLinkedException::class,
         HostingNotAllowedException::class,
         HostingUnavailableException::class,
         HostingDisabledException::class,
