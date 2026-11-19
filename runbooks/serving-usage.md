@@ -42,7 +42,7 @@ V33은 `tbl_serving_usage.ttfb_millis`(첫 바이트까지 밀리초, 옛 기록
 
 ## 공개 주소·한도
 
-`SERVING_PORTAL_PUBLIC_API_BASE_URL`을 설정하면 그 공개 주소를 사용자에게 안내한다. 없으면 프론트가 기존 동일 출처 프록시 `<origin>/member/serving/v1`을 사용한다. 설정 여부는 연결 준비/모델 Ready 판정이 아니다. 내부 카운터 URL은 기존 ADMIN 전용 endpoint API에서만 조회한다.
+`SERVING_PORTAL_PUBLIC_API_BASE_URL`을 설정하면 그 공개 주소를 사용자에게 안내한다. 없으면 프론트가 기존 동일 출처 프록시 `<origin>/api/serving/v1`을 사용한다. 설정 여부는 연결 준비/모델 Ready 판정이 아니다. 내부 카운터 URL은 기존 ADMIN 전용 endpoint API에서만 조회한다.
 
 키 5개·기본 90일/최대 365일과 현재 인스턴스별 동시·유휴/전체 제한을 안내한다. 토큰 예산과 여러 서버를 합친 전역 제한은 미지원이다. 화면은 이 운영 제한을 읽기 전용으로 보여주며 관리자별 미구현 한도 편집을 제공하지 않는다.
 
