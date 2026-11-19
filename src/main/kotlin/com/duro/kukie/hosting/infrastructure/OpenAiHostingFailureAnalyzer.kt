@@ -56,7 +56,7 @@ class OpenAiHostingFailureAnalyzer internal constructor(
         "model" to hostingProperties.analysisModel,
         "instructions" to system,
         "input" to prompt,
-        "reasoning" to mapOf("effort" to "low"),
+        "reasoning" to mapOf("effort" to hostingProperties.analysisEffort),
         "max_output_tokens" to MAX_OUTPUT_TOKENS,
         "store" to false,
         "text" to mapOf("format" to ANSWER_FORMAT),
@@ -80,7 +80,7 @@ class OpenAiHostingFailureAnalyzer internal constructor(
         private val READ_TIMEOUT: Duration = Duration.ofSeconds(40)
 
         // 추론 토큰도 여기에 든다
-        private const val MAX_OUTPUT_TOKENS = 4000
+        private const val MAX_OUTPUT_TOKENS = 8000
 
         private val ANSWER_FORMAT = mapOf(
             "type" to "json_schema",

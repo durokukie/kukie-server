@@ -17,6 +17,7 @@ data class HostingProperties(
     /** 배포 실패를 AI 로 분석할 때 쓰는 OpenAI API 키. 비어 있으면 분석을 쓸 수 없다. */
     val analysisApiKey: String = "",
     val analysisModel: String = "gpt-6-luna",
+    val analysisEffort: String = "medium",
 ) {
     val enabled: Boolean
         get() = !stateBucket.isNullOrBlank() && !commandsQueueUrl.isNullOrBlank()
