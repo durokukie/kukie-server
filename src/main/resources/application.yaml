@@ -71,7 +71,7 @@ hugging-face:
 hosting:
   state-bucket: ${HOSTING_STATE_BUCKET:}
   commands-queue-url: ${HOSTING_COMMANDS_QUEUE_URL:}
-  analysis-api-key: ${ANTHROPIC_API_KEY:}
+  analysis-api-key: ${OPENAI_API_KEY:}
 
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}

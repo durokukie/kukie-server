@@ -84,7 +84,7 @@ interface HostingControllerDocs {
 
     @Operation(
         summary = "실패 원인 AI 분석",
-        description = "build_failed·build_timeout·start_failed 로 실패한 배포의 로그 끝(12KB)과 빌드 정보를 AI(Anthropic API)에 보내 " +
+        description = "build_failed·build_timeout·start_failed 로 실패한 배포의 로그 끝(12KB)과 빌드 정보를 AI(OpenAI API, 기본 gpt-5.6-luna)에 보내 " +
             "원인과 고칠 방법을 추정합니다. 소스 코드는 보내지 않고, 키·토큰처럼 보이는 값은 가려서 보냅니다. 답은 틀릴 수 있으니 AI 추정으로 보여 주세요. " +
             "계정마다 하루 10번이고, 같은 배포를 다시 물으면 저장해 둔 답을 주며(cached) 횟수를 쓰지 않습니다. 몇 초에서 수십 초 걸립니다.",
     )
