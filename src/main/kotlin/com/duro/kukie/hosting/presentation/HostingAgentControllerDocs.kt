@@ -27,9 +27,9 @@ interface HostingAgentControllerDocs {
     @Operation(
         summary = "에이전트 토큰 받기",
         description = "폼 본문 pollToken=… 으로 부릅니다. 허용될 때까지 최대 25초 기다립니다. 허용되면 200 과 text/plain 한 줄 " +
-            "`Authorization: Bearer <토큰>`을 줍니다. 에이전트는 이 응답을 파일로 받아 `curl -H @파일`로 씁니다. 토큰은 1시간짜리이고 " +
-            "/hosting/agent 아래의 에이전트 API 에서만 받습니다. 아직이면 202 와 {\"status\":\"pending\"}, 곧바로 다시 부릅니다. " +
-            "토큰은 한 번만 줍니다. 응답을 놓쳤으면 로그인을 처음부터 다시 합니다.",
+            "`Authorization: Bearer hk_…`(에이전트 키)를 줍니다. 에이전트는 이 응답을 파일로 받아 `curl -H @파일`로 쓰고, 컴퓨터에 두고 " +
+            "다음 배포에도 씁니다. 키는 /hosting/agent 아래의 에이전트 API 에서만 받고, 30일 쓰지 않거나 화면에서 끊으면 401 입니다. " +
+            "아직이면 202 와 {\"status\":\"pending\"}, 곧바로 다시 부릅니다. 키는 한 번만 줍니다. 응답을 놓쳤으면 로그인을 처음부터 다시 합니다.",
     )
     @ApiResponse(responseCode = "202", description = "Accepted: 아직 허용되지 않음")
     @ApiErrorResponses(
@@ -50,7 +50,7 @@ interface HostingAgentControllerDocs {
 
     @Operation(
         summary = "에이전트 로그인 허용",
-        description = "그 에이전트가 1시간 동안 내 계정으로 호스팅 앱을 배포할 수 있게 합니다. " +
+        description = "그 컴퓨터의 에이전트가 키를 받아 내 계정으로 호스팅 앱을 배포할 수 있게 합니다. 키는 30일 쓰지 않거나 화면에서 끊을 때까지 씁니다. " +
             "아직 호스팅을 쓸 수 없는 계정이면 403 이고 에이전트도 그렇게 알게 됩니다.",
     )
     @ApiResponse(responseCode = "204", description = "No Content")

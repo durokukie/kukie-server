@@ -1,6 +1,7 @@
 package com.duro.kukie.hosting
 
 import com.duro.kukie.global.security.JwtTokenProvider
+import com.duro.kukie.hosting.application.HostingAgentKeys
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.IntegrationTest
@@ -27,6 +28,9 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
     @Autowired
     private lateinit var jwt: JwtTokenProvider
 
+    @Autowired
+    private lateinit var keys: HostingAgentKeys
+
     @Test
     fun `로그인을 시작하면 코드와 허용 화면 주소, 토큰을 받을 값을 준다`() {
         // when
@@ -49,7 +53,7 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `허용하면 에이전트는 호스팅 에이전트 토큰을 한 번 받는다`() {
+    fun `허용하면 에이전트는 에이전트 키를 한 번 받는다`() {
         // given
         val member = linkedUser()
         allow(GITHUB.id)
@@ -66,8 +70,8 @@ class HostingAgentLoginIntegrationTest : IntegrationTest() {
             content { contentTypeCompatibleWith(MediaType.TEXT_PLAIN) }
             header { string("Cache-Control", "no-store") }
         }.andReturn().response.contentAsString
-        body shouldStartWith "Authorization: Bearer "
-        jwt.getUserIdFromHostingAgentToken(body.removePrefix("Authorization: Bearer ").trim()) shouldBe member.user.id
+        body shouldStartWith "Authorization: Bearer hk_"
+        keys.userIdOf(body.removePrefix("Authorization: Bearer ").trim()) shouldBe member.user.id
         token(login).andExpect {
             status { isGone() }
             jsonPath("$.code") { value("HOSTING_AGENT_EXPIRED") }
