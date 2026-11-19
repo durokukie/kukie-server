@@ -17,6 +17,7 @@ class GetHostingAppsService(
         val apps = hostingApps.ownedBy(account)
 
         val skipped = hostingApps.skippedPush(account, apps)
-        return HostingAppsResponse.of(githubApp, account, hostingApps.allowed(account), apps, skipped, hostingApps.repoList(account).takeIf { account.gitHub })
+        val suspensions = apps.associate { it.app to hostingApps.suspension(it) }
+        return HostingAppsResponse.of(githubApp, account, hostingApps.allowed(account), apps, suspensions, skipped, hostingApps.repoList(account).takeIf { account.gitHub })
     }
 }

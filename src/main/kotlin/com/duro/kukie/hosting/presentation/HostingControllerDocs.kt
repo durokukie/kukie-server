@@ -3,6 +3,7 @@ package com.duro.kukie.hosting.presentation
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.hosting.exception.HostingAppNotFoundException
 import com.duro.kukie.hosting.exception.HostingAppSourceMismatchException
+import com.duro.kukie.hosting.exception.HostingAppSuspendedException
 import com.duro.kukie.hosting.exception.HostingCommandTooSoonException
 import com.duro.kukie.hosting.exception.HostingDisabledException
 import com.duro.kukie.hosting.exception.HostingLogNotFoundException
@@ -88,6 +89,7 @@ interface HostingControllerDocs {
         HostingAppSourceMismatchException::class,
         HostingRepositoryNotFoundException::class,
         HostingRepositoryInUseException::class,
+        HostingAppSuspendedException::class,
         HostingNotAllowedException::class,
         HostingCommandTooSoonException::class,
         HostingUnavailableException::class,
@@ -105,6 +107,7 @@ interface HostingControllerDocs {
     @ApiErrorResponses(
         HostingAppNotFoundException::class,
         HostingAppSourceMismatchException::class,
+        HostingAppSuspendedException::class,
         HostingCommandTooSoonException::class,
         HostingUnavailableException::class,
         HostingDisabledException::class,
@@ -119,6 +122,7 @@ interface HostingControllerDocs {
     @ApiResponse(responseCode = "202", description = "Accepted")
     @ApiErrorResponses(
         HostingAppNotFoundException::class,
+        HostingAppSuspendedException::class,
         HostingCommandTooSoonException::class,
         HostingUnavailableException::class,
         HostingDisabledException::class,

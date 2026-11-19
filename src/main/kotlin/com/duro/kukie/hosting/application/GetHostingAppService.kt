@@ -12,6 +12,6 @@ class GetHostingAppService(
     operator fun invoke(userId: UUID, app: String): HostingAppDetailResponse {
         val owned = hostingApps.requireOwned(userId, app)
 
-        return HostingAppDetailResponse.of(owned, hostingApps.deployments(owned))
+        return HostingAppDetailResponse.of(owned, hostingApps.suspension(owned), hostingApps.deployments(owned))
     }
 }

@@ -10,8 +10,10 @@ import com.duro.kukie.hosting.domain.HostingFile
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingMember
 import com.duro.kukie.hosting.domain.HostingRepoList
+import com.duro.kukie.hosting.domain.HostingSuspension
 import com.duro.kukie.hosting.domain.SkippedPush
 import com.duro.kukie.hosting.exception.HostingAppNotFoundException
+import com.duro.kukie.hosting.exception.HostingAppSuspendedException
 import com.duro.kukie.hosting.exception.HostingDisabledException
 import com.duro.kukie.user.domain.GitHubAccount
 import com.duro.kukie.user.domain.UserRepository
@@ -66,6 +68,15 @@ class HostingApps(
         if (!APP_NAME.matches(app)) throw HostingAppNotFoundException()
         return read<HostingApp>("apps/${account.team}/$app.json")?.takeIf { it.owner.id == account.id }
             ?: throw HostingAppNotFoundException()
+    }
+
+    /** 앱이 정지돼 있으면 그 기록. 주인 확인을 거친 앱에만 쓴다. */
+    fun suspension(app: HostingApp): HostingSuspension? =
+        read<HostingSuspension>("apps/_suspended/${app.team}/${app.app}.json")?.takeIf { it.team == app.team && it.app == app.app }
+
+    /** 정지된 앱은 배포기가 배포도 삭제도 거부하므로, 명령을 보내기 전에 여기서 막는다. */
+    fun requireNotSuspended(app: HostingApp) {
+        if (suspension(app) != null) throw HostingAppSuspendedException()
     }
 
     /**
