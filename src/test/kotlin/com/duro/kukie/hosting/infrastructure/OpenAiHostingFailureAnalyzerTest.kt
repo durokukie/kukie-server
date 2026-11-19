@@ -30,7 +30,7 @@ class OpenAiHostingFailureAnalyzerTest {
         server.expect(requestTo(URL))
             .andExpect(method(HttpMethod.POST))
             .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer sk-test"))
-            .andExpect(jsonPath("$.model").value("gpt-5.6-luna"))
+            .andExpect(jsonPath("$.model").value("gpt-6-luna"))
             .andExpect(jsonPath("$.instructions").value("system"))
             .andExpect(jsonPath("$.input").value("prompt"))
             .andExpect(jsonPath("$.text.format.type").value("json_schema"))
