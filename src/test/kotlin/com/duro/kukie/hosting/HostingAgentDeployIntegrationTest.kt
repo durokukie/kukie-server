@@ -256,6 +256,27 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `배포기가 시작 명령을 고쳐 배포했으면 바꾼 명령을 알려 준다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "succeeded")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "succeeded",
+            build = """{ "method": "auto", "providers": ["python"], "start": "gunicorn main:app", "corrected": "gunicorn app:app" }""",
+        )
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.status") { value("succeeded") }
+            jsonPath("$.build.corrected") { value("gunicorn app:app") }
+            jsonPath("$.build.correctionNotice") { doesNotExist() }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("'gunicorn main:app' 로 바꿔 배포했어요")) }
+        }
+    }
+
+    @Test
     fun `배포기가 같은 명령을 다시 하면 새 배포를 따라간다`() {
         // given
         val agent = agent()
@@ -490,7 +511,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         }
     """.trimIndent()
 
-    private fun putDeployment(app: String, id: String, phase: String, failure: String = "null", hasLog: Boolean = false, updatedAt: String = "2099-11-13T01:17:51Z", commandId: String? = null) {
+    private fun putDeployment(app: String, id: String, phase: String, failure: String = "null", hasLog: Boolean = false, updatedAt: String = "2099-11-13T01:17:51Z", commandId: String? = null, build: String? = null) {
         store.files["deployments/recklehs/$app/$GENERATION/$id.json"] = """
             {
               "version": 1,
@@ -498,7 +519,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
               "phase": "$phase",
               "trigger": "upload", ${commandId?.let { "\"commandId\": \"$it\"," } ?: ""}
               "commit": { "sha": "0123456789abcdef", "message": "upload" },
-              "config": { "port": 3000, "size": "S", "source": "default" },
+              "config": { "port": 3000, "size": "S", "source": "default" }, ${build?.let { "\"build\": $it," } ?: ""}
               "imageReused": false,
               "hasLog": $hasLog,
               "failure": $failure,
