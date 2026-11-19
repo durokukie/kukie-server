@@ -57,6 +57,9 @@ dependencies {
     implementation("software.amazon.awssdk:sqs:2.55.11")
     implementation("software.amazon.awssdk:s3:2.55.11")
 
+    // 배포 실패 원인 분석(Claude)
+    implementation("com.anthropic:anthropic-java:3.6.0")
+
     // UUID
     implementation("com.github.f4b6a3:uuid-creator:6.1.1")
 

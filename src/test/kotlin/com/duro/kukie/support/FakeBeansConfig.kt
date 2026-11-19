@@ -58,4 +58,8 @@ class FakeBeansConfig {
     @Bean
     @Primary
     fun fakeGitHubAccountAge(): FakeGitHubAccountAge = FakeGitHubAccountAge()
+
+    @Bean
+    @Primary
+    fun fakeHostingFailureAnalyzer(): FakeHostingFailureAnalyzer = FakeHostingFailureAnalyzer()
 }

@@ -29,6 +29,11 @@ enum class HostingErrorCode(
     HOSTING_TOO_MANY_DEPLOYS(HttpStatus.TOO_MANY_REQUESTS, "한 시간에 배포를 너무 많이 만들었습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_COMMAND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "방금 같은 요청을 보냈습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "호스팅 정보를 가져오지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
+    HOSTING_DEPLOYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "배포를 찾을 수 없습니다. 보관 기간(30일)이 지났을 수 있습니다."),
+    HOSTING_ANALYSIS_NOT_AVAILABLE(HttpStatus.CONFLICT, "AI 원인 분석은 빌드나 시작에 실패한 배포에만 쓸 수 있습니다."),
+    HOSTING_TOO_MANY_ANALYSES(HttpStatus.TOO_MANY_REQUESTS, "AI 원인 분석은 하루 10번까지 쓸 수 있습니다. 내일 다시 시도해 주세요."),
+    HOSTING_ANALYSIS_FAILED(HttpStatus.BAD_GATEWAY, "AI 원인 분석을 하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
+    HOSTING_ANALYSIS_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "이 서버에서는 AI 원인 분석을 쓸 수 없습니다."),
     HOSTING_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "이 서버에서는 호스팅을 쓸 수 없습니다."),
     ;
 

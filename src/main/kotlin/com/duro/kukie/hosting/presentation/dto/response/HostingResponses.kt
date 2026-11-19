@@ -103,14 +103,25 @@ data class HostingAppDetailResponse(
     val app: HostingAppResponse,
     /** 최신순, 20건까지. 30일이 지난 배포는 없다. */
     val deployments: List<HostingDeployment>,
+    /** 이 서버에서 실패 원인 AI 분석을 쓸 수 있는지. */
+    val analysisEnabled: Boolean,
 ) {
     companion object {
-        fun of(app: HostingApp, deployments: List<HostingDeployment>) =
-            HostingAppDetailResponse(HostingAppResponse.from(app), deployments)
+        fun of(app: HostingApp, deployments: List<HostingDeployment>, analysisEnabled: Boolean) =
+            HostingAppDetailResponse(HostingAppResponse.from(app), deployments, analysisEnabled)
     }
 }
 
 data class HostingCommandResponse(
     /** 배포 시작과 재배포는 앱의 latest.commandId 가 이 값이 되면 시작된 것이다. */
     val commandId: String,
+)
+
+/** AI 가 로그를 보고 추정한 원인. 틀릴 수 있으므로 화면에 AI 추정이라고 밝힌다. */
+data class HostingFailureAnalysisResponse(
+    val cause: String,
+    /** 고칠 방법. 비어 있을 수 있다. */
+    val fixes: List<String>,
+    /** 같은 배포를 전에 분석한 결과를 다시 준 것이다. 하루 횟수를 쓰지 않는다. */
+    val cached: Boolean = false,
 )
