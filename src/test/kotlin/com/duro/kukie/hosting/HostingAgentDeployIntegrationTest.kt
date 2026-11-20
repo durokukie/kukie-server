@@ -354,8 +354,8 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
             jsonPath("$.status") { value("retrying") }
         }
         val retry = awaitCommands(2).last()
-        // 재시도 명령을 배포기가 받기 전이다
-        waitFor(agent, id).andExpect { jsonPath("$.status") { value("queued") } }
+        // 재시도 명령을 배포기가 받기 전이다. 명령을 보낸 뒤 상태를 남기므로 잠깐 retrying 일 수 있다
+        awaitStatus(agent, id, "queued")
         putUploadApp("my-shop", commandId = retry.commandId, deploymentId = RETRIED_ID, phase = "succeeded")
         putDeployment(
             "my-shop", RETRIED_ID, "succeeded", sha = id, commandId = retry.commandId,
@@ -613,6 +613,17 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
           }
         }
     """.trimIndent()
+
+    private fun awaitStatus(agent: Agent, id: String, status: String) {
+        val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+        var last: String? = null
+        while (System.nanoTime() < deadline) {
+            last = JsonMapper.builder().build().readTree(waitFor(agent, id).andReturn().response.contentAsString).path("status").stringValue()
+            if (last == status) return
+            Thread.sleep(50)
+        }
+        last shouldBe status
+    }
 
     private fun awaitCommands(count: Int): List<HostingCommand> {
         val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
