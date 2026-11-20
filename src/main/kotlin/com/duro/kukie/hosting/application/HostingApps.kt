@@ -174,7 +174,8 @@ class HostingApps(
 
     private fun dbExportPrefix(account: HostingIdentity) = "deployments/${account.team}/_db/"
 
-    private fun generationStart(app: HostingApp): Instant =
+    /** 지금 세대의 앱을 만든 시각. 그 전 줄은 지우기 전 같은 이름 앱의 것이다. */
+    fun generationStart(app: HostingApp): Instant =
         runCatching { Instant.from(STAMP.parse(app.generation)) }.getOrDefault(Instant.EPOCH)
 
     private inline fun <reified T : HostingFile> read(key: String): T? =

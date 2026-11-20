@@ -89,6 +89,7 @@ class HostingDataIntegrationTest : IntegrationTest() {
         val member = linkedUser()
         putApp("shop", generation = "20261120T030500Z")
         putLog("shop", "20261120T030100Z", "2026-11-20T03:00:40.000000000Z old app")
+        putLog("shop", "20261120T030500Z", "2026-11-20T03:04:40.000000000Z old app\n2026-11-20T03:05:10.000000000Z new app starts")
         putLog("shop", "20261120T030700Z", "2026-11-20T03:06:40.000000000Z new app")
 
         // when & then
@@ -97,7 +98,7 @@ class HostingDataIntegrationTest : IntegrationTest() {
             param("from", "2026-11-20T02:00:00Z")
             param("to", "2026-11-20T04:00:00Z")
         }.andExpect {
-            content { string("2026-11-20T03:06:40.000000000Z new app\n") }
+            content { string("2026-11-20T03:05:10.000000000Z new app starts\n2026-11-20T03:06:40.000000000Z new app\n") }
         }
     }
 

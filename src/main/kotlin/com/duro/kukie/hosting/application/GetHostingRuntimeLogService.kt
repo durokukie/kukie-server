@@ -22,12 +22,13 @@ class GetHostingRuntimeLogService(
         if (start >= end || Duration.between(start, end) > MAX_SPAN) throw HostingInvalidLogRangeException()
 
         val keys = hostingApps.runtimeLogKeys(owned, start, end)
+        val since = maxOf(start, hostingApps.generationStart(owned))
         val chunks = ArrayDeque<String>()
         var bytes = 0
         var cut = keys.size > MAX_FILES
         // 최근 것부터 읽어 상한에서 멈춘다
         for (key in keys.takeLast(MAX_FILES).asReversed()) {
-            val lines = hostingApps.readText(key)?.lineSequence()?.filter { it.isNotEmpty() && within(it, start, end) }?.toList().orEmpty()
+            val lines = hostingApps.readText(key)?.lineSequence()?.filter { it.isNotEmpty() && within(it, since, end) }?.toList().orEmpty()
             if (lines.isEmpty()) continue
             val chunk = lines.joinToString("\n", postfix = "\n")
             val size = chunk.toByteArray(Charsets.UTF_8).size
