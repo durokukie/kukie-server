@@ -40,15 +40,33 @@ data class HostingConfig(
 /**
  * 커밋이 어떻게 빌드됐는지. method 는 dockerfile(레포의 Dockerfile) 또는 auto(Dockerfile 이 없어 배포기가 알아냄).
  * 나머지는 auto 일 때 알아낸 언어·버전과 앱을 시작하는 명령이다. 레포가 정할 수 있는 값이라 보여 주기만 한다.
+ * corrected 는 알아낸 시작 명령이 없는 모듈을 가리켜 배포기가 start 로 고쳐 빌드했을 때 처음 알아낸 명령이다.
  */
 data class HostingBuild(
     val method: String,
     val providers: List<String>? = null,
     val versions: Map<String, String>? = null,
     val start: String? = null,
-)
+    val corrected: String? = null,
+    /** start 가 서버의 재시도(HostingStartRetries)가 보낸 명령이다. */
+    val retried: Boolean? = null,
+    /** 프로젝트 루트와 한 단계 아래의 이름(폴더는 / 로 끝남). 내용은 없다. 시작 명령을 고르는 AI 가 읽는다. */
+    val files: List<String>? = null,
+) {
+    /** 배포기가 시작 명령을 고쳤을 때 에이전트가 사용자에게 전할 안내. */
+    val correctionNotice: String?
+        @JsonIgnore get() {
+            if (corrected == null || start == null) return null
+            val json = start.replace("\\", "\\\\").replace("\"", "\\\"")
+            return "시작 명령 '$corrected' 가 가리키는 모듈이 없어 '$start' 로 바꿔 배포했어요. " +
+                "다음에도 이 명령으로 배포하려면 루트의 kukie.json 에 {\"start\": \"$json\"} 를 넣으세요."
+        }
+}
 
 data class HostingFailure(val code: String, val message: String)
+
+/** 시작하지 못한 배포(of)를 서버가 start 로 한 번 더 배포한 것. 그 명령으로 빌드했는지는 build.retried 다. */
+data class HostingRetryRef(val of: String, val start: String)
 
 data class HostingLatest(
     val deploymentId: String,
@@ -88,8 +106,20 @@ data class HostingDeployment(
     val imageReused: Boolean,
     val hasLog: Boolean,
     val failure: HostingFailure? = null,
+    /** 서버가 보낸 시작 명령 재시도일 때만. */
+    val retry: HostingRetryRef? = null,
     val startedAt: Instant,
     val updatedAt: Instant,
+) : HostingFile
+
+/** 악용이나 관리자 판단으로 정지된 앱(apps/_suspended/<team>/<app>.json). 정지가 풀리거나 앱을 지우면 배포기가 지운다. */
+data class HostingSuspension(
+    override val version: Int,
+    val team: String,
+    val app: String,
+    /** abuse_mining, abuse_mail, abuse_scan, abuse_probe, admin. 모르는 값도 올 수 있다. */
+    val code: String,
+    val at: Instant,
 ) : HostingFile
 
 /** 계정이 GitHub App 에 읽기를 허용한 레포. 파일이 없으면 App 을 설치하지 않은 것이다. */

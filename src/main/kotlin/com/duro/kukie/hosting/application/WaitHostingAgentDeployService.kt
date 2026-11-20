@@ -6,8 +6,10 @@ import com.duro.kukie.hosting.application.port.out.HostingAgentRateLimit
 import com.duro.kukie.hosting.domain.HostingAgentDeploy
 import com.duro.kukie.hosting.domain.HostingAgentDeployRepository
 import com.duro.kukie.hosting.domain.HostingApp
+import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFailure
 import com.duro.kukie.hosting.domain.HostingIdentity
+import com.duro.kukie.hosting.domain.HostingStartRetry
 import com.duro.kukie.hosting.exception.HostingDeployNotStartedException
 import com.duro.kukie.hosting.exception.HostingTooManyRequestsException
 import com.duro.kukie.hosting.presentation.dto.response.HostingAgentDeployStatusResponse
@@ -25,6 +27,7 @@ class WaitHostingAgentDeployService(
     private val hostingLongPolls: HostingLongPolls,
     private val hostingProperties: HostingProperties,
     private val webAppProperties: WebAppProperties,
+    private val hostingStartRetries: HostingStartRetries,
 ) {
 
     /** 배포가 끝나거나 timeout(최대 agentDeployWait)이 지날 때까지 기다려 상태를 준다. 에이전트는 done 이 true 가 될 때까지 다시 부른다. */
@@ -84,7 +87,7 @@ class WaitHostingAgentDeployService(
         val deploymentId = deploy.deploymentId
         if (deploymentId != null) {
             if (app == null || app.generation != deploy.generation) return failed(elapsed, HostingFailure(APP_DELETED, "the app was deleted during the deployment"))
-            return deploymentStatus(app, deploymentId, elapsed)
+            return deploymentStatus(deploy, app, deploymentId, elapsed)
         }
         val skipped = hostingApps.lastSkipped(account)
         if (skipped != null && skipped.commandId == deploy.commandId) return failed(elapsed, HostingFailure(skipped.reason, "the deployer refused the upload"))
@@ -92,20 +95,40 @@ class WaitHostingAgentDeployService(
         return HostingAgentDeployStatusResponse(done = false, status = QUEUED, elapsed = elapsed)
     }
 
-    private fun deploymentStatus(app: HostingApp, deploymentId: String, elapsed: Long): HostingAgentDeployStatusResponse {
+    private fun deploymentStatus(deploy: HostingAgentDeploy, app: HostingApp, deploymentId: String, elapsed: Long): HostingAgentDeployStatusResponse {
         val record = hostingApps.deployment(app, deploymentId)
         val phase = record?.phase ?: app.latest.phase.takeIf { app.latest.deploymentId == deploymentId } ?: QUEUED
         val updatedAt = record?.updatedAt ?: app.latest.at
         return when (phase) {
             SUCCEEDED -> HostingAgentDeployStatusResponse(
                 done = true, status = SUCCEEDED, elapsed = elapsed, url = app.url, build = record?.build,
+                hint = record?.build?.correctionNotice ?: record?.let { retryNotice(app, it) },
                 next = if (app.uploaded) "GitHub 레포를 연결하면 기본 브랜치에 push 할 때마다 자동으로 배포돼요: ${webAppProperties.url.trimEnd('/')}/?go=hosting" else null,
             )
-            FAILED -> failed(
-                elapsed,
-                record?.failure ?: HostingFailure("internal", "the deployment failed"),
-                log = record?.takeIf { it.hasLog }?.let { hostingApps.buildLogTail(app, deploymentId, LOG_TAIL_BYTES) },
-            )
+            FAILED -> {
+                val retry = record?.let { hostingStartRetries.follow(deploy.userId, app, it) }
+                when (retry?.status) {
+                    // 에이전트는 계속 기다린다. 보낸 재시도는 그 명령의 배포를 따라간다
+                    HostingStartRetry.ANALYZING -> HostingAgentDeployStatusResponse(done = false, status = RETRYING, elapsed = elapsed)
+                    // 배포기가 그 명령을 받거나 거절한 것을 본 뒤에야 옮겨 탄다. 그 전에는 큐에 넣지 못해 skipped 로 바뀔 수 있다
+                    HostingStartRetry.SENT -> when {
+                        app.latest.commandId == retry.commandId || app.latest.at > retry.at ||
+                            hostingApps.lastSkipped(HostingIdentity(deploy.ownerId, deploy.login))?.commandId == retry.commandId -> {
+                            val switched = deploy.copy(commandId = retry.commandId, deploymentId = null, generation = null, startedAt = retry.at)
+                            hostingAgentDeploys.save(switched)
+                            status(switched)
+                        }
+                        Duration.between(retry.at, Instant.now()) > QUEUED_LIMIT -> failed(elapsed, HostingFailure(STUCK, "the deployer has not taken the retry"))
+                        else -> HostingAgentDeployStatusResponse(done = false, status = RETRYING, elapsed = elapsed)
+                    }
+                    else -> failed(
+                        elapsed,
+                        record?.failure ?: HostingFailure("internal", "the deployment failed"),
+                        log = record?.takeIf { it.hasLog }?.let { hostingApps.buildLogTail(app, deploymentId, LOG_TAIL_BYTES) },
+                        flow = record?.let { flowNotice(app, it, retry) },
+                    )
+                }
+            }
             else -> if (Duration.between(updatedAt, Instant.now()) > STALLED) {
                 failed(elapsed, HostingFailure(STUCK, "the deployment has not moved"))
             } else {
@@ -114,14 +137,30 @@ class WaitHostingAgentDeployService(
         }
     }
 
-    private fun failed(elapsed: Long, failure: HostingFailure, log: String? = null) = HostingAgentDeployStatusResponse(
+    private fun failed(elapsed: Long, failure: HostingFailure, log: String? = null, flow: String? = null) = HostingAgentDeployStatusResponse(
         done = true, status = FAILED, elapsed = elapsed, failure = failure,
-        hint = HINTS[failure.code] ?: HINTS.getValue("internal"),
+        hint = listOfNotNull(flow, HINTS[failure.code] ?: HINTS.getValue("internal")).joinToString(" "),
         logTail = log,
     )
 
+    /** 재시도로 뜬 배포: 처음 명령과 AI 가 고른 명령, 다음에도 쓰려면 kukie.json 에 넣으라는 안내. */
+    private fun retryNotice(app: HostingApp, record: HostingDeployment): String? {
+        val retry = record.retry?.takeIf { record.build?.retried == true } ?: return null
+        val first = hostingApps.deployment(app, retry.of)?.build?.start
+        return HostingStartFlow.succeeded(first, retry.start)
+    }
+
+    /** 시작하지 못한 배포에서 서버가 해 본 것: 규칙 보정, AI 재시도와 그 결과. 없으면 null. */
+    private fun flowNotice(app: HostingApp, record: HostingDeployment, retry: HostingStartRetry?): String? {
+        if (record.failure?.code != START_FAILED) return null
+        val first = record.retry?.of?.let { hostingApps.deployment(app, it) }
+        return HostingStartFlow.failed(first ?: record, record.takeIf { first != null }, retry)
+    }
+
     companion object {
         private const val QUEUED = "queued"
+        private const val RETRYING = "retrying"
+        private const val START_FAILED = "start_failed"
         private const val SUCCEEDED = "succeeded"
         private const val FAILED = "failed"
         private const val STUCK = "stuck"
@@ -143,14 +182,17 @@ class WaitHostingAgentDeployService(
             "not_detected" to "어떤 앱인지 알아내지 못했습니다. Dockerfile 을 추가한 뒤 새 배포를 만드세요.",
             "no_dockerfile" to "어떤 앱인지 알아내지 못했습니다. Dockerfile 을 추가한 뒤 새 배포를 만드세요.",
             "no_start" to "시작 명령을 찾지 못했습니다. kukie.json 에 start 를 적거나 start 스크립트를 만든 뒤 새 배포를 만드세요.",
+            "start_mismatch" to "시작 명령이 가리키는 Python 모듈이 프로젝트에 없습니다. failure.message 에 kukie.json 예시가 있으면 그대로 루트의 kukie.json 에 넣고, 없으면 앱 객체가 있는 파일로 start 를 적은 뒤 새 배포를 만드세요.",
+            "wrong_root" to "올린 폴더 맨 위에 앱이 없습니다. failure.message 에 적힌 하위 폴더 안에서 다시 묶어 새 배포를 만드세요.",
             "build_failed" to "빌드가 실패했습니다. logTail 의 오류를 보고 코드를 고친 뒤 새 배포를 만드세요.",
             "build_timeout" to "빌드가 15분을 넘었습니다. 빌드를 가볍게 하거나 Dockerfile 을 만든 뒤 새 배포를 만드세요.",
-            "start_failed" to "앱이 뜨지 않았습니다. logTail 의 === app === 아래 출력을 보고, 앱이 PORT 환경변수의 포트에서 받는지와 빠진 의존성이 없는지 확인하세요.",
+            "start_failed" to "앱이 뜨지 않았습니다. logTail 의 === app === 아래 출력을 보고, 앱이 PORT 환경변수의 포트에서 받는지와 빠진 의존성이 없는지 확인하세요. 시작 명령이 틀렸으면 맞는 명령을 루트의 kukie.json 에 {\"start\": \"...\"} 로 적은 뒤 새 배포를 만드세요.",
             "app_limit" to "앱이 이미 3개입니다. 앱을 지우거나 있는 앱 이름으로 배포하세요.",
             "not_allowed" to "아직 호스팅을 쓸 수 없는 계정입니다. 사용자에게 Kukie 의 앱 배포 화면에서 사용 신청을 먼저 하라고 전하세요.",
             "invalid_team_name" to "이 GitHub 계정 이름으로는 앱을 만들 수 없습니다.",
             "invalid_app_name" to "앱 이름이 규칙에 맞지 않습니다. 이름을 바꿔 새 배포를 만드세요.",
             "name_too_long" to "계정 이름과 앱 이름을 합친 길이가 깁니다. 더 짧은 앱 이름으로 새 배포를 만드세요.",
+            "suspended" to "이 앱은 정지돼 있어 배포할 수 없습니다. 다시 시도하지 말고, 사용자에게 Kukie 에 문의하라고 전하세요.",
             "source_mismatch" to "이 이름의 앱은 레포에 연결돼 있습니다. 그 레포에 push 하면 배포됩니다.",
             "app_name_taken" to "이 이름의 앱은 다른 GitHub 계정이 올린 앱입니다. 다른 앱 이름으로 새 배포를 만드세요.",
             "account_renamed" to "GitHub 계정 이름을 바꾸기 전 이름의 팀이 남아 있어 배포할 수 없습니다. 다시 시도하지 말고, 사용자에게 Kukie 에 문의해 예전 팀을 지운 뒤 배포하라고 전하세요.",

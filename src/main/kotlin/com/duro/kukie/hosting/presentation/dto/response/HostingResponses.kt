@@ -7,6 +7,8 @@ import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingLatest
 import com.duro.kukie.hosting.domain.HostingRepoItem
 import com.duro.kukie.hosting.domain.HostingRepoList
+import com.duro.kukie.hosting.domain.HostingStartRetry
+import com.duro.kukie.hosting.domain.HostingSuspension
 import com.duro.kukie.hosting.domain.HostingTerms
 import com.duro.kukie.hosting.domain.SkippedPush
 import java.time.Instant
@@ -40,6 +42,7 @@ data class HostingAppsResponse(
             account: HostingIdentity,
             joined: Boolean,
             apps: List<HostingApp>,
+            suspensions: Map<String, HostingSuspension?>,
             skipped: SkippedPush?,
             repos: HostingRepoList?,
         ) = HostingAppsResponse(
@@ -48,7 +51,7 @@ data class HostingAppsResponse(
             joined = joined,
             closesOn = HostingTerms.CLOSES_ON,
             appLimit = APP_LIMIT,
-            apps = apps.map(HostingAppResponse::from),
+            apps = apps.map { HostingAppResponse.from(it, suspensions[it.app]) },
             skippedPush = skipped?.let(SkippedPushResponse::from),
             installation = repos?.let { HostingInstallationResponse(it.allowed, it.repos) },
             installUrl = installUrl(githubApp),
@@ -74,11 +77,22 @@ data class HostingAppResponse(
     val config: HostingConfig,
     /** 마지막 배포의 요약. 배포 기록이 지워진 뒤에도 남는다. */
     val latest: HostingLatest,
+    /** 정지된 앱이면 그 사유와 시각. 정지된 앱은 방문해도 깨어나지 않고, 배포·레포 연결·삭제를 할 수 없다. */
+    val suspended: HostingSuspensionResponse?,
 ) {
     companion object {
-        fun from(app: HostingApp) = HostingAppResponse(app.app, app.repo?.fullName, app.uploaded, app.url, app.config, app.latest)
+        fun from(app: HostingApp, suspension: HostingSuspension?) = HostingAppResponse(
+            app.app, app.repo?.fullName, app.uploaded, app.url, app.config, app.latest,
+            suspension?.let { HostingSuspensionResponse(it.code, it.at) },
+        )
     }
 }
+
+data class HostingSuspensionResponse(
+    /** abuse_mining, abuse_mail, abuse_scan, abuse_probe, admin. 모르는 값은 그냥 "정지됨"으로 보여 준다. */
+    val code: String,
+    val at: Instant,
+)
 
 data class SkippedPushResponse(
     /** 업로드 명령이었으면 null. */
@@ -89,7 +103,7 @@ data class SkippedPushResponse(
     val commandId: String?,
     /**
      * not_allowed, invalid_team_name, invalid_app_name, name_too_long, queue_full, auto_deploy_off, app_limit,
-     * app_name_taken, account_renamed, source_mismatch, repository_in_use, internal
+     * app_name_taken, account_renamed, source_mismatch, repository_in_use, suspended, internal
      */
     val reason: String,
     val at: Instant,
@@ -103,14 +117,35 @@ data class HostingAppDetailResponse(
     val app: HostingAppResponse,
     /** 최신순, 20건까지. 30일이 지난 배포는 없다. */
     val deployments: List<HostingDeployment>,
+    /** 이 서버에서 실패 원인 AI 분석을 쓸 수 있는지. */
+    val analysisEnabled: Boolean,
+    /**
+     * 시작하지 못한(start_failed) 배포의 id 마다 서버가 한 일: AI 가 시작 명령을 고르는 중(analyzing), 그 명령으로 다시 배포함(sent),
+     * 다시 배포하지 않음(skipped). 다시 배포한 배포는 deployments 에서 retry.of 가 그 id 다.
+     */
+    val startRetries: Map<String, HostingStartRetry> = emptyMap(),
 ) {
     companion object {
-        fun of(app: HostingApp, deployments: List<HostingDeployment>) =
-            HostingAppDetailResponse(HostingAppResponse.from(app), deployments)
+        fun of(
+            app: HostingApp,
+            suspension: HostingSuspension?,
+            deployments: List<HostingDeployment>,
+            analysisEnabled: Boolean,
+            startRetries: Map<String, HostingStartRetry> = emptyMap(),
+        ) = HostingAppDetailResponse(HostingAppResponse.from(app, suspension), deployments, analysisEnabled, startRetries)
     }
 }
 
 data class HostingCommandResponse(
     /** 배포 시작과 재배포는 앱의 latest.commandId 가 이 값이 되면 시작된 것이다. */
     val commandId: String,
+)
+
+/** AI 가 로그를 보고 추정한 원인. 틀릴 수 있으므로 화면에 AI 추정이라고 밝힌다. */
+data class HostingFailureAnalysisResponse(
+    val cause: String,
+    /** 고칠 방법. 비어 있을 수 있다. */
+    val fixes: List<String>,
+    /** 같은 배포를 전에 분석한 결과를 다시 준 것이다. 하루 횟수를 쓰지 않는다. */
+    val cached: Boolean = false,
 )

@@ -21,6 +21,7 @@ enum class HostingErrorCode(
     HOSTING_TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_INVALID_APP_NAME(HttpStatus.BAD_REQUEST, "앱 이름은 영소문자로 시작하고 영소문자·숫자·하이픈(연달아 쓰지 않음)으로 30자 이하여야 합니다."),
     HOSTING_UPLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "업로드는 50MB 까지입니다. 의존성·빌드 결과물·데이터 파일을 빼고 다시 묶어 주세요."),
+    HOSTING_APP_SUSPENDED(HttpStatus.CONFLICT, "정지된 앱이라 배포하거나 지울 수 없습니다. Kukie 에 문의해 주세요."),
     HOSTING_APP_LIMIT(HttpStatus.CONFLICT, "앱은 3개까지 만들 수 있습니다. 앱을 지우거나 이미 있는 앱 이름으로 배포해 주세요."),
     HOSTING_DEPLOY_IN_PROGRESS(HttpStatus.CONFLICT, "진행 중인 배포가 있습니다. 그 배포가 끝난 뒤 다시 시도해 주세요."),
     HOSTING_UPLOAD_MISSING(HttpStatus.CONFLICT, "업로드가 없거나 크기가 배포를 만들 때와 다릅니다. 파일을 다시 올려 주세요."),
@@ -29,6 +30,11 @@ enum class HostingErrorCode(
     HOSTING_TOO_MANY_DEPLOYS(HttpStatus.TOO_MANY_REQUESTS, "한 시간에 배포를 너무 많이 만들었습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_COMMAND_TOO_SOON(HttpStatus.TOO_MANY_REQUESTS, "방금 같은 요청을 보냈습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "호스팅 정보를 가져오지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
+    HOSTING_DEPLOYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "배포를 찾을 수 없습니다. 보관 기간(30일)이 지났을 수 있습니다."),
+    HOSTING_ANALYSIS_NOT_AVAILABLE(HttpStatus.CONFLICT, "AI 원인 분석은 빌드나 시작에 실패한 배포에만 쓸 수 있습니다."),
+    HOSTING_TOO_MANY_ANALYSES(HttpStatus.TOO_MANY_REQUESTS, "AI 원인 분석은 하루 10번까지 쓸 수 있습니다. 내일 다시 시도해 주세요."),
+    HOSTING_ANALYSIS_FAILED(HttpStatus.BAD_GATEWAY, "AI 원인 분석을 하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
+    HOSTING_ANALYSIS_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "이 서버에서는 AI 원인 분석을 쓸 수 없습니다."),
     HOSTING_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "이 서버에서는 호스팅을 쓸 수 없습니다."),
     ;
 

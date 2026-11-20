@@ -14,6 +14,7 @@ import org.springframework.web.servlet.HandlerInterceptor
 class AuthenticationInterceptor(
     private val jwtTokenProvider: JwtTokenProvider,
     private val authCookies: AuthCookies,
+    private val hostingAgentKeyAuthenticator: HostingAgentKeyAuthenticator,
 ) : HandlerInterceptor {
 
     override fun preHandle(
@@ -30,13 +31,20 @@ class AuthenticationInterceptor(
         }
 
         val token = resolveToken(request) ?: throw UnauthorizedException()
-        val subject = jwtTokenProvider.parseAccessToken(token)
+        val subject = hostingAgentKey(token, handler)
+            ?: jwtTokenProvider.parseAccessToken(token)
             ?: jwtTokenProvider.getUserIdFromHostingAgentToken(token)?.takeIf { handler.acceptsHostingAgentToken() }?.let { TokenSubject(it, null) }
             ?: throw InvalidTokenException()
         request.setAttribute(AUTHENTICATED_USER_ID, subject.userId)
         subject.sessionId?.let { request.setAttribute(AUTHENTICATED_SESSION_ID, it) }
 
         return true
+    }
+
+    private fun hostingAgentKey(token: String, handler: HandlerMethod): TokenSubject? {
+        if (!token.startsWith(HostingAgentKeyAuthenticator.PREFIX)) return null
+        if (!handler.acceptsHostingAgentToken()) throw InvalidTokenException()
+        return TokenSubject(hostingAgentKeyAuthenticator.userIdOf(token) ?: throw InvalidTokenException(), null)
     }
 
     /** 헤더가 있으면 헤더만 본다(모양이 틀려도 쿠키로 넘어가지 않음). 헤더가 없거나 비었을 때만 쿠키. */

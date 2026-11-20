@@ -24,6 +24,9 @@ data class HostingCommand(
     val generation: String?,
     /** 업로드 명령에만: 서버가 받아 둔 폴더의 키와 업로드 id(커밋 sha 자리). */
     val source: HostingCommandSource? = null,
+    /** 시작 명령 재시도(재배포·업로드)에만: 배포기가 이 명령으로 빌드하고, retryOf 배포의 재시도로 적는다. */
+    val start: String? = null,
+    val retryOf: String? = null,
 ) {
     /**
      * 같은 요청을 연달아 보냈는지 가릴 때 쓰는 이름. 배포 시작은 계정에 하나다. 레포마다 두면 허용한 레포 수만큼 한꺼번에
@@ -92,6 +95,23 @@ data class HostingCommand(
             generation = null,
             source = HostingCommandSource(deploy.key, deploy.id),
         )
+
+        /**
+         * 시작하지 못한 배포를 start 로 한 번 더 배포한다. 레포 앱은 재배포, 업로드 앱은 그 배포의 업로드(하루 보관)를 다시 보낸다.
+         * 업로드 id 는 배포의 커밋 sha 자리에 있다.
+         */
+        fun retry(app: HostingApp, deployment: HostingDeployment, start: String): HostingCommand {
+            val base = of(if (app.uploaded) UPLOAD else REDEPLOY, app)
+            val upload = deployment.commit.sha.takeIf { app.uploaded }
+                ?.let { HostingCommandSource("uploads/${app.team}/${app.app}/$it.tar.gz", it) }
+            return base.copy(
+                owner = HostingAccount(app.owner.id, app.owner.login),
+                generation = base.generation.takeUnless { app.uploaded },
+                source = upload,
+                start = start,
+                retryOf = deployment.deploymentId,
+            )
+        }
 
         /** 업로드로 만든 앱에 레포를 잇는다. 세대는 화면이 본 앱이 그사이 지웠다 다시 만든 앱이 아닌지 배포기가 확인하는 데 쓴다. */
         fun connect(account: HostingIdentity, app: HostingApp, repository: String) = HostingCommand(

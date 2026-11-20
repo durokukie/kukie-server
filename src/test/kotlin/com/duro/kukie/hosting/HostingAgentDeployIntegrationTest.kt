@@ -6,6 +6,7 @@ import com.duro.kukie.hosting.domain.HostingAgentDeployRepository
 import com.duro.kukie.hosting.domain.HostingCommand
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.support.FakeHostingCommandQueue
+import com.duro.kukie.support.FakeHostingFailureAnalyzer
 import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.FakeHostingUploadStore
 import com.duro.kukie.support.IntegrationTest
@@ -33,6 +34,9 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var queue: FakeHostingCommandQueue
+
+    @Autowired
+    private lateinit var analyzer: FakeHostingFailureAnalyzer
 
     @Autowired
     private lateinit var uploads: FakeHostingUploadStore
@@ -131,6 +135,20 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         create(agent, "old", 1234).andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("HOSTING_INVALID_APP_NAME") }
+        }
+    }
+
+    @Test
+    fun `정지된 업로드 앱에는 새 버전을 만들지 않는다`() {
+        // given
+        val agent = agent()
+        putUploadApp("notes")
+        store.files["apps/_suspended/recklehs/notes.json"] = """{ "version": 1, "team": "recklehs", "app": "notes", "code": "admin", "at": "2026-11-17T03:00:00Z" }"""
+
+        // when & then
+        create(agent, "notes", 1234).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_APP_SUSPENDED") }
         }
     }
 
@@ -256,6 +274,27 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `배포기가 시작 명령을 고쳐 배포했으면 바꾼 명령을 알려 준다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "succeeded")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "succeeded",
+            build = """{ "method": "auto", "providers": ["python"], "start": "gunicorn main:app", "corrected": "gunicorn app:app" }""",
+        )
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.status") { value("succeeded") }
+            jsonPath("$.build.corrected") { value("gunicorn app:app") }
+            jsonPath("$.build.correctionNotice") { doesNotExist() }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("'gunicorn main:app' 로 바꿔 배포했어요")) }
+        }
+    }
+
+    @Test
     fun `배포기가 같은 명령을 다시 하면 새 배포를 따라간다`() {
         // given
         val agent = agent()
@@ -296,6 +335,125 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `시작하지 못한 자동 감지 빌드는 AI 가 고른 명령으로 한 번 더 배포하고 그 배포를 따라간다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id, hasLog = true,
+            failure = """{ "code": "start_failed", "message": "the start command could not be run" }""",
+            build = """{ "method": "auto", "providers": ["golang"], "start": "go-getting-started", "files": ["go.mod", "main.go", "Procfile"] }""",
+        )
+        analyzer.startAnswer = """{"start": "./out", "confident": true, "reason": "Railpack 의 Go 빌드는 ./out 을 만듭니다."}"""
+
+        // when
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(false) }
+            jsonPath("$.status") { value("retrying") }
+        }
+        val retry = awaitCommands(2).last()
+        // 재시도 명령을 배포기가 받기 전이다
+        awaitStatus(agent, id, "retrying")
+        putUploadApp("my-shop", commandId = retry.commandId, deploymentId = RETRIED_ID, phase = "succeeded")
+        putDeployment(
+            "my-shop", RETRIED_ID, "succeeded", sha = id, commandId = retry.commandId,
+            build = """{ "method": "auto", "providers": ["golang"], "start": "./out", "retried": true }""",
+            retry = """{ "of": "$DEPLOYMENT_ID", "start": "./out" }""",
+        )
+
+        // then
+        retry.type shouldBe HostingCommand.UPLOAD
+        retry.start shouldBe "./out"
+        retry.retryOf shouldBe DEPLOYMENT_ID
+        retry.source?.sha shouldBe id
+        waitFor(agent, id).andExpect {
+            jsonPath("$.status") { value("succeeded") }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("""{"start": "./out"}""")) }
+        }
+    }
+
+    @Test
+    fun `재시도 명령을 큐에 넣지 못하면 처음 배포의 실패를 알린다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id,
+            failure = """{ "code": "start_failed", "message": "the start command could not be run" }""",
+            build = """{ "method": "auto", "providers": ["golang"], "start": "go-getting-started" }""",
+        )
+        analyzer.startAnswer = """{"start": "./out", "confident": true, "reason": "Railpack 의 Go 빌드는 ./out 을 만듭니다."}"""
+        queue.shouldFail = true
+
+        // when
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("retrying") } }
+
+        // then
+        awaitStatus(agent, id, "failed")
+        waitFor(agent, id).andExpect { jsonPath("$.failure.code") { value("start_failed") } }
+    }
+
+    @Test
+    fun `배포기가 재시도 명령을 거절하면 그 이유로 실패를 준다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id,
+            failure = """{ "code": "start_failed", "message": "the start command could not be run" }""",
+            build = """{ "method": "auto", "providers": ["golang"], "start": "go-getting-started" }""",
+        )
+        analyzer.startAnswer = """{"start": "./out", "confident": true, "reason": "Railpack 의 Go 빌드는 ./out 을 만듭니다."}"""
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("retrying") } }
+        val retry = awaitCommands(2).last()
+        awaitStatus(agent, id, "retrying")
+
+        // when
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "commandId": "${retry.commandId}", "app": "my-shop", "reason": "suspended", "at": "2026-11-13T01:00:00Z" }"""
+
+        // then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.failure.code") { value("suspended") }
+        }
+    }
+
+    @Test
+    fun `AI 가 고른 명령으로도 시작하지 못하면 해 본 흐름을 안내에 담는다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = RETRIED_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id,
+            failure = """{ "code": "start_failed", "message": "x" }""",
+            build = """{ "method": "auto", "start": "gunicorn app:app", "corrected": "gunicorn main:app" }""",
+        )
+        putDeployment(
+            "my-shop", RETRIED_ID, "failed", sha = id, commandId = commandId,
+            failure = """{ "code": "start_failed", "message": "x" }""",
+            build = """{ "method": "auto", "start": "python app.py", "retried": true }""",
+            retry = """{ "of": "$DEPLOYMENT_ID", "start": "python app.py" }""",
+        )
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("'gunicorn main:app' 를 규칙으로 'gunicorn app:app' 로 고쳐")) }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("AI 가 고른 'python app.py' 로 한 번 더 배포했지만")) }
+        }
+        queue.commands.size shouldBe 1
+    }
+
+    @Test
     fun `배포기가 거절했으면 그 이유로 실패를 준다`() {
         // given
         val agent = agent()
@@ -308,6 +466,23 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         waitFor(agent, id).andExpect {
             jsonPath("$.done") { value(true) }
             jsonPath("$.failure.code") { value("app_limit") }
+        }
+    }
+
+    @Test
+    fun `정지된 앱이라 거절했으면 다시 하지 말라고 안내한다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "commandId": "$commandId", "app": "my-shop", "reason": "suspended", "at": "2026-11-13T01:00:00Z" }"""
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.failure.code") { value("suspended") }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("정지")) }
         }
     }
 
@@ -490,15 +665,44 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         }
     """.trimIndent()
 
-    private fun putDeployment(app: String, id: String, phase: String, failure: String = "null", hasLog: Boolean = false, updatedAt: String = "2099-11-13T01:17:51Z", commandId: String? = null) {
+    private fun awaitStatus(agent: Agent, id: String, status: String) {
+        val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+        var last: String? = null
+        while (System.nanoTime() < deadline) {
+            last = JsonMapper.builder().build().readTree(waitFor(agent, id).andReturn().response.contentAsString).path("status").stringValue()
+            if (last == status) return
+            Thread.sleep(50)
+        }
+        last shouldBe status
+    }
+
+    private fun awaitCommands(count: Int): List<HostingCommand> {
+        val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+        while (queue.commands.size < count && System.nanoTime() < deadline) Thread.sleep(50)
+        queue.commands.size shouldBe count
+        return queue.commands.toList()
+    }
+
+    private fun putDeployment(
+        app: String,
+        id: String,
+        phase: String,
+        failure: String = "null",
+        hasLog: Boolean = false,
+        updatedAt: String = "2099-11-13T01:17:51Z",
+        commandId: String? = null,
+        build: String? = null,
+        sha: String = "0123456789abcdef",
+        retry: String? = null,
+    ) {
         store.files["deployments/recklehs/$app/$GENERATION/$id.json"] = """
             {
               "version": 1,
               "deploymentId": "$id",
               "phase": "$phase",
               "trigger": "upload", ${commandId?.let { "\"commandId\": \"$it\"," } ?: ""}
-              "commit": { "sha": "0123456789abcdef", "message": "upload" },
-              "config": { "port": 3000, "size": "S", "source": "default" },
+              "commit": { "sha": "$sha", "message": "upload" },
+              "config": { "port": 3000, "size": "S", "source": "default" }, ${build?.let { "\"build\": $it," } ?: ""} ${retry?.let { "\"retry\": $it," } ?: ""}
               "imageReused": false,
               "hasLog": $hasLog,
               "failure": $failure,
