@@ -46,6 +46,7 @@ class HostingStartRetriesTest {
     fun setUp() {
         every { analyzer.enabled } returns true
         every { rateLimit.tryAcquire(any(), any(), any()) } returns true
+        every { hostingApps.suspension(any()) } returns null
         every { hostingApps.buildLogTail(any(), any(), any()) } returns "=== app ===\nsh: go-getting-started: not found"
         justRun { queue.send(capture(sent)) }
     }

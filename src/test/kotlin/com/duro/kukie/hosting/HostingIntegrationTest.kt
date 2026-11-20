@@ -509,7 +509,7 @@ class HostingIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
         }.andExpect {
             jsonPath("$.joined") { value(false) }
-            jsonPath("$.closesOn") { value("2026-12-10") }
+            jsonPath("$.closesOn") { value("2026-12-12") }
         }
 
         mockMvc.post("/hosting/membership") {
@@ -721,6 +721,69 @@ class HostingIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
         }.andExpect {
             status { isNotFound() }
+        }
+
+        queue.commands.shouldBeEmpty()
+    }
+
+    @Test
+    fun `정지된 앱은 목록과 상세에 정지 사유를 준다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        putApp("blog")
+        putSuspended("shop", "abuse_mining")
+        store.files["apps/_suspended/recklehs/blog.json"] = """{ "version": 1, "team": "other", "app": "blog", "code": "admin", "at": "2026-11-17T03:00:00Z" }"""
+
+        // when & then
+        mockMvc.get("/hosting/apps") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            // 목록은 키 이름순이다
+            jsonPath("$.apps[0].app") { value("blog") }
+            jsonPath("$.apps[0].suspended") { value(null) }
+            jsonPath("$.apps[1].suspended.code") { value("abuse_mining") }
+            jsonPath("$.apps[1].suspended.at") { value("2026-11-17T03:00:00Z") }
+        }
+        mockMvc.get("/hosting/apps/shop") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.app.suspended.code") { value("abuse_mining") }
+        }
+    }
+
+    @Test
+    fun `정지된 앱에는 재배포·삭제·연결 명령을 보내지 않는다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        putUploadApp("notes")
+        putRepos("Recklehs/notes-web")
+        putSuspended("shop")
+        putSuspended("notes")
+
+        // when & then
+        mockMvc.post("/hosting/apps/shop/redeploy") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_APP_SUSPENDED") }
+        }
+        mockMvc.delete("/hosting/apps/shop") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_APP_SUSPENDED") }
+        }
+        mockMvc.post("/hosting/apps/notes/connect") {
+            authorization(member.accessToken)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"repository": "Recklehs/notes-web"}"""
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_APP_SUSPENDED") }
         }
 
         queue.commands.shouldBeEmpty()
@@ -1141,6 +1204,10 @@ class HostingIntegrationTest : IntegrationTest() {
               "updatedAt": "2026-11-10T01:17:51Z"
             }
         """.trimIndent()
+    }
+
+    private fun putSuspended(app: String, code: String = "admin") {
+        store.files["apps/_suspended/recklehs/$app.json"] = """{ "version": 1, "team": "recklehs", "app": "$app", "code": "$code", "at": "2026-11-17T03:00:00Z" }"""
     }
 
     private fun putRepos(vararg repos: String, ownerId: Long = GITHUB.id, allowed: Boolean = true) {

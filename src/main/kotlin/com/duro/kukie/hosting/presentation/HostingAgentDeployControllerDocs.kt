@@ -4,6 +4,7 @@ import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.hosting.exception.HostingAccountChangedException
 import com.duro.kukie.hosting.exception.HostingAppLimitException
 import com.duro.kukie.hosting.exception.HostingAppSourceMismatchException
+import com.duro.kukie.hosting.exception.HostingAppSuspendedException
 import com.duro.kukie.hosting.exception.HostingDeployInProgressException
 import com.duro.kukie.hosting.exception.HostingDeployNotFoundException
 import com.duro.kukie.hosting.exception.HostingDeployNotStartedException
@@ -37,6 +38,7 @@ interface HostingAgentDeployControllerDocs {
         HostingUploadTooLargeException::class,
         HostingAppSourceMismatchException::class,
         HostingAppLimitException::class,
+        HostingAppSuspendedException::class,
         HostingDeployInProgressException::class,
         HostingTooManyDeploysException::class,
         HostingNotAllowedException::class,

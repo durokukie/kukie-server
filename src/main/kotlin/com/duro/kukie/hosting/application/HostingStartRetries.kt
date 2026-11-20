@@ -76,7 +76,8 @@ class HostingStartRetries internal constructor(
             deployment.phase == FAILED && deployment.failure?.code == START_FAILED &&
             build.method == AUTO && deployment.config.start == null && deployment.retry == null &&
             app.latest.deploymentId == deployment.deploymentId &&
-            (!app.uploaded || UPLOAD_ID.matches(deployment.commit.sha))
+            (!app.uploaded || UPLOAD_ID.matches(deployment.commit.sha)) &&
+            hostingApps.suspension(app) == null
     }
 
     private fun retry(key: String, app: HostingApp, deployment: HostingDeployment) {
