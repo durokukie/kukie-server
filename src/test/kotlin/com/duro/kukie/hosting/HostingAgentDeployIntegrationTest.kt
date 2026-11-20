@@ -522,8 +522,8 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         // then
         waitFor(agent, id).andExpect { jsonPath("$.status") { value("succeeded") } }
         val other = uploaded(agent, "other")
-        start(agent, other)
-        putUploadApp("other", commandId = "c-other", deploymentId = DEPLOYMENT_ID, phase = "failed")
+        val otherCommandId = start(agent, other)
+        putUploadApp("other", commandId = otherCommandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
         putDeployment("other", DEPLOYMENT_ID, "failed", failure = interrupted, updatedAt = "2026-01-01T00:00:00Z")
         waitFor(agent, other).andExpect {
             jsonPath("$.done") { value(true) }
