@@ -2,6 +2,7 @@ package com.duro.kukie.hosting.presentation
 
 import com.duro.kukie.global.security.AuthUser
 import com.duro.kukie.global.security.Authenticated
+import com.duro.kukie.hosting.application.AnalyzeHostingFailureService
 import com.duro.kukie.hosting.application.ConnectHostingAppService
 import com.duro.kukie.hosting.application.GetHostingAppService
 import com.duro.kukie.hosting.application.GetHostingAppsService
@@ -14,6 +15,7 @@ import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppsResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingCommandResponse
+import com.duro.kukie.hosting.presentation.dto.response.HostingFailureAnalysisResponse
 import jakarta.validation.Valid
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -36,6 +38,7 @@ class HostingController(
     private val sendHostingCommandService: SendHostingCommandService,
     private val startHostingAppService: StartHostingAppService,
     private val connectHostingAppService: ConnectHostingAppService,
+    private val analyzeHostingFailureService: AnalyzeHostingFailureService,
 ) : HostingControllerDocs {
 
     @GetMapping
@@ -60,6 +63,15 @@ class HostingController(
         @PathVariable deploymentId: String,
     ): ResponseEntity<String> {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(TEXT_UTF8)).body(getHostingBuildLogService(userId, app, deploymentId))
+    }
+
+    @PostMapping("/{app}/deployments/{deploymentId}/analysis")
+    override fun analyzeFailure(
+        @AuthUser userId: UUID,
+        @PathVariable app: String,
+        @PathVariable deploymentId: String,
+    ): ResponseEntity<HostingFailureAnalysisResponse> {
+        return ResponseEntity.ok(analyzeHostingFailureService(userId, app, deploymentId))
     }
 
     @PostMapping("/{app}/connect")

@@ -1,21 +1,27 @@
 package com.duro.kukie.hosting.presentation
 
 import com.duro.kukie.global.docs.ApiErrorResponses
+import com.duro.kukie.hosting.exception.HostingAnalysisDisabledException
+import com.duro.kukie.hosting.exception.HostingAnalysisFailedException
+import com.duro.kukie.hosting.exception.HostingAnalysisNotAvailableException
 import com.duro.kukie.hosting.exception.HostingAppNotFoundException
 import com.duro.kukie.hosting.exception.HostingAppSourceMismatchException
 import com.duro.kukie.hosting.exception.HostingAppSuspendedException
 import com.duro.kukie.hosting.exception.HostingCommandTooSoonException
+import com.duro.kukie.hosting.exception.HostingDeploymentNotFoundException
 import com.duro.kukie.hosting.exception.HostingDisabledException
 import com.duro.kukie.hosting.exception.HostingLogNotFoundException
 import com.duro.kukie.hosting.exception.HostingNotAllowedException
 import com.duro.kukie.hosting.exception.HostingRepositoryInUseException
 import com.duro.kukie.hosting.exception.HostingRepositoryNotFoundException
+import com.duro.kukie.hosting.exception.HostingTooManyAnalysesException
 import com.duro.kukie.hosting.exception.HostingUnavailableException
 import com.duro.kukie.hosting.presentation.dto.request.ConnectHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppsResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingCommandResponse
+import com.duro.kukie.hosting.presentation.dto.response.HostingFailureAnalysisResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
@@ -57,8 +63,10 @@ interface HostingControllerDocs {
             "마지막 배포를 보여 줄 수 있습니다. 진행 중인 배포의 updatedAt 이 30분 넘게 지났으면 응답 없음으로 봅니다. " +
             "배포의 build 는 어떻게 빌드됐는지입니다. method 가 auto 면 레포에 Dockerfile 이 없어 배포기가 언어와 시작 명령(build.start)을 " +
             "알아낸 것이고, 틀렸으면 레포의 kukie.json 에 start 를 적어 고칩니다. failure.code 에 not_detected(무슨 앱인지 알아내지 못함), " +
-            "no_start(시작 명령을 찾지 못함)가 더해졌습니다. config.manual 이 true 면 레포의 kukie.json 이 자동 배포를 꺼서 " +
-            "push 는 배포되지 않고 다시 배포를 요청할 때만 배포됩니다.",
+            "no_start(시작 명령을 찾지 못함), start_mismatch(Python 시작 명령의 모듈이 없음, failure.message 에 고칠 kukie.json), " +
+            "wrong_root(업로드 맨 위에 앱이 없고 하위 폴더에 있음)가 더해졌습니다. config.manual 이 true 면 레포의 kukie.json 이 자동 배포를 꺼서 " +
+            "push 는 배포되지 않고 다시 배포를 요청할 때만 배포됩니다. analysisEnabled 가 true 면 build_failed·build_timeout·start_failed 로 " +
+            "실패한 배포에 AI 원인 분석을 쓸 수 있습니다.",
     )
     @ApiErrorResponses(HostingAppNotFoundException::class, HostingUnavailableException::class, HostingDisabledException::class)
     fun getApp(userId: UUID, app: String): ResponseEntity<HostingAppDetailResponse>
@@ -74,6 +82,24 @@ interface HostingControllerDocs {
         HostingDisabledException::class,
     )
     fun getBuildLog(userId: UUID, app: String, deploymentId: String): ResponseEntity<String>
+
+    @Operation(
+        summary = "실패 원인 AI 분석",
+        description = "build_failed·build_timeout·start_failed 로 실패한 배포의 로그 끝(12KB)과 빌드 정보를 AI(OpenAI API, 기본 gpt-6-luna)에 보내 " +
+            "원인과 고칠 방법을 추정합니다. 소스 코드는 보내지 않고, 키·토큰처럼 보이는 값은 가려서 보냅니다. 답은 틀릴 수 있으니 AI 추정으로 보여 주세요. " +
+            "계정마다 하루 10번이고, 같은 배포를 다시 물으면 저장해 둔 답을 주며(cached) 횟수를 쓰지 않습니다. 몇 초에서 수십 초 걸립니다.",
+    )
+    @ApiErrorResponses(
+        HostingAppNotFoundException::class,
+        HostingDeploymentNotFoundException::class,
+        HostingAnalysisNotAvailableException::class,
+        HostingTooManyAnalysesException::class,
+        HostingAnalysisFailedException::class,
+        HostingAnalysisDisabledException::class,
+        HostingUnavailableException::class,
+        HostingDisabledException::class,
+    )
+    fun analyzeFailure(userId: UUID, app: String, deploymentId: String): ResponseEntity<HostingFailureAnalysisResponse>
 
     @Operation(
         summary = "업로드 앱에 레포 연결",

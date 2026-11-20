@@ -40,13 +40,24 @@ data class HostingConfig(
 /**
  * 커밋이 어떻게 빌드됐는지. method 는 dockerfile(레포의 Dockerfile) 또는 auto(Dockerfile 이 없어 배포기가 알아냄).
  * 나머지는 auto 일 때 알아낸 언어·버전과 앱을 시작하는 명령이다. 레포가 정할 수 있는 값이라 보여 주기만 한다.
+ * corrected 는 알아낸 시작 명령이 없는 모듈을 가리켜 배포기가 start 로 고쳐 빌드했을 때 처음 알아낸 명령이다.
  */
 data class HostingBuild(
     val method: String,
     val providers: List<String>? = null,
     val versions: Map<String, String>? = null,
     val start: String? = null,
-)
+    val corrected: String? = null,
+) {
+    /** 배포기가 시작 명령을 고쳤을 때 에이전트가 사용자에게 전할 안내. */
+    val correctionNotice: String?
+        @JsonIgnore get() {
+            if (corrected == null || start == null) return null
+            val json = start.replace("\\", "\\\\").replace("\"", "\\\"")
+            return "시작 명령 '$corrected' 가 가리키는 모듈이 없어 '$start' 로 바꿔 배포했어요. " +
+                "다음에도 이 명령으로 배포하려면 루트의 kukie.json 에 {\"start\": \"$json\"} 를 넣으세요."
+        }
+}
 
 data class HostingFailure(val code: String, val message: String)
 

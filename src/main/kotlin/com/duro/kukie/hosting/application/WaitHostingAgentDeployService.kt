@@ -99,6 +99,7 @@ class WaitHostingAgentDeployService(
         return when (phase) {
             SUCCEEDED -> HostingAgentDeployStatusResponse(
                 done = true, status = SUCCEEDED, elapsed = elapsed, url = app.url, build = record?.build,
+                hint = record?.build?.correctionNotice,
                 next = if (app.uploaded) "GitHub 레포를 연결하면 기본 브랜치에 push 할 때마다 자동으로 배포돼요: ${webAppProperties.url.trimEnd('/')}/?go=hosting" else null,
             )
             FAILED -> failed(
@@ -143,6 +144,8 @@ class WaitHostingAgentDeployService(
             "not_detected" to "어떤 앱인지 알아내지 못했습니다. Dockerfile 을 추가한 뒤 새 배포를 만드세요.",
             "no_dockerfile" to "어떤 앱인지 알아내지 못했습니다. Dockerfile 을 추가한 뒤 새 배포를 만드세요.",
             "no_start" to "시작 명령을 찾지 못했습니다. kukie.json 에 start 를 적거나 start 스크립트를 만든 뒤 새 배포를 만드세요.",
+            "start_mismatch" to "시작 명령이 가리키는 Python 모듈이 프로젝트에 없습니다. failure.message 에 kukie.json 예시가 있으면 그대로 루트의 kukie.json 에 넣고, 없으면 앱 객체가 있는 파일로 start 를 적은 뒤 새 배포를 만드세요.",
+            "wrong_root" to "올린 폴더 맨 위에 앱이 없습니다. failure.message 에 적힌 하위 폴더 안에서 다시 묶어 새 배포를 만드세요.",
             "build_failed" to "빌드가 실패했습니다. logTail 의 오류를 보고 코드를 고친 뒤 새 배포를 만드세요.",
             "build_timeout" to "빌드가 15분을 넘었습니다. 빌드를 가볍게 하거나 Dockerfile 을 만든 뒤 새 배포를 만드세요.",
             "start_failed" to "앱이 뜨지 않았습니다. logTail 의 === app === 아래 출력을 보고, 앱이 PORT 환경변수의 포트에서 받는지와 빠진 의존성이 없는지 확인하세요.",
