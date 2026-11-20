@@ -355,7 +355,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         }
         val retry = awaitCommands(2).last()
         // 재시도 명령을 배포기가 받기 전이다
-        awaitStatus(agent, id, "queued")
+        awaitStatus(agent, id, "retrying")
         putUploadApp("my-shop", commandId = retry.commandId, deploymentId = RETRIED_ID, phase = "succeeded")
         putDeployment(
             "my-shop", RETRIED_ID, "succeeded", sha = id, commandId = retry.commandId,
@@ -372,6 +372,29 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
             jsonPath("$.status") { value("succeeded") }
             jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("""{"start": "./out"}""")) }
         }
+    }
+
+    @Test
+    fun `재시도 명령을 큐에 넣지 못하면 처음 배포의 실패를 알린다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id,
+            failure = """{ "code": "start_failed", "message": "the start command could not be run" }""",
+            build = """{ "method": "auto", "providers": ["golang"], "start": "go-getting-started" }""",
+        )
+        analyzer.startAnswer = """{"start": "./out", "confident": true, "reason": "Railpack 의 Go 빌드는 ./out 을 만듭니다."}"""
+        queue.shouldFail = true
+
+        // when
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("retrying") } }
+
+        // then
+        awaitStatus(agent, id, "failed")
+        waitFor(agent, id).andExpect { jsonPath("$.failure.code") { value("start_failed") } }
     }
 
     @Test

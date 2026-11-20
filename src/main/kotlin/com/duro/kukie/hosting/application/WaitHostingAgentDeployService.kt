@@ -110,9 +110,15 @@ class WaitHostingAgentDeployService(
                 when (retry?.status) {
                     // 에이전트는 계속 기다린다. 보낸 재시도는 그 명령의 배포를 따라간다
                     HostingStartRetry.ANALYZING -> HostingAgentDeployStatusResponse(done = false, status = RETRYING, elapsed = elapsed)
-                    HostingStartRetry.SENT -> {
-                        hostingAgentDeploys.save(deploy.copy(commandId = retry.commandId, deploymentId = null, generation = null, startedAt = retry.at))
-                        HostingAgentDeployStatusResponse(done = false, status = RETRYING, elapsed = elapsed)
+                    // 배포기가 그 명령을 받은 것을 본 뒤에야 옮겨 탄다. 그 전에는 큐에 넣지 못해 skipped 로 바뀔 수 있다
+                    HostingStartRetry.SENT -> when {
+                        app.latest.commandId == retry.commandId || app.latest.at > retry.at -> {
+                            val switched = deploy.copy(commandId = retry.commandId, deploymentId = null, generation = null, startedAt = retry.at)
+                            hostingAgentDeploys.save(switched)
+                            status(switched)
+                        }
+                        Duration.between(retry.at, Instant.now()) > QUEUED_LIMIT -> failed(elapsed, HostingFailure(STUCK, "the deployer has not taken the retry"))
+                        else -> HostingAgentDeployStatusResponse(done = false, status = RETRYING, elapsed = elapsed)
                     }
                     else -> failed(
                         elapsed,
