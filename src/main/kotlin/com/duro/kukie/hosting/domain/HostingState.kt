@@ -28,6 +28,7 @@ data class HostingCommit(val sha: String, val message: String? = null)
 /**
  * start 는 레포의 kukie.json 이 정한 시작 명령. Dockerfile 이 없는 레포에서만 쓴다.
  * manual 이 true 면 kukie.json 이 자동 배포를 껐다(autoDeploy false). push 는 배포되지 않고 요청한 배포만 된다.
+ * database 가 true 면 kukie.json 이 팀 DB 를 요청했다("database": true). 앱에 DATABASE_URL 이 들어간다.
  */
 data class HostingConfig(
     val port: Int,
@@ -35,6 +36,7 @@ data class HostingConfig(
     val source: String,
     val start: String? = null,
     val manual: Boolean? = null,
+    val database: Boolean? = null,
 )
 
 /**
@@ -110,7 +112,17 @@ data class HostingDeployment(
     val retry: HostingRetryRef? = null,
     val startedAt: Instant,
     val updatedAt: Instant,
+    /** 앱 파일의 주인·레포·출처. 앱을 지운 뒤에도 기록의 주인을 가린다. 2026-11-20 전 기록에는 없다. */
+    val owner: HostingAccount? = null,
+    val repo: HostingRepo? = null,
+    val source: HostingSource? = null,
 ) : HostingFile
+
+/** 지운 앱(또는 지우고 같은 이름으로 다시 만든 앱의 그 전 세대)과 남은 배포 기록(최신순). 파일이 아니라 배포 기록을 모은 것이다. */
+data class HostingPastApp(val app: String, val generation: String, val deployments: List<HostingDeployment>) {
+    val latest: HostingDeployment
+        get() = deployments.first()
+}
 
 /** 악용이나 관리자 판단으로 정지된 앱(apps/_suspended/<team>/<app>.json). 정지가 풀리거나 앱을 지우면 배포기가 지운다. */
 data class HostingSuspension(
@@ -160,4 +172,36 @@ data class SkippedPush(
     val app: String? = null,
     val reason: String,
     val at: Instant,
+) : HostingFile
+
+/**
+ * 앱이 지금 어떤지(apps/_runtime/<team>/<app>.json). 배포기가 1분마다 보고 바뀌었을 때만 쓴다.
+ * state 는 running, starting, crashing, sleeping. 모르는 값도 올 수 있다.
+ */
+data class HostingRuntime(
+    override val version: Int,
+    val team: String,
+    val app: String,
+    val state: String,
+    val replicas: Int,
+    val ready: Int,
+    val restarts: Int,
+    val lastExit: HostingExit? = null,
+    val since: Instant,
+) : HostingFile
+
+/** 앱 컨테이너가 마지막으로 끝난 까닭(Error, OOMKilled, Completed 등)과 종료 코드. */
+data class HostingExit(val reason: String, val exitCode: Int, val at: Instant)
+
+/** 팀 DB 내보내기 하나(deployments/<team>/_db/<exportId>.json). succeeded 면 같은 이름의 .sql.gz 가 있다. */
+data class HostingDbExport(
+    override val version: Int,
+    val exportId: String,
+    val owner: HostingAccount,
+    /** running, succeeded, failed */
+    val phase: String,
+    val bytes: Long? = null,
+    val failure: HostingFailure? = null,
+    val startedAt: Instant,
+    val updatedAt: Instant,
 ) : HostingFile

@@ -3,6 +3,8 @@ package com.duro.kukie.hosting.domain
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
@@ -45,6 +47,22 @@ data class HostingCommand(
         const val CONNECT = "connect"
         const val UPLOAD = "upload"
         const val JOIN = "join"
+        const val DB_EXPORT = "db_export"
+
+        private val EXPORT_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+
+        /** 팀 DB 내보내기. commandId 가 내보내기 id 이고, 시각으로 시작해 키 순서가 곧 시간 순서다. */
+        fun dbExport(account: HostingIdentity, now: Instant = Instant.now()) = HostingCommand(
+            version = HostingFile.VERSION,
+            commandId = EXPORT_STAMP.format(now) + "-" + UUID.randomUUID().toString().replace("-", "").take(8),
+            type = DB_EXPORT,
+            at = now.truncatedTo(ChronoUnit.SECONDS),
+            owner = HostingAccount(account.id, account.login),
+            repo = null,
+            team = account.team,
+            app = null,
+            generation = null,
+        )
 
         /** 가입. 배포기가 이 계정의 팀을 만든다. 앱도 레포도 없다. */
         fun join(account: HostingIdentity) = HostingCommand(
@@ -103,7 +121,7 @@ data class HostingCommand(
         fun retry(app: HostingApp, deployment: HostingDeployment, start: String): HostingCommand {
             val base = of(if (app.uploaded) UPLOAD else REDEPLOY, app)
             val upload = deployment.commit.sha.takeIf { app.uploaded }
-                ?.let { HostingCommandSource("uploads/${app.team}/${app.app}/$it.tar.gz", it) }
+                ?.let { HostingCommandSource(uploadKey(app.team, app.app, it), it) }
             return base.copy(
                 owner = HostingAccount(app.owner.id, app.owner.login),
                 generation = base.generation.takeUnless { app.uploaded },
@@ -112,6 +130,18 @@ data class HostingCommand(
                 retryOf = deployment.deploymentId,
             )
         }
+
+        /** 업로드 앱의 마지막 배포에 쓴 업로드(하루 보관)를 다시 보낸다. 업로드 id 는 배포의 커밋 sha 자리에 있다. */
+        fun reupload(app: HostingApp): HostingCommand {
+            val id = app.latest.commit.sha
+            return of(UPLOAD, app).copy(
+                owner = HostingAccount(app.owner.id, app.owner.login),
+                generation = null,
+                source = HostingCommandSource(uploadKey(app.team, app.app, id), id),
+            )
+        }
+
+        fun uploadKey(team: String, app: String, id: String) = "uploads/$team/$app/$id.tar.gz"
 
         /** 업로드로 만든 앱에 레포를 잇는다. 세대는 화면이 본 앱이 그사이 지웠다 다시 만든 앱이 아닌지 배포기가 확인하는 데 쓴다. */
         fun connect(account: HostingIdentity, app: HostingApp, repository: String) = HostingCommand(

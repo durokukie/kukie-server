@@ -10,6 +10,7 @@ import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
+import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import java.time.Duration
 
 @Component
@@ -25,8 +26,29 @@ class S3HostingStateStore(
         .overrideConfiguration { it.apiCallTimeout(API_CALL_TIMEOUT) }
         .build()
 
+    private val presigner = S3Presigner.builder().region(Region.of(awsProperties.region)).build()
+
     override fun list(prefix: String): List<String> = call {
         s3Client.listObjectsV2Paginator { it.bucket(hostingProperties.stateBucket).prefix(prefix) }.contents().map { it.key() }
+    }
+
+    override fun listFolders(prefix: String): List<String> = call {
+        s3Client.listObjectsV2Paginator { it.bucket(hostingProperties.stateBucket).prefix(prefix).delimiter("/") }
+            .commonPrefixes().map { it.prefix() }
+    }
+
+    // 페이지를 필요한 만큼만 받는다: 앱 로그는 한 달에 수만 개가 될 수 있다
+    override fun listBetween(prefix: String, startAfter: String, until: String): List<String> = call {
+        s3Client.listObjectsV2Paginator { it.bucket(hostingProperties.stateBucket).prefix(prefix).startAfter(startAfter) }
+            .contents().asSequence().map { it.key() }.takeWhile { it <= until }.toList()
+    }
+
+    override fun presignGet(key: String, ttl: Duration, filename: String): String = call {
+        presigner.presignGetObject { presign ->
+            presign.signatureDuration(ttl).getObjectRequest {
+                it.bucket(hostingProperties.stateBucket).key(key).responseContentDisposition("attachment; filename=\"$filename\"")
+            }
+        }.url().toString()
     }
 
     // ponytail: 빌드 로그(최대 10MB)를 통째로 메모리에 올린다. 동시 조회가 많아지면 스트림으로 바꾼다

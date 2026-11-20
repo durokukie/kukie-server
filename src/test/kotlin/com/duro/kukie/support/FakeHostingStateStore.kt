@@ -2,6 +2,7 @@ package com.duro.kukie.support
 
 import com.duro.kukie.hosting.application.port.out.HostingStateStore
 import com.duro.kukie.hosting.exception.HostingUnavailableException
+import java.time.Duration
 import java.util.TreeMap
 
 /** 버킷 대신 메모리에 파일을 둔다. 키는 S3 처럼 이름순으로 나열한다. */
@@ -11,6 +12,14 @@ class FakeHostingStateStore : HostingStateStore, Resettable {
     var shouldFail = false
 
     override fun list(prefix: String): List<String> = files.keys.filter { it.startsWith(prefix) }
+
+    override fun listFolders(prefix: String): List<String> =
+        list(prefix).mapNotNull { key -> key.removePrefix(prefix).substringBefore('/', "").takeIf { it.isNotEmpty() }?.let { "$prefix$it/" } }.distinct()
+
+    override fun listBetween(prefix: String, startAfter: String, until: String): List<String> =
+        list(prefix).filter { it > startAfter && it <= until }
+
+    override fun presignGet(key: String, ttl: Duration, filename: String): String = "https://bucket.example/$key?filename=$filename"
 
     override fun read(key: String): String? {
         if (shouldFail) throw HostingUnavailableException()

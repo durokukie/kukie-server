@@ -35,6 +35,7 @@ enum class HostingErrorCode(
     HOSTING_TOO_MANY_ANALYSES(HttpStatus.TOO_MANY_REQUESTS, "AI 원인 분석은 하루 10번까지 쓸 수 있습니다. 내일 다시 시도해 주세요."),
     HOSTING_ANALYSIS_FAILED(HttpStatus.BAD_GATEWAY, "AI 원인 분석을 하지 못했습니다. 잠시 뒤 다시 시도해 주세요."),
     HOSTING_ANALYSIS_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "이 서버에서는 AI 원인 분석을 쓸 수 없습니다."),
+    HOSTING_INVALID_LOG_RANGE(HttpStatus.BAD_REQUEST, "로그 기간이 올바르지 않습니다. 시작이 끝보다 앞서고, 31일 안이어야 합니다."),
     HOSTING_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "이 서버에서는 호스팅을 쓸 수 없습니다."),
     ;
 
