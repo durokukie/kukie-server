@@ -30,12 +30,13 @@ class GetHostingRuntimeLogService(
             val lines = hostingApps.readText(key)?.lineSequence()?.filter { it.isNotEmpty() && within(it, start, end) }?.toList().orEmpty()
             if (lines.isEmpty()) continue
             val chunk = lines.joinToString("\n", postfix = "\n")
-            if (bytes + chunk.length > MAX_CHARS) {
+            val size = chunk.toByteArray(Charsets.UTF_8).size
+            if (bytes + size > MAX_BYTES) {
                 cut = true
                 break
             }
             chunks.addFirst(chunk)
-            bytes += chunk.length
+            bytes += size
         }
         val body = chunks.joinToString("")
         return if (cut) CUT_NOTICE + body else body
@@ -52,7 +53,7 @@ class GetHostingRuntimeLogService(
         private val DEFAULT_SPAN: Duration = Duration.ofHours(1)
         private val MAX_SPAN: Duration = Duration.ofDays(31)
         private const val MAX_FILES = 3000
-        private const val MAX_CHARS = 10 * 1024 * 1024
+        private const val MAX_BYTES = 10 * 1024 * 1024
         private const val CUT_NOTICE = "(이 기간의 로그가 많아 앞부분을 뺐습니다. 기간을 좁혀 다시 받으세요)\n"
     }
 }
