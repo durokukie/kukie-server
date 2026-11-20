@@ -435,7 +435,7 @@ class HostingIntegrationTest : IntegrationTest() {
             authorization(member.accessToken)
         }.andExpect {
             jsonPath("$.joined") { value(false) }
-            jsonPath("$.closesOn") { value("2026-12-10") }
+            jsonPath("$.closesOn") { value("2026-12-12") }
         }
 
         mockMvc.post("/hosting/membership") {
