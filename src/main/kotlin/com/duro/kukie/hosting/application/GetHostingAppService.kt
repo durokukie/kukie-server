@@ -25,7 +25,9 @@ class GetHostingAppService(
             }
             .toMap()
 
-        return HostingAppDetailResponse.of(owned, hostingApps.suspension(owned), deployments, hostingFailureAnalyzer.enabled, startRetries)
+        return HostingAppDetailResponse.of(
+            owned, hostingApps.suspension(owned), deployments, hostingFailureAnalyzer.enabled, startRetries, hostingApps.runtime(owned),
+        )
     }
 
     companion object {
