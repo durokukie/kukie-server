@@ -8,6 +8,9 @@ interface HostingStateStore {
     /** prefix 아래의 키를 이름순으로 준다. */
     fun list(prefix: String): List<String>
 
+    /** prefix 바로 아래의 폴더(공통 접두어, / 로 끝남)를 이름순으로 준다. 그 아래 파일은 나열하지 않는다. */
+    fun listFolders(prefix: String): List<String>
+
     /** prefix 아래에서 startAfter 보다 뒤이고 until 이하인 키를 이름순으로 준다. until 을 넘으면 더 나열하지 않는다. */
     fun listBetween(prefix: String, startAfter: String, until: String): List<String>
 

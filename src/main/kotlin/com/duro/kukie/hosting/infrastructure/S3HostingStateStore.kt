@@ -32,6 +32,11 @@ class S3HostingStateStore(
         s3Client.listObjectsV2Paginator { it.bucket(hostingProperties.stateBucket).prefix(prefix) }.contents().map { it.key() }
     }
 
+    override fun listFolders(prefix: String): List<String> = call {
+        s3Client.listObjectsV2Paginator { it.bucket(hostingProperties.stateBucket).prefix(prefix).delimiter("/") }
+            .commonPrefixes().map { it.prefix() }
+    }
+
     // 페이지를 필요한 만큼만 받는다: 앱 로그는 한 달에 수만 개가 될 수 있다
     override fun listBetween(prefix: String, startAfter: String, until: String): List<String> = call {
         s3Client.listObjectsV2Paginator { it.bucket(hostingProperties.stateBucket).prefix(prefix).startAfter(startAfter) }
