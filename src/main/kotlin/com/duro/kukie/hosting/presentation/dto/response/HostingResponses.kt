@@ -7,6 +7,7 @@ import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingLatest
 import com.duro.kukie.hosting.domain.HostingRepoItem
 import com.duro.kukie.hosting.domain.HostingRepoList
+import com.duro.kukie.hosting.domain.HostingStartRetry
 import com.duro.kukie.hosting.domain.HostingSuspension
 import com.duro.kukie.hosting.domain.HostingTerms
 import com.duro.kukie.hosting.domain.SkippedPush
@@ -118,10 +119,20 @@ data class HostingAppDetailResponse(
     val deployments: List<HostingDeployment>,
     /** 이 서버에서 실패 원인 AI 분석을 쓸 수 있는지. */
     val analysisEnabled: Boolean,
+    /**
+     * 시작하지 못한(start_failed) 배포의 id 마다 서버가 한 일: AI 가 시작 명령을 고르는 중(analyzing), 그 명령으로 다시 배포함(sent),
+     * 다시 배포하지 않음(skipped). 다시 배포한 배포는 deployments 에서 retry.of 가 그 id 다.
+     */
+    val startRetries: Map<String, HostingStartRetry> = emptyMap(),
 ) {
     companion object {
-        fun of(app: HostingApp, suspension: HostingSuspension?, deployments: List<HostingDeployment>, analysisEnabled: Boolean) =
-            HostingAppDetailResponse(HostingAppResponse.from(app, suspension), deployments, analysisEnabled)
+        fun of(
+            app: HostingApp,
+            suspension: HostingSuspension?,
+            deployments: List<HostingDeployment>,
+            analysisEnabled: Boolean,
+            startRetries: Map<String, HostingStartRetry> = emptyMap(),
+        ) = HostingAppDetailResponse(HostingAppResponse.from(app, suspension), deployments, analysisEnabled, startRetries)
     }
 }
 

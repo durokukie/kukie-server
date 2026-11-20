@@ -3,6 +3,7 @@ package com.duro.kukie.hosting.infrastructure
 import com.duro.kukie.global.config.properties.HostingProperties
 import com.duro.kukie.global.util.logger
 import com.duro.kukie.hosting.application.port.out.HostingFailureAnalyzer
+import com.duro.kukie.hosting.application.port.out.HostingFailureAnalyzer.Answer
 import com.duro.kukie.hosting.exception.HostingAnalysisFailedException
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
@@ -35,14 +36,14 @@ class OpenAiHostingFailureAnalyzer internal constructor(
     override val enabled: Boolean
         get() = hostingProperties.analysisApiKey.isNotBlank()
 
-    override fun analyze(system: String, prompt: String): String {
+    override fun analyze(system: String, prompt: String, answer: Answer): String {
         if (!enabled) throw HostingAnalysisFailedException()
         val response = try {
             restClient.post()
                 .uri(RESPONSES_URL)
                 .headers { it.setBearerAuth(hostingProperties.analysisApiKey) }
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(request(system, prompt))
+                .body(request(system, prompt, answer))
                 .retrieve()
                 .body<Map<String, Any?>>()
         } catch (exception: RestClientException) {
@@ -52,14 +53,14 @@ class OpenAiHostingFailureAnalyzer internal constructor(
         return response?.let(::outputText)?.takeIf { it.isNotBlank() } ?: throw HostingAnalysisFailedException()
     }
 
-    private fun request(system: String, prompt: String) = mapOf(
+    private fun request(system: String, prompt: String, answer: Answer) = mapOf(
         "model" to hostingProperties.analysisModel,
         "instructions" to system,
         "input" to prompt,
         "reasoning" to mapOf("effort" to hostingProperties.analysisEffort),
         "max_output_tokens" to MAX_OUTPUT_TOKENS,
         "store" to false,
-        "text" to mapOf("format" to ANSWER_FORMAT),
+        "text" to mapOf("format" to if (answer == Answer.START) START_FORMAT else ANSWER_FORMAT),
     )
 
     /** 다 쓰지 못했거나(incomplete) 거절한(refusal) 답은 버린다. */
@@ -93,6 +94,22 @@ class OpenAiHostingFailureAnalyzer internal constructor(
                     "fixes" to mapOf("type" to "array", "items" to mapOf("type" to "string")),
                 ),
                 "required" to listOf("cause", "fixes"),
+                "additionalProperties" to false,
+            ),
+        )
+
+        private val START_FORMAT = mapOf(
+            "type" to "json_schema",
+            "name" to "start_command",
+            "strict" to true,
+            "schema" to mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "start" to mapOf("type" to "string"),
+                    "confident" to mapOf("type" to "boolean"),
+                    "reason" to mapOf("type" to "string"),
+                ),
+                "required" to listOf("start", "confident", "reason"),
                 "additionalProperties" to false,
             ),
         )
