@@ -28,6 +28,7 @@ data class HostingCommit(val sha: String, val message: String? = null)
 /**
  * start 는 레포의 kukie.json 이 정한 시작 명령. Dockerfile 이 없는 레포에서만 쓴다.
  * manual 이 true 면 kukie.json 이 자동 배포를 껐다(autoDeploy false). push 는 배포되지 않고 요청한 배포만 된다.
+ * database 가 true 면 kukie.json 이 팀 DB 를 요청했다("database": true). 앱에 DATABASE_URL 이 들어간다.
  */
 data class HostingConfig(
     val port: Int,
@@ -35,6 +36,7 @@ data class HostingConfig(
     val source: String,
     val start: String? = null,
     val manual: Boolean? = null,
+    val database: Boolean? = null,
 )
 
 /**
