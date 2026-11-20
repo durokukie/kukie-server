@@ -17,6 +17,7 @@ import com.duro.kukie.hosting.exception.HostingRepositoryInUseException
 import com.duro.kukie.hosting.exception.HostingRepositoryNotFoundException
 import com.duro.kukie.hosting.exception.HostingTooManyAnalysesException
 import com.duro.kukie.hosting.exception.HostingUnavailableException
+import com.duro.kukie.hosting.exception.HostingUploadMissingException
 import com.duro.kukie.hosting.presentation.dto.request.ConnectHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
@@ -152,8 +153,8 @@ interface HostingControllerDocs {
 
     @Operation(
         summary = "다시 배포",
-        description = "기본 브랜치의 최신 커밋을 다시 배포하라고 배포기에 요청합니다. 업로드로 만든 앱은 레포가 없어 409 입니다(다시 올리거나 " +
-            "레포를 연결). 바로 시작되지 않을 수 있습니다. 앱의 latest.commandId 가 " +
+        description = "기본 브랜치의 최신 커밋을 다시 배포하라고 배포기에 요청합니다. 업로드로 만든 앱은 마지막 배포에 쓴 업로드를 다시 " +
+            "보내고, 그 업로드가 하루 보관이 지나 지워졌으면 409 HOSTING_UPLOAD_MISSING 입니다(에이전트로 다시 올림). 바로 시작되지 않을 수 있습니다. 앱의 latest.commandId 가 " +
             "응답의 commandId 가 되면 시작된 것입니다. 같은 앱에 1분 안에 다시 요청하면 429 입니다.",
     )
     @ApiResponse(responseCode = "202", description = "Accepted")
@@ -161,6 +162,7 @@ interface HostingControllerDocs {
         HostingAppNotFoundException::class,
         HostingAppSourceMismatchException::class,
         HostingAppSuspendedException::class,
+        HostingUploadMissingException::class,
         HostingCommandTooSoonException::class,
         HostingUnavailableException::class,
         HostingDisabledException::class,

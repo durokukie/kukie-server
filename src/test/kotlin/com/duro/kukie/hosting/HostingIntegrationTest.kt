@@ -7,6 +7,7 @@ import com.duro.kukie.support.FakeGitHubAccountAge
 import com.duro.kukie.support.FakeHostingCommandQueue
 import com.duro.kukie.support.FakeHostingFailureAnalyzer
 import com.duro.kukie.support.FakeHostingStateStore
+import com.duro.kukie.support.FakeHostingUploadStore
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
 import com.duro.kukie.user.UserFixture
@@ -37,6 +38,9 @@ class HostingIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var jwtTokenProvider: JwtTokenProvider
+
+    @Autowired
+    private lateinit var uploads: FakeHostingUploadStore
 
     @Test
     fun `연결한 GitHub 계정이 주인인 앱만 목록에 나온다`() {
@@ -978,17 +982,52 @@ class HostingIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `업로드 앱은 다시 배포할 수 없다`() {
+    fun `업로드 앱을 다시 배포하면 마지막 업로드를 다시 보낸다`() {
         // given
         val member = linkedUser()
-        putUploadApp("my-shop")
+        putUploadApp("my-shop", UPLOAD_ID)
+        uploads.sizes["uploads/recklehs/my-shop/$UPLOAD_ID.tar.gz"] = 1234
+
+        // when & then
+        mockMvc.post("/hosting/apps/my-shop/redeploy") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isAccepted() }
+            jsonPath("$.commandId") { value(queue.commands.single().commandId) }
+        }
+
+        with(queue.commands.single()) {
+            type shouldBe HostingCommand.UPLOAD
+            repo shouldBe null
+            team shouldBe "recklehs"
+            app shouldBe "my-shop"
+            generation shouldBe null
+            source?.key shouldBe "uploads/recklehs/my-shop/$UPLOAD_ID.tar.gz"
+            source?.sha shouldBe UPLOAD_ID
+            owner.id shouldBe GITHUB.id
+        }
+    }
+
+    @Test
+    fun `하루가 지나 업로드가 지워진 업로드 앱은 다시 배포하지 않고 다시 올리게 한다`() {
+        // given
+        val member = linkedUser()
+        putUploadApp("my-shop", UPLOAD_ID)
+        putUploadApp("notes")
 
         // when & then
         mockMvc.post("/hosting/apps/my-shop/redeploy") {
             authorization(member.accessToken)
         }.andExpect {
             status { isConflict() }
-            jsonPath("$.code") { value("HOSTING_APP_SOURCE_MISMATCH") }
+            jsonPath("$.code") { value("HOSTING_UPLOAD_MISSING") }
+            jsonPath("$.message") { value(org.hamcrest.Matchers.containsString("코딩 에이전트로 다시 배포")) }
+        }
+        mockMvc.post("/hosting/apps/notes/redeploy") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_UPLOAD_MISSING") }
         }
         queue.commands.shouldBeEmpty()
     }
@@ -1186,9 +1225,10 @@ class HostingIntegrationTest : IntegrationTest() {
         }
     """.trimIndent()
 
-    private fun putUploadApp(app: String) {
+    private fun putUploadApp(app: String, sha: String = "0123456789abcdef") {
         store.files["apps/recklehs/$app.json"] = appJson(app)
             .replace(""""repo": { "id": 987654321, "fullName": "Recklehs/$app" },""", """"source": { "type": "upload" },""")
+            .replace(""""sha": "0123456789abcdef"""", """"sha": "$sha"""")
     }
 
     private fun putDeployment(app: String, generation: String, id: String, phase: String, failure: String = "null") {
@@ -1228,5 +1268,6 @@ class HostingIntegrationTest : IntegrationTest() {
         private const val GENERATION = "20261101T031500Z"
         private const val ANALYZED = "20261109T000000Z-aaaaaaa"
         private val GITHUB = GitHubAccount(id = 127021195, login = "Recklehs")
+        private const val UPLOAD_ID = "0123456789abcdef0123456789abcdef01234567"
     }
 }

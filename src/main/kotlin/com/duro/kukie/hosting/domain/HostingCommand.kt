@@ -121,7 +121,7 @@ data class HostingCommand(
         fun retry(app: HostingApp, deployment: HostingDeployment, start: String): HostingCommand {
             val base = of(if (app.uploaded) UPLOAD else REDEPLOY, app)
             val upload = deployment.commit.sha.takeIf { app.uploaded }
-                ?.let { HostingCommandSource("uploads/${app.team}/${app.app}/$it.tar.gz", it) }
+                ?.let { HostingCommandSource(uploadKey(app.team, app.app, it), it) }
             return base.copy(
                 owner = HostingAccount(app.owner.id, app.owner.login),
                 generation = base.generation.takeUnless { app.uploaded },
@@ -130,6 +130,18 @@ data class HostingCommand(
                 retryOf = deployment.deploymentId,
             )
         }
+
+        /** 업로드 앱의 마지막 배포에 쓴 업로드(하루 보관)를 다시 보낸다. 업로드 id 는 배포의 커밋 sha 자리에 있다. */
+        fun reupload(app: HostingApp): HostingCommand {
+            val id = app.latest.commit.sha
+            return of(UPLOAD, app).copy(
+                owner = HostingAccount(app.owner.id, app.owner.login),
+                generation = null,
+                source = HostingCommandSource(uploadKey(app.team, app.app, id), id),
+            )
+        }
+
+        fun uploadKey(team: String, app: String, id: String) = "uploads/$team/$app/$id.tar.gz"
 
         /** 업로드로 만든 앱에 레포를 잇는다. 세대는 화면이 본 앱이 그사이 지웠다 다시 만든 앱이 아닌지 배포기가 확인하는 데 쓴다. */
         fun connect(account: HostingIdentity, app: HostingApp, repository: String) = HostingCommand(
