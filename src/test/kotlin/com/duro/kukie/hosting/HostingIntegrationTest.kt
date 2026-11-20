@@ -198,7 +198,7 @@ class HostingIntegrationTest : IntegrationTest() {
             {
               "version": 1, "deploymentId": "20261112T011744Z-0123456", "phase": "succeeded", "trigger": "deploy",
               "commit": { "sha": "0123456789abcdef" },
-              "config": { "port": 3000, "size": "S", "source": "file", "start": "gunicorn app:app", "manual": true },
+              "config": { "port": 3000, "size": "S", "source": "file", "start": "gunicorn app:app", "manual": true, "database": true },
               "build": { "method": "auto", "providers": ["python"], "versions": { "python": "3.13.18" }, "start": "gunicorn app:app" },
               "imageReused": false, "hasLog": true, "failure": null,
               "startedAt": "2026-11-12T01:17:44Z", "updatedAt": "2026-11-12T01:21:51Z"
@@ -219,6 +219,9 @@ class HostingIntegrationTest : IntegrationTest() {
             // kukie.json 이 자동 배포를 껐다
             jsonPath("$.deployments[0].config.manual") { value(true) }
             jsonPath("$.app.config.manual") { value(null) }
+            // kukie.json 이 팀 DB 를 요청했다
+            jsonPath("$.deployments[0].config.database") { value(true) }
+            jsonPath("$.app.config.database") { value(null) }
             // 배포기가 build 를 적기 전의 기록에는 없다
             jsonPath("$.deployments[1].build") { value(null) }
         }
