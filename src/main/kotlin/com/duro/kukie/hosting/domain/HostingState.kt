@@ -112,7 +112,17 @@ data class HostingDeployment(
     val retry: HostingRetryRef? = null,
     val startedAt: Instant,
     val updatedAt: Instant,
+    /** 앱 파일의 주인·레포·출처. 앱을 지운 뒤에도 기록의 주인을 가린다. 2026-11-20 전 기록에는 없다. */
+    val owner: HostingAccount? = null,
+    val repo: HostingRepo? = null,
+    val source: HostingSource? = null,
 ) : HostingFile
+
+/** 지운 앱(또는 지우고 같은 이름으로 다시 만든 앱의 그 전 세대)과 남은 배포 기록(최신순). 파일이 아니라 배포 기록을 모은 것이다. */
+data class HostingPastApp(val app: String, val generation: String, val deployments: List<HostingDeployment>) {
+    val latest: HostingDeployment
+        get() = deployments.first()
+}
 
 /** 악용이나 관리자 판단으로 정지된 앱(apps/_suspended/<team>/<app>.json). 정지가 풀리거나 앱을 지우면 배포기가 지운다. */
 data class HostingSuspension(

@@ -11,6 +11,7 @@ import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingFile
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingMember
+import com.duro.kukie.hosting.domain.HostingPastApp
 import com.duro.kukie.hosting.domain.HostingRepoList
 import com.duro.kukie.hosting.domain.HostingSuspension
 import com.duro.kukie.hosting.domain.SkippedPush
@@ -134,6 +135,46 @@ class HostingApps(
         return hostingStateStore.read("${app.deploymentPrefix}$deploymentId.log")
     }
 
+    /**
+     * 지금 앱이 아닌 세대의 배포 기록: 지운 앱과, 지우고 같은 이름으로 다시 만든 앱의 그 전 세대. 최근 배포순, 20개까지.
+     * 배포 기록은 앱을 지워도 남고 30일 뒤 지워진다. 팀 이름은 다른 계정에게 갈 수 있어 배포 파일의 주인 id 로 거른다.
+     */
+    fun pastApps(account: HostingIdentity, current: List<HostingApp>): List<HostingPastApp> {
+        val live = current.map { it.app to it.generation }.toSet()
+        return hostingStateStore.listFolders("deployments/${account.team}/")
+            .mapNotNull { folder -> folder.removeSuffix("/").substringAfterLast('/').takeIf { APP_NAME.matches(it) } }
+            .flatMap { app ->
+                hostingStateStore.listFolders("deployments/${account.team}/$app/")
+                    .mapNotNull { folder -> folder.removeSuffix("/").substringAfterLast('/').takeIf { GENERATION.matches(it) } }
+                    .filterNot { (app to it) in live }
+                    .mapNotNull { generation -> pastApp(account, app, generation) }
+            }
+            .sortedByDescending { it.latest.startedAt }
+            .take(MAX_PAST_APPS)
+    }
+
+    /** 지금 앱이 아닌 세대의 빌드 로그. 그 배포 기록의 주인이 계정이 아니면 null. */
+    fun pastBuildLog(account: HostingIdentity, app: String, generation: String, deploymentId: String): String? {
+        if (!APP_NAME.matches(app) || !GENERATION.matches(generation) || !DEPLOYMENT_ID.matches(deploymentId)) return null
+        val prefix = "deployments/${account.team}/$app/$generation/"
+        val deployment = read<HostingDeployment>("$prefix$deploymentId.json")?.takeIf { it.ownedBy(account) } ?: return null
+        return deployment.takeIf { it.hasLog }?.let { hostingStateStore.read("$prefix$deploymentId.log") }
+    }
+
+    private fun pastApp(account: HostingIdentity, app: String, generation: String): HostingPastApp? {
+        val deployments = hostingStateStore.list("deployments/${account.team}/$app/$generation/")
+            .filter { it.endsWith(".json") }
+            .takeLast(MAX_DEPLOYMENTS)
+            .reversed()
+            .mapNotNull { read<HostingDeployment>(it) }
+        if (deployments.isEmpty() || !deployments.all { it.ownedBy(account) }) return null
+        return HostingPastApp(app, generation, deployments)
+    }
+
+    // 주인이 적히기 전 기록은 Kukie 계정 팀(회원 id 에서 나와 다른 사람에게 가지 않는다)일 때만 믿는다
+    private fun HostingDeployment.ownedBy(account: HostingIdentity): Boolean =
+        owner?.let { it.id == account.id } ?: !account.gitHub
+
     /** 앱이 지금 실행 중인지, 잠들었는지. 배포기가 아직 보지 않았으면 null. 주인 확인을 거친 앱에만 쓴다. */
     fun runtime(app: HostingApp): HostingRuntime? =
         read<HostingRuntime>("apps/_runtime/${app.team}/${app.app}.json")?.takeIf { it.team == app.team && it.app == app.app }
@@ -197,6 +238,7 @@ class HostingApps(
     companion object {
         private const val MAX_DEPLOYMENTS = 20
         private const val MAX_DB_EXPORTS = 10
+        private const val MAX_PAST_APPS = 20
         private val DOWNLOAD_TTL: Duration = Duration.ofMinutes(10)
 
         // 배포기가 1분마다 모은다: 파일 시각보다 1분 남짓 앞선 줄까지 들어 있다
@@ -207,5 +249,6 @@ class HostingApps(
         // 경로에서 받은 값을 버킷 키에 넣기 전에 배포기가 만드는 이름 모양인지 본다
         private val APP_NAME = Regex("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
         private val DEPLOYMENT_ID = Regex("\\d{8}T\\d{6}Z-[0-9a-f]{7}")
+        private val GENERATION = Regex("\\d{8}T\\d{6}Z")
     }
 }

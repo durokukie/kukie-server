@@ -8,9 +8,11 @@ import com.duro.kukie.hosting.domain.HostingFailure
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingLatest
+import com.duro.kukie.hosting.domain.HostingPastApp
 import com.duro.kukie.hosting.domain.HostingRepoItem
 import com.duro.kukie.hosting.domain.HostingRepoList
 import com.duro.kukie.hosting.domain.HostingRuntime
+import com.duro.kukie.hosting.domain.HostingSource
 import com.duro.kukie.hosting.domain.HostingStartRetry
 import com.duro.kukie.hosting.domain.HostingSuspension
 import com.duro.kukie.hosting.domain.HostingTerms
@@ -212,6 +214,36 @@ data class HostingDbExportResponse(
     companion object {
         fun of(export: HostingDbExport, downloadUrl: String?) = HostingDbExportResponse(
             export.exportId, export.phase, export.bytes, export.failure, export.startedAt, export.updatedAt, downloadUrl,
+        )
+    }
+}
+
+data class HostingHistoryResponse(
+    /** 지운 앱과, 지우고 같은 이름으로 다시 만든 앱의 그 전 세대. 최근 배포순, 20개까지. 배포 기록이 30일 뒤 지워지면 빠진다. */
+    val apps: List<HostingPastAppResponse>,
+) {
+    companion object {
+        fun of(apps: List<HostingPastApp>) = HostingHistoryResponse(apps.map(HostingPastAppResponse::from))
+    }
+}
+
+data class HostingPastAppResponse(
+    val app: String,
+    /** 빌드 로그 주소에 넣는 앱 세대(앱을 처음 만든 시각). */
+    val generation: String,
+    /** GitHub 레포 이름(owner/repo). 업로드 앱이거나 2026-11-20 전 기록이면 null. */
+    val repository: String?,
+    val uploaded: Boolean,
+    /** 최신순, 20건까지. */
+    val deployments: List<HostingDeployment>,
+) {
+    companion object {
+        fun from(app: HostingPastApp) = HostingPastAppResponse(
+            app.app,
+            app.generation,
+            app.latest.repo?.fullName,
+            app.latest.source?.type == HostingSource.UPLOAD,
+            app.deployments,
         )
     }
 }

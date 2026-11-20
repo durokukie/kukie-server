@@ -13,6 +13,9 @@ class FakeHostingStateStore : HostingStateStore, Resettable {
 
     override fun list(prefix: String): List<String> = files.keys.filter { it.startsWith(prefix) }
 
+    override fun listFolders(prefix: String): List<String> =
+        list(prefix).mapNotNull { key -> key.removePrefix(prefix).substringBefore('/', "").takeIf { it.isNotEmpty() }?.let { "$prefix$it/" } }.distinct()
+
     override fun listBetween(prefix: String, startAfter: String, until: String): List<String> =
         list(prefix).filter { it > startAfter && it <= until }
 
