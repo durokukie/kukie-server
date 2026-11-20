@@ -111,7 +111,7 @@ class WaitHostingAgentDeployService(
                     // 에이전트는 계속 기다린다. 보낸 재시도는 그 명령의 배포를 따라간다
                     HostingStartRetry.ANALYZING -> HostingAgentDeployStatusResponse(done = false, status = RETRYING, elapsed = elapsed)
                     HostingStartRetry.SENT -> {
-                        hostingAgentDeploys.save(deploy.copy(commandId = retry?.commandId, deploymentId = null, generation = null, startedAt = Instant.now()))
+                        hostingAgentDeploys.save(deploy.copy(commandId = retry?.commandId, deploymentId = null, generation = null, startedAt = retry?.at ?: Instant.now()))
                         HostingAgentDeployStatusResponse(done = false, status = RETRYING, elapsed = elapsed)
                     }
                     else -> failed(
