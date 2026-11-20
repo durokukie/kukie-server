@@ -84,6 +84,35 @@ class HostingDataIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `다시 시작한 배포기가 다시 읽은 줄은 한 번만 준다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        putLog("shop", "20261120T030100Z", "2026-11-20T03:00:00.000000000Z listening on 3000", "2026-11-20T03:00:40.000000000Z GET /")
+        putLog(
+            "shop", "20261120T031000Z",
+            "2026-11-20T03:10:00Z [kukie] 앱이 실행 중이에요",
+            "2026-11-20T03:00:00.000000000Z listening on 3000",
+            "2026-11-20T03:00:40.000000000Z GET /",
+            "2026-11-20T03:09:30.000000000Z GET /",
+        )
+
+        // when & then
+        mockMvc.get("/hosting/apps/shop/logs") {
+            authorization(member.accessToken)
+            param("from", "2026-11-20T02:00:00Z")
+            param("to", "2026-11-20T04:00:00Z")
+        }.andExpect {
+            content {
+                string(
+                    "2026-11-20T03:00:00.000000000Z listening on 3000\n2026-11-20T03:00:40.000000000Z GET /\n" +
+                        "2026-11-20T03:10:00Z [kukie] 앱이 실행 중이에요\n2026-11-20T03:09:30.000000000Z GET /\n",
+                )
+            }
+        }
+    }
+
+    @Test
     fun `지우고 다시 만든 앱에는 그 전 앱의 로그를 주지 않는다`() {
         // given
         val member = linkedUser()
