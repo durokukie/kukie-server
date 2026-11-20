@@ -5,6 +5,7 @@ import com.duro.kukie.hosting.domain.HostingCommand
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.support.FakeGitHubAccountAge
 import com.duro.kukie.support.FakeHostingCommandQueue
+import com.duro.kukie.support.FakeHostingFailureAnalyzer
 import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.IntegrationTest
 import com.duro.kukie.support.LoggedInUser
@@ -30,6 +31,9 @@ class HostingIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var accountAge: FakeGitHubAccountAge
+
+    @Autowired
+    private lateinit var analyzer: FakeHostingFailureAnalyzer
 
     @Autowired
     private lateinit var jwtTokenProvider: JwtTokenProvider
@@ -181,6 +185,7 @@ class HostingIntegrationTest : IntegrationTest() {
             jsonPath("$.deployments[0].failure") { value(null) }
             jsonPath("$.deployments[1].failure.code") { value("build_failed") }
             jsonPath("$.deployments[1].startedAt") { value("2026-11-10T01:17:44Z") }
+            jsonPath("$.analysisEnabled") { value(true) }
         }
     }
 
@@ -278,6 +283,75 @@ class HostingIntegrationTest : IntegrationTest() {
             status { isNotFound() }
             jsonPath("$.code") { value("HOSTING_LOG_NOT_FOUND") }
         }
+    }
+
+    @Test
+    fun `빌드에 실패한 배포의 원인을 AI 로 분석하고 같은 배포는 저장한 답을 준다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        putDeployment("shop", GENERATION, ANALYZED, phase = "failed", failure = """{ "code": "build_failed", "message": "build x failed" }""")
+        store.files["deployments/recklehs/shop/$GENERATION/$ANALYZED.log"] = "=== build ===\nOPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx\nModuleNotFoundError: No module named 'flask'"
+
+        // when & then
+        repeat(2) { index ->
+            mockMvc.post("/hosting/apps/shop/deployments/$ANALYZED/analysis") {
+                authorization(member.accessToken)
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.cause") { value("requirements.txt 에 flask 가 없습니다.") }
+                jsonPath("$.fixes[0]") { value("requirements.txt 에 flask 를 더하세요.") }
+                jsonPath("$.cached") { value(index == 1) }
+            }
+        }
+        analyzer.prompts.size shouldBe 1
+        val prompt = analyzer.prompts.single()
+        (prompt.contains("No module named 'flask'") && prompt.contains("build_failed")) shouldBe true
+        prompt.contains("sk-abcdefghijklmnopqrstuvwx") shouldBe false
+    }
+
+    @Test
+    fun `규칙이 원인을 알려 주는 실패나 성공한 배포는 AI 로 분석하지 않는다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        putDeployment("shop", GENERATION, ANALYZED, phase = "failed", failure = """{ "code": "config_invalid", "message": "port" }""")
+        putDeployment("shop", GENERATION, "20261110T011744Z-0123456", phase = "succeeded")
+
+        // when & then
+        listOf(ANALYZED, "20261110T011744Z-0123456").forEach { id ->
+            mockMvc.post("/hosting/apps/shop/deployments/$id/analysis") {
+                authorization(member.accessToken)
+            }.andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("HOSTING_ANALYSIS_NOT_AVAILABLE") }
+            }
+        }
+        analyzer.prompts.shouldBeEmpty()
+    }
+
+    @Test
+    fun `없는 배포나 다른 계정의 앱은 AI 로 분석하지 않는다`() {
+        // given
+        val member = linkedUser()
+        putApp("shop")
+        putApp("other", ownerId = 1)
+        putDeployment("other", GENERATION, ANALYZED, phase = "failed", failure = """{ "code": "build_failed", "message": "x" }""")
+
+        // when & then
+        mockMvc.post("/hosting/apps/shop/deployments/$ANALYZED/analysis") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("HOSTING_DEPLOYMENT_NOT_FOUND") }
+        }
+        mockMvc.post("/hosting/apps/other/deployments/$ANALYZED/analysis") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("HOSTING_APP_NOT_FOUND") }
+        }
+        analyzer.prompts.shouldBeEmpty()
     }
 
     @Test
@@ -1082,6 +1156,7 @@ class HostingIntegrationTest : IntegrationTest() {
 
     companion object {
         private const val GENERATION = "20261101T031500Z"
+        private const val ANALYZED = "20261109T000000Z-aaaaaaa"
         private val GITHUB = GitHubAccount(id = 127021195, login = "Recklehs")
     }
 }

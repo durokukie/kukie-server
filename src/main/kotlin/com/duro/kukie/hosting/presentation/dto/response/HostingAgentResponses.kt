@@ -50,7 +50,7 @@ data class HostingAgentDeployStatusResponse(
     val build: HostingBuild? = null,
     /** failure.code 는 배포기의 실패 코드와 거절 이유, 그리고 stuck(오래 움직이지 않음). */
     val failure: HostingFailure? = null,
-    /** 사용자에게 그대로 전해도 되는 한국어 안내. */
+    /** 사용자에게 그대로 전해도 되는 한국어 안내. 실패했을 때와, 성공했지만 배포기가 시작 명령을 고쳤을 때 있다. */
     val hint: String? = null,
     /** 빌드 로그 끝 8000자. */
     val logTail: String? = null,
