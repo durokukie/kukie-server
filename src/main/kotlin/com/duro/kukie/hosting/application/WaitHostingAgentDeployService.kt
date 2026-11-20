@@ -105,6 +105,12 @@ class WaitHostingAgentDeployService(
                 hint = record?.build?.correctionNotice ?: record?.let { retryNotice(app, it) },
                 next = if (app.uploaded) "GitHub 레포를 연결하면 기본 브랜치에 push 할 때마다 자동으로 배포돼요: ${webAppProperties.url.trimEnd('/')}/?go=hosting" else null,
             )
+            // 배포기가 재시작돼 끊겼다. 명령은 큐로 돌아가 같은 명령의 새 배포가 생기고, status 가 그 배포로 옮겨 탄다
+            FAILED if record?.failure?.code == INTERRUPTED -> if (Duration.between(updatedAt, Instant.now()) > REDO_WAIT) {
+                failed(elapsed, HostingFailure(INTERRUPTED, "the deployer restarted during this deployment"))
+            } else {
+                HostingAgentDeployStatusResponse(done = false, status = QUEUED, elapsed = elapsed)
+            }
             FAILED -> {
                 val retry = record?.let { hostingStartRetries.follow(deploy.userId, app, it) }
                 when (retry?.status) {
@@ -129,10 +135,12 @@ class WaitHostingAgentDeployService(
                     )
                 }
             }
-            else -> if (Duration.between(updatedAt, Instant.now()) > STALLED) {
-                failed(elapsed, HostingFailure(STUCK, "the deployment has not moved"))
-            } else {
-                HostingAgentDeployStatusResponse(done = false, status = phase, elapsed = elapsed)
+            else -> when {
+                // 배포기는 한 번에 하나씩 하므로, 이 앱의 다른 명령이 이 배포의 마지막 기록 뒤에 기록됐으면 이 배포는 끊긴 것이다
+                app.latest.deploymentId != deploymentId && app.latest.commandId != deploy.commandId && app.latest.at > updatedAt ->
+                    failed(elapsed, HostingFailure(INTERRUPTED, "a later deployment of this app took its place"))
+                Duration.between(updatedAt, Instant.now()) > STALLED -> failed(elapsed, HostingFailure(STUCK, "the deployment has not moved"))
+                else -> HostingAgentDeployStatusResponse(done = false, status = phase, elapsed = elapsed)
             }
         }
     }
@@ -164,14 +172,18 @@ class WaitHostingAgentDeployService(
         private const val SUCCEEDED = "succeeded"
         private const val FAILED = "failed"
         private const val STUCK = "stuck"
+        private const val INTERRUPTED = "interrupted"
         private const val APP_DELETED = "app_deleted"
         private const val LOG_TAIL_BYTES = 8192
         private const val WAITS_PER_MINUTE = 30
         private val CHECK_INTERVAL: Duration = Duration.ofSeconds(3)
         private val SEARCH_INTERVAL: Duration = Duration.ofSeconds(30)
 
-        // 배포기가 멈추면 받은 명령은 30분 뒤 다시 나와 새 배포가 된다. 그보다 길게 두어 다시 한 배포를 따라갈 틈을 준다
-        private val STALLED: Duration = Duration.ofMinutes(45)
+        // 한 단계는 길어야 17분(빌드 Job 16분과 로그 읽기)이다. 배포기가 강제로 죽어 기록이 멈춘 배포가 계정의 다음 배포를 오래 막지 않게 한다
+        private val STALLED: Duration = Duration.ofMinutes(25)
+
+        // 끊긴 명령은 새 배포기가 큐 앞의 다른 명령(빌드 16분까지) 뒤에 다시 한다
+        private val REDO_WAIT: Duration = Duration.ofMinutes(20)
 
         // 배포기는 2시간 넘은 업로드 명령을 거절한다. 그보다 길게 두어, 응답 없음 뒤 새로 올린 것을 옛 명령이 덮지 않게 한다
         private val QUEUED_LIMIT: Duration = Duration.ofMinutes(130)
@@ -199,6 +211,7 @@ class WaitHostingAgentDeployService(
             APP_DELETED to "배포하는 동안 앱이 지워졌습니다. 다시 배포하려면 새 배포를 만드세요.",
             "internal" to "Kukie 쪽 문제입니다. 한 번만 새 배포를 만들어 다시 해 보고, 또 실패하면 멈추세요.",
             "deploy_failed" to "Kukie 쪽 문제입니다. 한 번만 새 배포를 만들어 다시 해 보고, 또 실패하면 멈추세요.",
+            INTERRUPTED to "Kukie 배포기가 다시 시작되는 동안 이 배포가 끊겼습니다. 한 번만 새 배포를 만들어 다시 해 보고, 또 그러면 멈추세요.",
             STUCK to "배포가 오래 진행되지 않습니다. 한 번만 새 배포를 만들어 다시 해 보고, 또 그러면 멈추세요.",
         )
     }
