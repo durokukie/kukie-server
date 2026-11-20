@@ -94,9 +94,12 @@ class HostingStartRetries internal constructor(
                 !stillLatest(app, deployment) -> skipped(SUPERSEDED)
                 else -> {
                     val command = HostingCommand.retry(app, deployment, start)
+                    val sent = HostingStartRetry(HostingStartRetry.SENT, now(), start = start, reason = choice.reason, commandId = command.commandId)
+                    // 보낸 뒤 서버가 멈춰도 읽는 쪽이 그 명령의 배포를 따라가도록 먼저 남긴다
+                    hostingStartRetryRepository.save(key, sent)
                     hostingCommandQueue.send(command)
                     log.info("시작 명령 재시도를 보냈습니다: app={}/{}, deployment={}, command={}", app.team, app.app, deployment.deploymentId, command.commandId)
-                    HostingStartRetry(HostingStartRetry.SENT, now(), start = start, reason = choice.reason, commandId = command.commandId)
+                    sent
                 }
             }
         }.getOrElse {

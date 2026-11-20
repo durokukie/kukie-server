@@ -354,7 +354,7 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
             jsonPath("$.status") { value("retrying") }
         }
         val retry = awaitCommands(2).last()
-        // 재시도 명령을 배포기가 받기 전이다. 명령을 보낸 뒤 상태를 남기므로 잠깐 retrying 일 수 있다
+        // 재시도 명령을 배포기가 받기 전이다
         awaitStatus(agent, id, "queued")
         putUploadApp("my-shop", commandId = retry.commandId, deploymentId = RETRIED_ID, phase = "succeeded")
         putDeployment(
