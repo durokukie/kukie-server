@@ -7,6 +7,7 @@ import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingLatest
 import com.duro.kukie.hosting.domain.HostingRepoItem
 import com.duro.kukie.hosting.domain.HostingRepoList
+import com.duro.kukie.hosting.domain.HostingSuspension
 import com.duro.kukie.hosting.domain.HostingTerms
 import com.duro.kukie.hosting.domain.SkippedPush
 import java.time.Instant
@@ -40,6 +41,7 @@ data class HostingAppsResponse(
             account: HostingIdentity,
             joined: Boolean,
             apps: List<HostingApp>,
+            suspensions: Map<String, HostingSuspension?>,
             skipped: SkippedPush?,
             repos: HostingRepoList?,
         ) = HostingAppsResponse(
@@ -48,7 +50,7 @@ data class HostingAppsResponse(
             joined = joined,
             closesOn = HostingTerms.CLOSES_ON,
             appLimit = APP_LIMIT,
-            apps = apps.map(HostingAppResponse::from),
+            apps = apps.map { HostingAppResponse.from(it, suspensions[it.app]) },
             skippedPush = skipped?.let(SkippedPushResponse::from),
             installation = repos?.let { HostingInstallationResponse(it.allowed, it.repos) },
             installUrl = installUrl(githubApp),
@@ -74,11 +76,22 @@ data class HostingAppResponse(
     val config: HostingConfig,
     /** 마지막 배포의 요약. 배포 기록이 지워진 뒤에도 남는다. */
     val latest: HostingLatest,
+    /** 정지된 앱이면 그 사유와 시각. 정지된 앱은 방문해도 깨어나지 않고, 배포·레포 연결·삭제를 할 수 없다. */
+    val suspended: HostingSuspensionResponse?,
 ) {
     companion object {
-        fun from(app: HostingApp) = HostingAppResponse(app.app, app.repo?.fullName, app.uploaded, app.url, app.config, app.latest)
+        fun from(app: HostingApp, suspension: HostingSuspension?) = HostingAppResponse(
+            app.app, app.repo?.fullName, app.uploaded, app.url, app.config, app.latest,
+            suspension?.let { HostingSuspensionResponse(it.code, it.at) },
+        )
     }
 }
+
+data class HostingSuspensionResponse(
+    /** abuse_mining, abuse_mail, abuse_scan, abuse_probe, admin. 모르는 값은 그냥 "정지됨"으로 보여 준다. */
+    val code: String,
+    val at: Instant,
+)
 
 data class SkippedPushResponse(
     /** 업로드 명령이었으면 null. */
@@ -89,7 +102,7 @@ data class SkippedPushResponse(
     val commandId: String?,
     /**
      * not_allowed, invalid_team_name, invalid_app_name, name_too_long, queue_full, auto_deploy_off, app_limit,
-     * app_name_taken, account_renamed, source_mismatch, repository_in_use, internal
+     * app_name_taken, account_renamed, source_mismatch, repository_in_use, suspended, internal
      */
     val reason: String,
     val at: Instant,
@@ -107,8 +120,8 @@ data class HostingAppDetailResponse(
     val analysisEnabled: Boolean,
 ) {
     companion object {
-        fun of(app: HostingApp, deployments: List<HostingDeployment>, analysisEnabled: Boolean) =
-            HostingAppDetailResponse(HostingAppResponse.from(app), deployments, analysisEnabled)
+        fun of(app: HostingApp, suspension: HostingSuspension?, deployments: List<HostingDeployment>, analysisEnabled: Boolean) =
+            HostingAppDetailResponse(HostingAppResponse.from(app, suspension), deployments, analysisEnabled)
     }
 }
 

@@ -19,6 +19,7 @@ class SendHostingCommandService(
     operator fun invoke(userId: UUID, app: String, type: String): HostingCommandResponse {
         val owned = hostingApps.requireOwned(userId, app)
         if (type == HostingCommand.REDEPLOY && owned.repo == null) throw HostingAppSourceMismatchException()
+        hostingApps.requireNotSuspended(owned)
 
         return hostingCommandSender.send(userId, HostingCommand.of(type, owned))
     }

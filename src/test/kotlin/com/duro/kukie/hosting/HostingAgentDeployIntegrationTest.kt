@@ -135,6 +135,20 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `정지된 업로드 앱에는 새 버전을 만들지 않는다`() {
+        // given
+        val agent = agent()
+        putUploadApp("notes")
+        store.files["apps/_suspended/recklehs/notes.json"] = """{ "version": 1, "team": "recklehs", "app": "notes", "code": "admin", "at": "2026-11-17T03:00:00Z" }"""
+
+        // when & then
+        create(agent, "notes", 1234).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("HOSTING_APP_SUSPENDED") }
+        }
+    }
+
+    @Test
     fun `진행 중인 배포가 있으면 새 배포를 만들지 않는다`() {
         // given
         val agent = agent()
@@ -329,6 +343,23 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         waitFor(agent, id).andExpect {
             jsonPath("$.done") { value(true) }
             jsonPath("$.failure.code") { value("app_limit") }
+        }
+    }
+
+    @Test
+    fun `정지된 앱이라 거절했으면 다시 하지 말라고 안내한다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "commandId": "$commandId", "app": "my-shop", "reason": "suspended", "at": "2026-11-13T01:00:00Z" }"""
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.failure.code") { value("suspended") }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("정지")) }
         }
     }
 

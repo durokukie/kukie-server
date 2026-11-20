@@ -103,6 +103,16 @@ data class HostingDeployment(
     val updatedAt: Instant,
 ) : HostingFile
 
+/** 악용이나 관리자 판단으로 정지된 앱(apps/_suspended/<team>/<app>.json). 정지가 풀리거나 앱을 지우면 배포기가 지운다. */
+data class HostingSuspension(
+    override val version: Int,
+    val team: String,
+    val app: String,
+    /** abuse_mining, abuse_mail, abuse_scan, abuse_probe, admin. 모르는 값도 올 수 있다. */
+    val code: String,
+    val at: Instant,
+) : HostingFile
+
 /** 계정이 GitHub App 에 읽기를 허용한 레포. 파일이 없으면 App 을 설치하지 않은 것이다. */
 data class HostingRepoList(
     override val version: Int,

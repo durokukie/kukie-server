@@ -19,6 +19,7 @@ class ConnectHostingAppService(
     operator fun invoke(command: ConnectHostingAppCommand): HostingCommandResponse {
         val owned = hostingApps.requireOwned(command.userId, command.app)
         if (!owned.uploaded) throw HostingAppSourceMismatchException()
+        hostingApps.requireNotSuspended(owned)
         val account = hostingApps.accountOf(command.userId)
         val repos = hostingApps.repoList(account) ?: throw HostingRepositoryNotFoundException()
         if (!repos.allowed) throw HostingNotAllowedException()

@@ -54,6 +54,7 @@ class CreateHostingAgentDeployService(
             throw HostingAppSourceMismatchException("이 이름의 앱은 레포 ${existing.repo.fullName} 에 연결돼 있습니다. 그 레포에 push 하면 배포됩니다.")
         }
         if (existing == null && apps.size >= APP_LIMIT) throw HostingAppLimitException()
+        existing?.let(hostingApps::requireNotSuspended)
         waitHostingAgentDeployService.settleActive(command.userId, team)
         hostingAgentDeploys.activeOf(command.userId, team)?.let { throw HostingDeployInProgressException("진행 중인 배포가 있습니다: $it. 그 배포가 끝난 뒤 다시 시도해 주세요.") }
         if (!hostingAgentRateLimit.tryAcquire("deploys:$team", DEPLOYS_PER_HOUR, Duration.ofHours(1))) throw HostingTooManyDeploysException()
