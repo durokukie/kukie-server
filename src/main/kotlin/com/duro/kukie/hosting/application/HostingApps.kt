@@ -157,8 +157,9 @@ class HostingApps(
     fun pastBuildLog(account: HostingIdentity, app: String, generation: String, deploymentId: String): String? {
         if (!APP_NAME.matches(app) || !GENERATION.matches(generation) || !DEPLOYMENT_ID.matches(deploymentId)) return null
         val prefix = "deployments/${account.team}/$app/$generation/"
-        val deployment = read<HostingDeployment>("$prefix$deploymentId.json")?.takeIf { it.ownedBy(account) } ?: return null
-        return deployment.takeIf { it.hasLog }?.let { hostingStateStore.read("$prefix$deploymentId.log") }
+        val deployment = read<HostingDeployment>("$prefix$deploymentId.json") ?: return null
+        if (!deployment.hasLog || pastApp(account, app, generation) == null) return null
+        return hostingStateStore.read("$prefix$deploymentId.log")
     }
 
     private fun pastApp(account: HostingIdentity, app: String, generation: String): HostingPastApp? {
@@ -167,13 +168,15 @@ class HostingApps(
             .takeLast(MAX_DEPLOYMENTS)
             .reversed()
             .mapNotNull { read<HostingDeployment>(it) }
-        if (deployments.isEmpty() || !deployments.all { it.ownedBy(account) }) return null
+        if (deployments.isEmpty() || !ownedBy(account, deployments)) return null
         return HostingPastApp(app, generation, deployments)
     }
 
-    // 주인이 적히기 전 기록은 Kukie 계정 팀(회원 id 에서 나와 다른 사람에게 가지 않는다)일 때만 믿는다
-    private fun HostingDeployment.ownedBy(account: HostingIdentity): Boolean =
-        owner?.let { it.id == account.id } ?: !account.gitHub
+    // 한 세대는 한 앱이라 주인이 하나다. 주인이 적히기 전 기록뿐이면 Kukie 계정 팀(회원 id 에서 나와 남에게 가지 않는다)일 때만 믿는다
+    private fun ownedBy(account: HostingIdentity, deployments: List<HostingDeployment>): Boolean {
+        val owners = deployments.mapNotNull { it.owner?.id }.toSet()
+        return if (owners.isEmpty()) !account.gitHub else owners == setOf(account.id)
+    }
 
     /** 앱이 지금 실행 중인지, 잠들었는지. 배포기가 아직 보지 않았으면 null. 주인 확인을 거친 앱에만 쓴다. */
     fun runtime(app: HostingApp): HostingRuntime? =

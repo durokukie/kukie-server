@@ -64,6 +64,23 @@ class HostingHistoryIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `주인이 적힌 기록이 있는 세대는 주인이 적히기 전 기록도 같이 준다`() {
+        // given
+        val member = linkedUser()
+        putDeployment("blog", OLD_GENERATION, "20261121T010000Z-3333333")
+        putDeployment("blog", OLD_GENERATION, "20261119T010000Z-4444444", ownerId = null)
+
+        // when & then
+        mockMvc.get("/hosting/history") {
+            authorization(member.accessToken)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.apps.length()") { value(1) }
+            jsonPath("$.apps[0].deployments.length()") { value(2) }
+        }
+    }
+
+    @Test
     fun `Kukie 계정 팀은 주인이 적히지 않은 옛 기록도 준다`() {
         // given
         val member = loggedInUser(UserFixture.oAuthUser())
