@@ -2,11 +2,15 @@ package com.duro.kukie.hosting.presentation.dto.response
 
 import com.duro.kukie.hosting.domain.HostingApp
 import com.duro.kukie.hosting.domain.HostingConfig
+import com.duro.kukie.hosting.domain.HostingDbExport
+import com.duro.kukie.hosting.domain.HostingExit
+import com.duro.kukie.hosting.domain.HostingFailure
 import com.duro.kukie.hosting.domain.HostingDeployment
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.hosting.domain.HostingLatest
 import com.duro.kukie.hosting.domain.HostingRepoItem
 import com.duro.kukie.hosting.domain.HostingRepoList
+import com.duro.kukie.hosting.domain.HostingRuntime
 import com.duro.kukie.hosting.domain.HostingStartRetry
 import com.duro.kukie.hosting.domain.HostingSuspension
 import com.duro.kukie.hosting.domain.HostingTerms
@@ -115,6 +119,8 @@ data class SkippedPushResponse(
 
 data class HostingAppDetailResponse(
     val app: HostingAppResponse,
+    /** 앱이 지금 실행 중인지, 잠들었는지, 거듭 죽는지. 배포기가 아직 보지 않았으면 null. */
+    val runtime: HostingRuntimeResponse?,
     /** 최신순, 20건까지. 30일이 지난 배포는 없다. */
     val deployments: List<HostingDeployment>,
     /** 이 서버에서 실패 원인 AI 분석을 쓸 수 있는지. */
@@ -132,7 +138,10 @@ data class HostingAppDetailResponse(
             deployments: List<HostingDeployment>,
             analysisEnabled: Boolean,
             startRetries: Map<String, HostingStartRetry> = emptyMap(),
-        ) = HostingAppDetailResponse(HostingAppResponse.from(app, suspension), deployments, analysisEnabled, startRetries)
+            runtime: HostingRuntime? = null,
+        ) = HostingAppDetailResponse(
+            HostingAppResponse.from(app, suspension), runtime?.let(HostingRuntimeResponse::from), deployments, analysisEnabled, startRetries,
+        )
     }
 }
 
@@ -149,3 +158,60 @@ data class HostingFailureAnalysisResponse(
     /** 같은 배포를 전에 분석한 결과를 다시 준 것이다. 하루 횟수를 쓰지 않는다. */
     val cached: Boolean = false,
 )
+
+data class HostingRuntimeResponse(
+    /** running(실행 중), starting(띄우는 중), crashing(앱이 거듭 죽음), sleeping(잠듦, 방문하면 깨어남). 모르는 값도 올 수 있다. */
+    val state: String,
+    val replicas: Int,
+    val ready: Int,
+    /** 지금 Pod 의 앱 컨테이너가 다시 시작한 횟수. 새로 배포하면 0 부터 센다. */
+    val restarts: Int,
+    /** 앱 컨테이너가 마지막으로 끝난 까닭. OOMKilled 면 메모리 부족이다. */
+    val lastExit: HostingExit?,
+    /** 이 상태가 된 시각. */
+    val since: Instant,
+) {
+    companion object {
+        fun from(runtime: HostingRuntime) =
+            HostingRuntimeResponse(runtime.state, runtime.replicas, runtime.ready, runtime.restarts, runtime.lastExit, runtime.since)
+    }
+}
+
+/** 앱 기록 내려받기. 서비스가 끝나면 돌려주지 않으므로 사용자가 받아 두는 파일이다. */
+data class HostingAppRecordResponse(
+    val exportedAt: Instant,
+    val app: HostingAppResponse,
+    val runtime: HostingRuntimeResponse?,
+    /** 남아 있는 배포 기록 전부(최신순). 30일이 지난 배포는 없다. */
+    val deployments: List<HostingDeployment>,
+) {
+    companion object {
+        fun of(at: Instant, app: HostingApp, suspension: HostingSuspension?, runtime: HostingRuntime?, deployments: List<HostingDeployment>) =
+            HostingAppRecordResponse(at, HostingAppResponse.from(app, suspension), runtime?.let(HostingRuntimeResponse::from), deployments)
+    }
+}
+
+data class HostingDbExportsResponse(
+    /** 최신순, 10건까지. 30일이 지난 내보내기는 없다. */
+    val exports: List<HostingDbExportResponse>,
+)
+
+data class HostingDbExportResponse(
+    val exportId: String,
+    /** running(내보내는 중), succeeded, failed. 요청한 뒤 이 목록에 나올 때까지 몇 분 걸릴 수 있다. */
+    val phase: String,
+    /** gzip 크기. */
+    val bytes: Long?,
+    /** failed 일 때: no_db, db_not_ready, dump_failed, busy, stale, internal. */
+    val failure: HostingFailure?,
+    val startedAt: Instant,
+    val updatedAt: Instant,
+    /** succeeded 일 때 .sql.gz 를 받는 주소. 10분 동안 쓸 수 있고, 목록을 다시 읽으면 새로 준다. */
+    val downloadUrl: String?,
+) {
+    companion object {
+        fun of(export: HostingDbExport, downloadUrl: String?) = HostingDbExportResponse(
+            export.exportId, export.phase, export.bytes, export.failure, export.startedAt, export.updatedAt, downloadUrl,
+        )
+    }
+}

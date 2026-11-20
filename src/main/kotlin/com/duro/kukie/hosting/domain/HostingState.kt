@@ -161,3 +161,35 @@ data class SkippedPush(
     val reason: String,
     val at: Instant,
 ) : HostingFile
+
+/**
+ * 앱이 지금 어떤지(apps/_runtime/<team>/<app>.json). 배포기가 1분마다 보고 바뀌었을 때만 쓴다.
+ * state 는 running, starting, crashing, sleeping. 모르는 값도 올 수 있다.
+ */
+data class HostingRuntime(
+    override val version: Int,
+    val team: String,
+    val app: String,
+    val state: String,
+    val replicas: Int,
+    val ready: Int,
+    val restarts: Int,
+    val lastExit: HostingExit? = null,
+    val since: Instant,
+) : HostingFile
+
+/** 앱 컨테이너가 마지막으로 끝난 까닭(Error, OOMKilled, Completed 등)과 종료 코드. */
+data class HostingExit(val reason: String, val exitCode: Int, val at: Instant)
+
+/** 팀 DB 내보내기 하나(deployments/<team>/_db/<exportId>.json). succeeded 면 같은 이름의 .sql.gz 가 있다. */
+data class HostingDbExport(
+    override val version: Int,
+    val exportId: String,
+    val owner: HostingAccount,
+    /** running, succeeded, failed */
+    val phase: String,
+    val bytes: Long? = null,
+    val failure: HostingFailure? = null,
+    val startedAt: Instant,
+    val updatedAt: Instant,
+) : HostingFile

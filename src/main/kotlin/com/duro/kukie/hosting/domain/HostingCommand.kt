@@ -3,6 +3,8 @@ package com.duro.kukie.hosting.domain
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
@@ -45,6 +47,22 @@ data class HostingCommand(
         const val CONNECT = "connect"
         const val UPLOAD = "upload"
         const val JOIN = "join"
+        const val DB_EXPORT = "db_export"
+
+        private val EXPORT_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+
+        /** 팀 DB 내보내기. commandId 가 내보내기 id 이고, 시각으로 시작해 키 순서가 곧 시간 순서다. */
+        fun dbExport(account: HostingIdentity, now: Instant = Instant.now()) = HostingCommand(
+            version = HostingFile.VERSION,
+            commandId = EXPORT_STAMP.format(now) + "-" + UUID.randomUUID().toString().replace("-", "").take(8),
+            type = DB_EXPORT,
+            at = now.truncatedTo(ChronoUnit.SECONDS),
+            owner = HostingAccount(account.id, account.login),
+            repo = null,
+            team = account.team,
+            app = null,
+            generation = null,
+        )
 
         /** 가입. 배포기가 이 계정의 팀을 만든다. 앱도 레포도 없다. */
         fun join(account: HostingIdentity) = HostingCommand(

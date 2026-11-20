@@ -10,6 +10,7 @@ import com.duro.kukie.hosting.exception.HostingAppSuspendedException
 import com.duro.kukie.hosting.exception.HostingCommandTooSoonException
 import com.duro.kukie.hosting.exception.HostingDeploymentNotFoundException
 import com.duro.kukie.hosting.exception.HostingDisabledException
+import com.duro.kukie.hosting.exception.HostingInvalidLogRangeException
 import com.duro.kukie.hosting.exception.HostingLogNotFoundException
 import com.duro.kukie.hosting.exception.HostingNotAllowedException
 import com.duro.kukie.hosting.exception.HostingRepositoryInUseException
@@ -19,12 +20,14 @@ import com.duro.kukie.hosting.exception.HostingUnavailableException
 import com.duro.kukie.hosting.presentation.dto.request.ConnectHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.request.StartHostingAppRequest
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppDetailResponse
+import com.duro.kukie.hosting.presentation.dto.response.HostingAppRecordResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingAppsResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingCommandResponse
 import com.duro.kukie.hosting.presentation.dto.response.HostingFailureAnalysisResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import org.springframework.http.ResponseEntity
+import java.time.Instant
 import java.util.UUID
 
 interface HostingControllerDocs {
@@ -66,10 +69,34 @@ interface HostingControllerDocs {
             "no_start(시작 명령을 찾지 못함), start_mismatch(Python 시작 명령의 모듈이 없음, failure.message 에 고칠 kukie.json), " +
             "wrong_root(업로드 맨 위에 앱이 없고 하위 폴더에 있음)가 더해졌습니다. config.manual 이 true 면 레포의 kukie.json 이 자동 배포를 꺼서 " +
             "push 는 배포되지 않고 다시 배포를 요청할 때만 배포됩니다. analysisEnabled 가 true 면 build_failed·build_timeout·start_failed 로 " +
-            "실패한 배포에 AI 원인 분석을 쓸 수 있습니다.",
+            "실패한 배포에 AI 원인 분석을 쓸 수 있습니다. runtime 은 앱이 지금 실행 중(running)·띄우는 중(starting)·거듭 죽음(crashing)·잠듦(sleeping)인지와 " +
+            "재시작 횟수, 마지막 종료 까닭이고, 배포기가 아직 보지 않았으면 null 입니다.",
     )
     @ApiErrorResponses(HostingAppNotFoundException::class, HostingUnavailableException::class, HostingDisabledException::class)
     fun getApp(userId: UUID, app: String): ResponseEntity<HostingAppDetailResponse>
+
+    @Operation(
+        summary = "앱 실행 로그",
+        description = "앱이 실행 중에 찍은 로그(stdout·stderr)를 text/plain 으로 줍니다. 배포기가 1분마다 모으므로 방금 찍은 줄은 1~2분 뒤에 보입니다. " +
+            "from·to(ISO-8601, 예: 2026-11-20T03:00:00Z)로 기간을 고르고, 없으면 최근 1시간입니다. 기간은 31일까지이고 로그는 30일 보관합니다. " +
+            "줄마다 앞에 UTC 시각이 있고, Pod 가 여럿이면 [pod 이름] 이 붙습니다. 10MB 를 넘으면 최근 쪽만 주고 첫 줄에 알립니다. " +
+            "잠든 앱은 로그가 없습니다. 로그가 없으면 빈 본문(200)입니다.",
+    )
+    @ApiErrorResponses(
+        HostingAppNotFoundException::class,
+        HostingInvalidLogRangeException::class,
+        HostingUnavailableException::class,
+        HostingDisabledException::class,
+    )
+    fun getRuntimeLog(userId: UUID, app: String, from: Instant?, to: Instant?): ResponseEntity<String>
+
+    @Operation(
+        summary = "앱 기록 내려받기",
+        description = "앱 정보, 지금 실행 상태, 남아 있는 배포 기록 전부(30일)를 JSON 파일 하나로 줍니다(Content-Disposition: attachment). " +
+            "서비스가 끝나면 기록을 돌려주지 않으므로 사용자가 받아 두는 용도입니다.",
+    )
+    @ApiErrorResponses(HostingAppNotFoundException::class, HostingUnavailableException::class, HostingDisabledException::class)
+    fun exportRecord(userId: UUID, app: String): ResponseEntity<HostingAppRecordResponse>
 
     @Operation(
         summary = "빌드 로그",
