@@ -398,6 +398,34 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `배포기가 재시도 명령을 거절하면 그 이유로 실패를 준다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id,
+            failure = """{ "code": "start_failed", "message": "the start command could not be run" }""",
+            build = """{ "method": "auto", "providers": ["golang"], "start": "go-getting-started" }""",
+        )
+        analyzer.startAnswer = """{"start": "./out", "confident": true, "reason": "Railpack 의 Go 빌드는 ./out 을 만듭니다."}"""
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("retrying") } }
+        val retry = awaitCommands(2).last()
+        awaitStatus(agent, id, "retrying")
+
+        // when
+        store.files["apps/_skipped/recklehs.json"] =
+            """{ "version": 1, "sender": { "id": ${GITHUB.id}, "login": "Recklehs" }, "commandId": "${retry.commandId}", "app": "my-shop", "reason": "suspended", "at": "2026-11-13T01:00:00Z" }"""
+
+        // then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.failure.code") { value("suspended") }
+        }
+    }
+
+    @Test
     fun `AI 가 고른 명령으로도 시작하지 못하면 해 본 흐름을 안내에 담는다`() {
         // given
         val agent = agent()
