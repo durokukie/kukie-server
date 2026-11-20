@@ -43,7 +43,7 @@ data class HostingAgentUploadResponse(
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class HostingAgentDeployStatusResponse(
     val done: Boolean,
-    /** queued, building, deploying, succeeded, failed */
+    /** queued, building, deploying, retrying(시작하지 못해 AI 가 고른 명령으로 다시 배포하는 중), succeeded, failed */
     val status: String,
     val elapsed: Long,
     val url: String? = null,

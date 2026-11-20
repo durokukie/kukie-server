@@ -48,6 +48,10 @@ data class HostingBuild(
     val versions: Map<String, String>? = null,
     val start: String? = null,
     val corrected: String? = null,
+    /** start 가 서버의 재시도(HostingStartRetries)가 보낸 명령이다. */
+    val retried: Boolean? = null,
+    /** 프로젝트 루트와 한 단계 아래의 이름(폴더는 / 로 끝남). 내용은 없다. 시작 명령을 고르는 AI 가 읽는다. */
+    val files: List<String>? = null,
 ) {
     /** 배포기가 시작 명령을 고쳤을 때 에이전트가 사용자에게 전할 안내. */
     val correctionNotice: String?
@@ -60,6 +64,9 @@ data class HostingBuild(
 }
 
 data class HostingFailure(val code: String, val message: String)
+
+/** 시작하지 못한 배포(of)를 서버가 start 로 한 번 더 배포한 것. 그 명령으로 빌드했는지는 build.retried 다. */
+data class HostingRetryRef(val of: String, val start: String)
 
 data class HostingLatest(
     val deploymentId: String,
@@ -99,6 +106,8 @@ data class HostingDeployment(
     val imageReused: Boolean,
     val hasLog: Boolean,
     val failure: HostingFailure? = null,
+    /** 서버가 보낸 시작 명령 재시도일 때만. */
+    val retry: HostingRetryRef? = null,
     val startedAt: Instant,
     val updatedAt: Instant,
 ) : HostingFile

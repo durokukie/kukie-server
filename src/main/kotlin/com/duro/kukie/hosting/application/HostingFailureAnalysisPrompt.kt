@@ -34,6 +34,9 @@ object HostingFailureAnalysisPrompt {
             build?.providers?.takeIf { it.isNotEmpty() }?.let { add("알아낸 언어: ${it.joinToString()}") }
             build?.versions?.takeIf { it.isNotEmpty() }?.let { add("버전: ${it.entries.joinToString { (k, v) -> "$k $v" }}") }
             build?.start?.let { add("알아낸 시작 명령: ${HostingSecretMask.mask(it)}") }
+            build?.corrected?.let { add("배포기가 규칙으로 고치기 전 명령: ${HostingSecretMask.mask(it)}") }
+            deployment.retry?.let { add("앞 배포가 시작하지 못해 AI 가 고른 명령으로 다시 한 배포다: ${HostingSecretMask.mask(it.start)}") }
+            build?.files?.takeIf { it.isNotEmpty() }?.let { add("프로젝트 파일(루트와 한 단계 아래): ${it.joinToString()}") }
             add("설정된 포트: ${deployment.config.port}")
             deployment.config.start?.let { add("kukie.json 의 start: ${HostingSecretMask.mask(it)}") }
         }

@@ -6,7 +6,7 @@ import com.duro.kukie.hosting.exception.HostingUnavailableException
 
 class FakeHostingCommandQueue : HostingCommandQueue, Resettable {
 
-    val commands = mutableListOf<HostingCommand>()
+    val commands: MutableList<HostingCommand> = java.util.Collections.synchronizedList(mutableListOf())
 
     var shouldFail = false
 

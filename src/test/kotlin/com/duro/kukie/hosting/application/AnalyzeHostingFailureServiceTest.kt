@@ -37,7 +37,7 @@ class AnalyzeHostingFailureServiceTest {
     fun `모델이 JSON 앞뒤에 글을 붙여도 원인과 고칠 방법을 읽는다`() {
         // given
         failedDeployment()
-        every { analyzer.analyze(any(), any()) } returns "분석입니다.\n{\"cause\": \"포트가 다릅니다.\", \"fixes\": [\"PORT 를 쓰세요.\", 3]}\n끝"
+        every { analyzer.analyze(any(), any(), any()) } returns "분석입니다.\n{\"cause\": \"포트가 다릅니다.\", \"fixes\": [\"PORT 를 쓰세요.\", 3]}\n끝"
 
         // when
         val result = service(userId, "shop", DEPLOYMENT)
@@ -53,7 +53,7 @@ class AnalyzeHostingFailureServiceTest {
     fun `JSON 이 아닌 답은 그대로 원인으로 준다`() {
         // given
         failedDeployment()
-        every { analyzer.analyze(any(), any()) } returns "  로그만으로는 알 수 없습니다.  "
+        every { analyzer.analyze(any(), any(), any()) } returns "  로그만으로는 알 수 없습니다.  "
 
         // when
         val result = service(userId, "shop", DEPLOYMENT)
@@ -71,7 +71,7 @@ class AnalyzeHostingFailureServiceTest {
 
         // when & then
         shouldThrow<HostingTooManyAnalysesException> { service(userId, "shop", DEPLOYMENT) }
-        verify(exactly = 0) { analyzer.analyze(any(), any()) }
+        verify(exactly = 0) { analyzer.analyze(any(), any(), any()) }
     }
 
     @Test

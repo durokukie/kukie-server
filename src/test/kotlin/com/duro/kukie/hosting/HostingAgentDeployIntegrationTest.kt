@@ -6,6 +6,7 @@ import com.duro.kukie.hosting.domain.HostingAgentDeployRepository
 import com.duro.kukie.hosting.domain.HostingCommand
 import com.duro.kukie.hosting.domain.HostingIdentity
 import com.duro.kukie.support.FakeHostingCommandQueue
+import com.duro.kukie.support.FakeHostingFailureAnalyzer
 import com.duro.kukie.support.FakeHostingStateStore
 import com.duro.kukie.support.FakeHostingUploadStore
 import com.duro.kukie.support.IntegrationTest
@@ -33,6 +34,9 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
 
     @Autowired
     private lateinit var queue: FakeHostingCommandQueue
+
+    @Autowired
+    private lateinit var analyzer: FakeHostingFailureAnalyzer
 
     @Autowired
     private lateinit var uploads: FakeHostingUploadStore
@@ -317,6 +321,74 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `시작하지 못한 자동 감지 빌드는 AI 가 고른 명령으로 한 번 더 배포하고 그 배포를 따라간다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id, hasLog = true,
+            failure = """{ "code": "start_failed", "message": "the start command could not be run" }""",
+            build = """{ "method": "auto", "providers": ["golang"], "start": "go-getting-started", "files": ["go.mod", "main.go", "Procfile"] }""",
+        )
+        analyzer.startAnswer = """{"start": "./out", "confident": true, "reason": "Railpack 의 Go 빌드는 ./out 을 만듭니다."}"""
+
+        // when
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(false) }
+            jsonPath("$.status") { value("retrying") }
+        }
+        val retry = awaitCommands(2).last()
+        // 재시도 명령을 배포기가 받기 전이다
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("queued") } }
+        putUploadApp("my-shop", commandId = retry.commandId, deploymentId = RETRIED_ID, phase = "succeeded")
+        putDeployment(
+            "my-shop", RETRIED_ID, "succeeded", sha = id, commandId = retry.commandId,
+            build = """{ "method": "auto", "providers": ["golang"], "start": "./out", "retried": true }""",
+            retry = """{ "of": "$DEPLOYMENT_ID", "start": "./out" }""",
+        )
+
+        // then
+        retry.type shouldBe HostingCommand.UPLOAD
+        retry.start shouldBe "./out"
+        retry.retryOf shouldBe DEPLOYMENT_ID
+        retry.source?.sha shouldBe id
+        waitFor(agent, id).andExpect {
+            jsonPath("$.status") { value("succeeded") }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("""{"start": "./out"}""")) }
+        }
+    }
+
+    @Test
+    fun `AI 가 고른 명령으로도 시작하지 못하면 해 본 흐름을 안내에 담는다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = RETRIED_ID, phase = "failed")
+        putDeployment(
+            "my-shop", DEPLOYMENT_ID, "failed", sha = id,
+            failure = """{ "code": "start_failed", "message": "x" }""",
+            build = """{ "method": "auto", "start": "gunicorn app:app", "corrected": "gunicorn main:app" }""",
+        )
+        putDeployment(
+            "my-shop", RETRIED_ID, "failed", sha = id, commandId = commandId,
+            failure = """{ "code": "start_failed", "message": "x" }""",
+            build = """{ "method": "auto", "start": "python app.py", "retried": true }""",
+            retry = """{ "of": "$DEPLOYMENT_ID", "start": "python app.py" }""",
+        )
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("'gunicorn main:app' 를 규칙으로 'gunicorn app:app' 로 고쳐")) }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("AI 가 고른 'python app.py' 로 한 번 더 배포했지만")) }
+        }
+        queue.commands.size shouldBe 1
+    }
+
+    @Test
     fun `배포기가 거절했으면 그 이유로 실패를 준다`() {
         // given
         val agent = agent()
@@ -511,15 +583,33 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
         }
     """.trimIndent()
 
-    private fun putDeployment(app: String, id: String, phase: String, failure: String = "null", hasLog: Boolean = false, updatedAt: String = "2099-11-13T01:17:51Z", commandId: String? = null, build: String? = null) {
+    private fun awaitCommands(count: Int): List<HostingCommand> {
+        val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+        while (queue.commands.size < count && System.nanoTime() < deadline) Thread.sleep(50)
+        queue.commands.size shouldBe count
+        return queue.commands.toList()
+    }
+
+    private fun putDeployment(
+        app: String,
+        id: String,
+        phase: String,
+        failure: String = "null",
+        hasLog: Boolean = false,
+        updatedAt: String = "2099-11-13T01:17:51Z",
+        commandId: String? = null,
+        build: String? = null,
+        sha: String = "0123456789abcdef",
+        retry: String? = null,
+    ) {
         store.files["deployments/recklehs/$app/$GENERATION/$id.json"] = """
             {
               "version": 1,
               "deploymentId": "$id",
               "phase": "$phase",
               "trigger": "upload", ${commandId?.let { "\"commandId\": \"$it\"," } ?: ""}
-              "commit": { "sha": "0123456789abcdef", "message": "upload" },
-              "config": { "port": 3000, "size": "S", "source": "default" }, ${build?.let { "\"build\": $it," } ?: ""}
+              "commit": { "sha": "$sha", "message": "upload" },
+              "config": { "port": 3000, "size": "S", "source": "default" }, ${build?.let { "\"build\": $it," } ?: ""} ${retry?.let { "\"retry\": $it," } ?: ""}
               "imageReused": false,
               "hasLog": $hasLog,
               "failure": $failure,
