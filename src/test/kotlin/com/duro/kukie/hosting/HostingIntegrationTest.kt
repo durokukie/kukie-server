@@ -1005,6 +1005,7 @@ class HostingIntegrationTest : IntegrationTest() {
             source?.key shouldBe "uploads/recklehs/my-shop/$UPLOAD_ID.tar.gz"
             source?.sha shouldBe UPLOAD_ID
             owner.id shouldBe GITHUB.id
+            redeploy shouldBe true
         }
     }
 
