@@ -1,5 +1,6 @@
 package com.duro.kukie.global.security
 
+import com.duro.kukie.activity.application.RecordActiveUserService
 import com.duro.kukie.auth.exception.InvalidTokenException
 import com.duro.kukie.auth.exception.UnauthorizedException
 import jakarta.servlet.DispatcherType
@@ -15,6 +16,7 @@ class AuthenticationInterceptor(
     private val jwtTokenProvider: JwtTokenProvider,
     private val authCookies: AuthCookies,
     private val hostingAgentKeyAuthenticator: HostingAgentKeyAuthenticator,
+    private val recordActiveUserService: RecordActiveUserService,
 ) : HandlerInterceptor {
 
     override fun preHandle(
@@ -37,6 +39,7 @@ class AuthenticationInterceptor(
             ?: throw InvalidTokenException()
         request.setAttribute(AUTHENTICATED_USER_ID, subject.userId)
         subject.sessionId?.let { request.setAttribute(AUTHENTICATED_SESSION_ID, it) }
+        recordActiveUserService(subject.userId)
 
         return true
     }

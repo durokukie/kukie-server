@@ -108,6 +108,9 @@ data class HostingDeployment(
     val imageReused: Boolean,
     val hasLog: Boolean,
     val failure: HostingFailure? = null,
+    /** building 동안 빌드가 어디인지(node, image, source, plan, build)와 그 시각. 예전 배포기와 빌드 전에는 없다. */
+    val step: String? = null,
+    val stepAt: Instant? = null,
     /** 서버가 보낸 시작 명령 재시도일 때만. */
     val retry: HostingRetryRef? = null,
     val startedAt: Instant,
