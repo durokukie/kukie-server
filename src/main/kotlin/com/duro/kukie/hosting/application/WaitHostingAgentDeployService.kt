@@ -147,9 +147,15 @@ class WaitHostingAgentDeployService(
 
     private fun failed(elapsed: Long, failure: HostingFailure, log: String? = null, flow: String? = null) = HostingAgentDeployStatusResponse(
         done = true, status = FAILED, elapsed = elapsed, failure = failure,
-        hint = listOfNotNull(flow, HINTS[failure.code] ?: HINTS.getValue("internal")).joinToString(" "),
+        hint = listOfNotNull(flow, hintFor(failure.code, log)).joinToString(" "),
         logTail = log,
     )
+
+    /** 로그를 받지 못한 실패에는 없는 logTail 을 가리키지 않는다. */
+    private fun hintFor(code: String, log: String?): String = when {
+        log.isNullOrBlank() && code in LOG_HINTS -> NO_LOG_HINT
+        else -> HINTS[code] ?: HINTS.getValue("internal")
+    }
 
     /** 재시도로 뜬 배포: 처음 명령과 AI 가 고른 명령, 다음에도 쓰려면 kukie.json 에 넣으라는 안내. */
     private fun retryNotice(app: HostingApp, record: HostingDeployment): String? {
@@ -188,6 +194,10 @@ class WaitHostingAgentDeployService(
         // 배포기는 2시간 넘은 업로드 명령을 거절한다. 그보다 길게 두어, 응답 없음 뒤 새로 올린 것을 옛 명령이 덮지 않게 한다
         private val QUEUED_LIMIT: Duration = Duration.ofMinutes(130)
 
+        private val LOG_HINTS = setOf("build_failed", "build_timeout", "start_failed")
+        private const val NO_LOG_HINT =
+            "배포가 실패했지만 로그를 받지 못했습니다. failure.message 에 원인이 있으면 그대로 고치고, 없으면 코드를 고치지 말고 같은 소스로 새 배포를 한 번만 만드세요. 또 실패하면 멈추고 사용자에게 Kukie 에 문의하라고 전하세요."
+
         /** 에이전트가 사용자에게 그대로 전해도 되는 안내. */
         private val HINTS = mapOf(
             "config_invalid" to "kukie.json 이 형식에 맞지 않습니다. failure.message 대로 고친 뒤 새 배포를 만드세요.",
@@ -197,6 +207,7 @@ class WaitHostingAgentDeployService(
             "start_mismatch" to "시작 명령이 가리키는 Python 모듈이 프로젝트에 없습니다. failure.message 에 kukie.json 예시가 있으면 그대로 루트의 kukie.json 에 넣고, 없으면 앱 객체가 있는 파일로 start 를 적은 뒤 새 배포를 만드세요.",
             "wrong_root" to "올린 폴더 맨 위에 앱이 없습니다. failure.message 에 적힌 하위 폴더 안에서 다시 묶어 새 배포를 만드세요.",
             "build_failed" to "빌드가 실패했습니다. logTail 의 오류를 보고 코드를 고친 뒤 새 배포를 만드세요.",
+            "build_lost" to "Kukie 빌드 서버가 빌드를 시작하기 전에 멈췄습니다. 자동으로 한 번 다시 했는데도 그랬습니다. 코드를 고치지 말고, 몇 분 뒤 같은 소스로 새 배포를 한 번만 만드세요. 또 그러면 멈추고 사용자에게 Kukie 에 문의하라고 전하세요.",
             "build_timeout" to "빌드가 15분을 넘었습니다. 빌드를 가볍게 하거나 Dockerfile 을 만든 뒤 새 배포를 만드세요.",
             "start_failed" to "앱이 뜨지 않았습니다. logTail 의 === app === 아래 출력을 보고, 앱이 PORT 환경변수의 포트에서 받는지와 빠진 의존성이 없는지 확인하세요. 시작 명령이 틀렸으면 맞는 명령을 루트의 kukie.json 에 {\"start\": \"...\"} 로 적은 뒤 새 배포를 만드세요.",
             "app_limit" to "앱이 이미 3개입니다. 앱을 지우거나 있는 앱 이름으로 배포하세요.",
