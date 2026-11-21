@@ -29,6 +29,8 @@ data class HostingCommand(
     /** 시작 명령 재시도(재배포·업로드)에만: 배포기가 이 명령으로 빌드하고, retryOf 배포의 재시도로 적는다. */
     val start: String? = null,
     val retryOf: String? = null,
+    /** 업로드 앱을 화면에서 다시 배포한 업로드 명령에만 true. 배포기가 배포 기록의 trigger 를 redeploy 로 적는다. */
+    val redeploy: Boolean? = null,
 ) {
     /**
      * 같은 요청을 연달아 보냈는지 가릴 때 쓰는 이름. 배포 시작은 계정에 하나다. 레포마다 두면 허용한 레포 수만큼 한꺼번에
@@ -138,6 +140,7 @@ data class HostingCommand(
                 owner = HostingAccount(app.owner.id, app.owner.login),
                 generation = null,
                 source = HostingCommandSource(uploadKey(app.team, app.app, id), id),
+                redeploy = true,
             )
         }
 
