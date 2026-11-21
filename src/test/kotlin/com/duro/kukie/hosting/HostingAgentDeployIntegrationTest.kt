@@ -502,6 +502,58 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `배포기가 재시작돼 끊긴 배포는 다시 한 배포를 따라가고 다시 하지 않으면 끊겼다고 답한다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        val interrupted = """{ "code": "interrupted", "message": "the deployer restarted during this deployment" }"""
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment("my-shop", DEPLOYMENT_ID, "failed", failure = interrupted)
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(false) }
+            jsonPath("$.status") { value("queued") }
+        }
+
+        // when
+        putUploadApp("my-shop", commandId = commandId, deploymentId = RETRIED_ID, phase = "succeeded")
+        putDeployment("my-shop", RETRIED_ID, "succeeded")
+
+        // then
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("succeeded") } }
+        val other = uploaded(agent, "other")
+        val otherCommandId = start(agent, other)
+        putUploadApp("other", commandId = otherCommandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment("other", DEPLOYMENT_ID, "failed", failure = interrupted, updatedAt = "2026-01-01T00:00:00Z")
+        waitFor(agent, other).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.failure.code") { value("interrupted") }
+        }
+    }
+
+    @Test
+    fun `같은 앱의 더 늦은 배포가 기록되면 멈춘 배포는 끊긴 것으로 끝나 다음 배포를 막지 않는다`() {
+        // given: 이 업로드가 빌드 중일 때 배포기가 죽고, 화면에서 다시 배포한 것이 먼저 끝났다
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "building")
+        putDeployment("my-shop", DEPLOYMENT_ID, "building", updatedAt = "2099-11-13T01:18:00Z")
+        waitFor(agent, id).andExpect { jsonPath("$.status") { value("building") } }
+
+        // when
+        putUploadApp("my-shop", commandId = "c-menu", deploymentId = RETRIED_ID, phase = "succeeded", at = "2099-11-13T01:40:00Z")
+        putDeployment("my-shop", RETRIED_ID, "succeeded", commandId = "c-menu")
+
+        // then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.done") { value(true) }
+            jsonPath("$.failure.code") { value("interrupted") }
+        }
+        create(agent, "other", 1234).andExpect { status { isCreated() } }
+    }
+
+    @Test
     fun `시작하지 않은 배포는 기다릴 수 없고 남의 배포는 없는 것과 같다`() {
         // given
         val agent = agent()
