@@ -65,18 +65,18 @@ class HostingAgentKeyIntegrationTest : IntegrationTest() {
     }
 
     @Test
-    fun `한 시간 넘게 지난 사용 시각은 키를 쓰면 다시 적는다`() {
+    fun `1분 넘게 지난 사용 시각은 키를 쓰면 다시 적는다`() {
         // given
         val member = loggedInUser()
         val key = keys.issue(member.user.id)
-        jdbcTemplate.update("update tbl_hosting_agent_key set last_used_at = last_used_at - interval '2 days'")
+        jdbcTemplate.update("update tbl_hosting_agent_key set last_used_at = last_used_at - interval '2 minutes'")
         val before = keyRepository.findAll().single().lastUsedAt
 
         // when
         waitFor(key)
 
         // then
-        keyRepository.findAll().single().lastUsedAt.isAfter(before.plusDays(1)) shouldBe true
+        keyRepository.findAll().single().lastUsedAt.isAfter(before.plusSeconds(90)) shouldBe true
     }
 
     @Test

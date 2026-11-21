@@ -6,7 +6,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
 
-/** 연결한 에이전트. lastUsedAt 은 한 시간 단위로만 갱신된다. */
+/** 연결한 에이전트. lastUsedAt 은 1분 단위로 갱신된다. */
 data class HostingAgentKeyResponse(
     val id: UUID,
     val createdAt: Instant,

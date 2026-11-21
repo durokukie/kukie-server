@@ -40,12 +40,12 @@ class HostingAgentKey(
 
     fun expired(now: LocalDateTime): Boolean = lastUsedAt.isBefore(now.minus(UNUSED_LIMIT))
 
-    /** 요청마다 쓰지 않게 한 시간에 한 번만 적는다. */
+    /** 상태 확인은 몇 초마다 오므로 요청마다 쓰지 않게 1분에 한 번만 적는다. */
     fun staleUse(now: LocalDateTime): Boolean = lastUsedAt.isBefore(now.minus(USE_RECORD_INTERVAL))
 
     companion object {
         val UNUSED_LIMIT: Duration = Duration.ofDays(30)
-        val USE_RECORD_INTERVAL: Duration = Duration.ofHours(1)
+        val USE_RECORD_INTERVAL: Duration = Duration.ofMinutes(1)
         const val MAX_PER_USER = 10
     }
 }

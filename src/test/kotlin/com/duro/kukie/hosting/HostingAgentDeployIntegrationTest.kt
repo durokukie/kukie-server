@@ -335,6 +335,39 @@ class HostingAgentDeployIntegrationTest : IntegrationTest() {
     }
 
     @Test
+    fun `로그를 받지 못한 빌드 실패는 없는 로그 대신 다시 해 볼 길을 안내한다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment("my-shop", DEPLOYMENT_ID, "failed", failure = """{ "code": "build_failed", "message": "the build failed; the build log has the details" }""")
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.failure.code") { value("build_failed") }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("로그를 받지 못했습니다")) }
+            jsonPath("$.logTail") { doesNotExist() }
+        }
+    }
+
+    @Test
+    fun `빌드 서버가 빌드 전에 멈추면 코드를 고치지 말고 다시 하라고 안내한다`() {
+        // given
+        val agent = agent()
+        val id = uploaded(agent, "my-shop")
+        val commandId = start(agent, id)
+        putUploadApp("my-shop", commandId = commandId, deploymentId = DEPLOYMENT_ID, phase = "failed")
+        putDeployment("my-shop", DEPLOYMENT_ID, "failed", failure = """{ "code": "build_lost", "message": "the build machine stopped the build before it ran, twice (pod OutOfcpu)" }""")
+
+        // when & then
+        waitFor(agent, id).andExpect {
+            jsonPath("$.failure.code") { value("build_lost") }
+            jsonPath("$.hint") { value(org.hamcrest.Matchers.containsString("코드를 고치지 말고")) }
+        }
+    }
+
+    @Test
     fun `시작하지 못한 자동 감지 빌드는 AI 가 고른 명령으로 한 번 더 배포하고 그 배포를 따라간다`() {
         // given
         val agent = agent()
