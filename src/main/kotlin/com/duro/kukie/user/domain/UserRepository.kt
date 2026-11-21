@@ -12,7 +12,12 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
+data class RegisteredUserCounts(val current: Long, val cumulative: Long)
+
 interface UserRepository : JpaRepository<User, UUID> {
+    @Query("select new com.duro.kukie.user.domain.RegisteredUserCounts(count(u) - count(u.deletedAt), count(u)) from User u")
+    fun registeredCounts(): RegisteredUserCounts
+
     fun existsByEmail(email: Email): Boolean
 
     fun findByEmail(email: Email): User?
