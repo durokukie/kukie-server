@@ -39,6 +39,9 @@ dependencies {
 
     implementation("org.apache.httpcomponents.client5:httpclient5")
 
+    // 배포된 곳에서는 OpenTelemetry Java 에이전트가 이 API 를 이어받아 지표를 보낸다
+    implementation("io.opentelemetry:opentelemetry-api")
+
     // Database
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
