@@ -21,6 +21,7 @@ import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
 import com.duro.kukie.auth.presentation.dto.request.ResetPasswordRequest
 import com.duro.kukie.auth.presentation.dto.request.SendPasswordResetCodeRequest
 import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
+import com.duro.kukie.auth.presentation.dto.response.OAuthLogInResponse
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.domain.Email
 import com.duro.kukie.global.security.AuthCookies
@@ -70,8 +71,10 @@ class AuthController(
         @PathVariable provider: OAuthProvider,
         @RequestBody @Valid request: OAuthLogInRequest,
         response: HttpServletResponse,
-    ): ResponseEntity<TokenResponse> {
-        return ResponseEntity.ok(oAuthLogInService(request.toCommand(provider)).alsoIssueCookies(response))
+    ): ResponseEntity<OAuthLogInResponse> {
+        val logIn = oAuthLogInService(request.toCommand(provider))
+        authCookies.issue(response, logIn.accessToken, logIn.refreshToken)
+        return ResponseEntity.ok(logIn)
     }
 
     @Authenticated

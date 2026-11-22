@@ -69,6 +69,7 @@ class OAuthLogInServiceTest {
         // then
         response.accessToken shouldBe "access-token"
         response.refreshToken shouldBe "refresh-token"
+        response.signedUp shouldBe false
         verify { logInSessions.open(user.id) }
         verify(exactly = 0) { userRepository.saveAndFlush(any()) }
     }
@@ -88,6 +89,7 @@ class OAuthLogInServiceTest {
         // then
         response.accessToken shouldBe "access-token"
         response.refreshToken shouldBe "refresh-token"
+        response.signedUp shouldBe true
         with(savedUser.captured) {
             name shouldBe profile.name
             email shouldBe Email(profile.email)
@@ -274,8 +276,26 @@ class OAuthLogInServiceTest {
 
         // then
         response.accessToken shouldBe "access-token"
+        response.signedUp shouldBe true
         saved.size shouldBe 2
         saved.last().githubId shouldBe null
+    }
+
+    @Test
+    fun `같은 이메일로 동시에 가입되면 먼저 만든 회원으로 로그인하고 가입으로 세지 않는다`() {
+        // given
+        val stored = UserFixture.user()
+        every { oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier) } returns profile
+        every { userRepository.findByEmail(Email(profile.email)) } returns null andThen stored
+        every { userRepository.saveAndFlush(any()) } throws violation(User.EMAIL_UNIQUE_CONSTRAINT)
+        every { logInSessions.open(stored.id) } returns TokenResponse("access-token", "refresh-token")
+
+        // when
+        val response = oAuthLogInService(command)
+
+        // then
+        response.signedUp shouldBe false
+        verify { logInSessions.open(stored.id) }
     }
 
     @Test
