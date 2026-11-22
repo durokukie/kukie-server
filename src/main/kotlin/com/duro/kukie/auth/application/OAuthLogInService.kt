@@ -3,7 +3,7 @@ package com.duro.kukie.auth.application
 import com.duro.kukie.auth.application.port.`in`.OAuthLogInCommand
 import com.duro.kukie.auth.application.port.out.OAuthClient
 import com.duro.kukie.auth.application.port.out.OAuthProfile
-import com.duro.kukie.auth.presentation.dto.response.TokenResponse
+import com.duro.kukie.auth.presentation.dto.response.OAuthLogInResponse
 import com.duro.kukie.global.domain.Email
 import com.duro.kukie.user.domain.User
 import com.duro.kukie.user.domain.UserRepository
@@ -22,22 +22,22 @@ class OAuthLogInService(
 ) {
 
     // 외부 HTTP 호출을 트랜잭션 밖에서 수행하고, 동시 가입으로 유니크 제약이 충돌하면 재조회로 복구해야 하므로 @Transactional을 걸지 않는다
-    operator fun invoke(command: OAuthLogInCommand): TokenResponse {
+    operator fun invoke(command: OAuthLogInCommand): OAuthLogInResponse {
         val profile = oAuthClient.fetchProfile(command.provider, command.code, command.redirectUri, command.codeVerifier)
-        val user = findOrCreateUser(profile)
+        val (user, signedUp) = findOrCreateUser(profile)
 
-        return logInSessions.open(user.id)
+        return OAuthLogInResponse.of(logInSessions.open(user.id), signedUp)
     }
 
-    private fun findOrCreateUser(profile: OAuthProfile): User {
+    private fun findOrCreateUser(profile: OAuthProfile): Pair<User, Boolean> {
         val email = Email(profile.email)
-        userRepository.findByEmail(email)?.let { return refreshed(it, profile) }
+        userRepository.findByEmail(email)?.let { return refreshed(it, profile) to false }
 
         return try {
-            userRepository.saveAndFlush(newUser(profile, email, withGitHub = true))
+            userRepository.saveAndFlush(newUser(profile, email, withGitHub = true)) to true
         } catch (e: DataIntegrityViolationException) {
             when ((e.cause as? ConstraintViolationException)?.constraintName) {
-                User.EMAIL_UNIQUE_CONSTRAINT -> userRepository.findByEmail(email) ?: throw e
+                User.EMAIL_UNIQUE_CONSTRAINT -> (userRepository.findByEmail(email) ?: throw e) to false
                 User.GITHUB_ID_UNIQUE_CONSTRAINT -> signUpWithoutGitHub(profile, email)
                 else -> throw e
             }
@@ -45,11 +45,11 @@ class OAuthLogInService(
     }
 
     // 방금 다른 회원이 같은 GitHub 계정을 연결했다. 가입은 막지 않고 연결만 뺀다
-    private fun signUpWithoutGitHub(profile: OAuthProfile, email: Email): User =
+    private fun signUpWithoutGitHub(profile: OAuthProfile, email: Email): Pair<User, Boolean> =
         try {
-            userRepository.saveAndFlush(newUser(profile, email, withGitHub = false))
+            userRepository.saveAndFlush(newUser(profile, email, withGitHub = false)) to true
         } catch (e: DataIntegrityViolationException) {
-            userRepository.findByEmail(email) ?: throw e
+            (userRepository.findByEmail(email) ?: throw e) to false
         }
 
     private fun newUser(profile: OAuthProfile, email: Email, withGitHub: Boolean): User =
