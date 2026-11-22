@@ -106,6 +106,7 @@ class AuthIntegrationTest : IntegrationTest() {
             status { isOk() }
             jsonPath("$.accessToken") { isNotEmpty() }
             jsonPath("$.refreshToken") { isNotEmpty() }
+            jsonPath("$.signedUp") { value(true) }
         }
 
         val user = userRepository.findByEmail(Email(FakeOAuthClient.DEFAULT_PROFILE.email)).shouldNotBeNull()

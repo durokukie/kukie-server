@@ -19,6 +19,7 @@ import com.duro.kukie.auth.presentation.dto.request.RefreshTokenRequest
 import com.duro.kukie.auth.presentation.dto.request.ResetPasswordRequest
 import com.duro.kukie.auth.presentation.dto.request.SendPasswordResetCodeRequest
 import com.duro.kukie.auth.presentation.dto.response.HandoffCodeResponse
+import com.duro.kukie.auth.presentation.dto.response.OAuthLogInResponse
 import com.duro.kukie.auth.presentation.dto.response.TokenResponse
 import com.duro.kukie.global.docs.ApiErrorResponses
 import com.duro.kukie.user.exception.InvalidVerificationCodeException
@@ -43,10 +44,10 @@ interface AuthControllerDocs {
     @Operation(
         summary = "소셜 로그인",
         description = "OAuth 인가 코드로 로그인하고 토큰을 발급받습니다. 같은 이메일로 가입된 계정이 없으면 자동으로 가입한 뒤 로그인합니다. " +
-            "토큰은 응답 본문과 httpOnly 쿠키로 함께 내려갑니다.",
+            "토큰은 응답 본문과 httpOnly 쿠키로 함께 내려가고, 이번 요청으로 가입했으면 signedUp 이 true 입니다.",
     )
     @ApiErrorResponses(OAuthLogInFailedException::class)
-    fun oAuthLogIn(provider: OAuthProvider, request: OAuthLogInRequest, response: HttpServletResponse): ResponseEntity<TokenResponse>
+    fun oAuthLogIn(provider: OAuthProvider, request: OAuthLogInRequest, response: HttpServletResponse): ResponseEntity<OAuthLogInResponse>
 
     @Operation(
         summary = "GitHub 계정 연결",
