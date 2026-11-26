@@ -14,6 +14,7 @@ import com.duro.kukie.cluster.exception.ClusterHasActiveRunException
 import com.duro.kukie.cluster.exception.ClusterInUseException
 import com.duro.kukie.cluster.exception.ClusterNotFoundException
 import com.duro.kukie.global.util.logger
+import com.duro.kukie.report.domain.ReportRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
@@ -25,6 +26,7 @@ class DeleteClusterService(
     private val chatSessionRepository: ChatSessionRepository,
     private val chatRunRepository: ChatRunRepository,
     private val actionPlanRepository: ActionPlanRepository,
+    private val reportRepository: ReportRepository,
     private val transactionTemplate: TransactionTemplate,
     private val eksAccessGateway: EksAccessGateway,
     private val eksNamespaces: EksNamespaces,
@@ -53,6 +55,7 @@ class DeleteClusterService(
             chatRunRepository.deleteAllByClusterId(clusterId)
             chatSessionRepository.deleteAllByClusterId(clusterId)
         }
+        reportRepository.deleteAllByClusterId(clusterId)
         clusterRepository.deleteById(clusterId)
     }
 

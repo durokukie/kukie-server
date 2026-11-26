@@ -1,6 +1,7 @@
 package com.duro.kukie.hosting.infrastructure
 
 import com.duro.kukie.global.config.properties.HostingProperties
+import com.duro.kukie.global.config.properties.OpenAiProperties
 import com.duro.kukie.global.util.logger
 import com.duro.kukie.hosting.application.port.out.HostingFailureAnalyzer
 import com.duro.kukie.hosting.application.port.out.HostingFailureAnalyzer.Answer
@@ -20,28 +21,34 @@ import java.time.Duration
 class OpenAiHostingFailureAnalyzer internal constructor(
     private val restClient: RestClient,
     private val hostingProperties: HostingProperties,
+    private val openAiProperties: OpenAiProperties,
 ) : HostingFailureAnalyzer {
 
     // API 앞 CloudFront 가 60초에 응답을 끊는다
     @Autowired
-    constructor(restClientBuilder: RestClient.Builder, hostingProperties: HostingProperties) : this(
+    constructor(
+        restClientBuilder: RestClient.Builder,
+        hostingProperties: HostingProperties,
+        openAiProperties: OpenAiProperties,
+    ) : this(
         restClientBuilder
             .requestFactory(JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build()).apply { setReadTimeout(READ_TIMEOUT) })
             .build(),
         hostingProperties,
+        openAiProperties,
     )
 
     private val log = logger()
 
     override val enabled: Boolean
-        get() = hostingProperties.analysisApiKey.isNotBlank()
+        get() = openAiProperties.enabled
 
     override fun analyze(system: String, prompt: String, answer: Answer): String {
         if (!enabled) throw HostingAnalysisFailedException()
         val response = try {
             restClient.post()
                 .uri(RESPONSES_URL)
-                .headers { it.setBearerAuth(hostingProperties.analysisApiKey) }
+                .headers { it.setBearerAuth(openAiProperties.apiKey) }
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(request(system, prompt, answer))
                 .retrieve()

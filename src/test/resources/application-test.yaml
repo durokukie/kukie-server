@@ -29,6 +29,9 @@ hosting:
   agent-poll-wait: 2s
   agent-deploy-wait: 2s
 
+report:
+  scheduler-enabled: false
+
 springdoc:
   api-docs:
     enabled: true

@@ -14,8 +14,7 @@ data class HostingProperties(
     val agentPollWait: Duration = Duration.ofSeconds(25),
     /** 에이전트의 배포 결과 요청을 붙잡아 두는 최대 시간. API 앞 CloudFront 의 응답 제한(60초)과 S3 호출(10초)보다 짧게 둔다. */
     val agentDeployWait: Duration = Duration.ofSeconds(40),
-    /** 배포 실패를 AI 로 분석할 때 쓰는 OpenAI API 키. 비어 있으면 분석을 쓸 수 없다. */
-    val analysisApiKey: String = "",
+    /** 배포 실패를 AI 로 분석할 때 쓰는 모델. 키(openai.api-key)가 비어 있으면 분석을 쓸 수 없다. */
     val analysisModel: String = "gpt-6-luna",
     val analysisEffort: String = "medium",
 ) {

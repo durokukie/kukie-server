@@ -1,6 +1,7 @@
 package com.duro.kukie.hosting.infrastructure
 
 import com.duro.kukie.global.config.properties.HostingProperties
+import com.duro.kukie.global.config.properties.OpenAiProperties
 import com.duro.kukie.hosting.exception.HostingAnalysisFailedException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -22,7 +23,7 @@ class OpenAiHostingFailureAnalyzerTest {
 
     private val builder = RestClient.builder()
     private val server = MockRestServiceServer.bindTo(builder).build()
-    private val analyzer = OpenAiHostingFailureAnalyzer(builder.build(), HostingProperties(analysisApiKey = "sk-test"))
+    private val analyzer = OpenAiHostingFailureAnalyzer(builder.build(), HostingProperties(), OpenAiProperties(apiKey = "sk-test"))
 
     @Test
     fun `설정한 모델에 JSON 답을 요청하고 메시지의 글을 준다`() {
@@ -77,7 +78,7 @@ class OpenAiHostingFailureAnalyzerTest {
     @Test
     fun `키가 없으면 꺼져 있고 부르지 않는다`() {
         // given
-        val off = OpenAiHostingFailureAnalyzer(builder.build(), HostingProperties())
+        val off = OpenAiHostingFailureAnalyzer(builder.build(), HostingProperties(), OpenAiProperties())
 
         // when & then
         off.enabled shouldBe false

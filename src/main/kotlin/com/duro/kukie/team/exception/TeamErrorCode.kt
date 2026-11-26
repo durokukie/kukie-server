@@ -20,6 +20,7 @@ enum class TeamErrorCode(
     INVALID_INVITATION_LINK(HttpStatus.BAD_REQUEST, "올바르지 않은 초대 링크입니다."),
     INVITATION_ALREADY_SENT(HttpStatus.CONFLICT, "이미 초대한 주소입니다."),
     ALREADY_TEAM_MEMBER(HttpStatus.CONFLICT, "이미 해당 팀의 구성원입니다."),
+    INVALID_REPORT_ZONE(HttpStatus.BAD_REQUEST, "알 수 없는 시간대입니다. IANA 시간대 이름(예: Asia/Seoul)으로 보내 주세요."),
     ;
 
     override val code: String

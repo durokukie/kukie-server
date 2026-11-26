@@ -6,6 +6,7 @@ import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.global.util.utcNow
 import com.duro.kukie.notification.domain.NotificationRepository
+import com.duro.kukie.report.domain.ReportRepository
 import com.duro.kukie.serving.domain.ServingAccessRepository
 import com.duro.kukie.serving.domain.ServingAccessStatus
 import com.duro.kukie.team.application.DeleteTeamService
@@ -22,8 +23,8 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * 회원 탈퇴. 다른 팀원이 있는 팀의 유일한 관리자면 거절한다. 혼자인 팀은 같이 지우고, 개인 대화·알림·서빙 접근을 정리한 뒤
- * 사용자 행을 익명화한다. 팀 공유 대화와 등록한 클러스터는 팀 자료라 남긴다. 호스팅 앱은 커밋 뒤에 지운다(HostingWithdrawalListener).
+ * 회원 탈퇴. 다른 팀원이 있는 팀의 유일한 관리자면 거절한다. 혼자인 팀은 같이 지우고, 개인 대화·개인 보고서·알림·서빙 접근을 정리한 뒤
+ * 사용자 행을 익명화한다. 팀 공유 대화·보고서와 등록한 클러스터는 팀 자료라 남긴다. 호스팅 앱은 커밋 뒤에 지운다(HostingWithdrawalListener).
  */
 @Service
 class DeleteAccountService(
@@ -34,6 +35,7 @@ class DeleteAccountService(
     private val chatSessionRepository: ChatSessionRepository,
     private val chatRunRepository: ChatRunRepository,
     private val actionPlanRepository: ActionPlanRepository,
+    private val reportRepository: ReportRepository,
     private val notificationRepository: NotificationRepository,
     private val servingAccessRepository: ServingAccessRepository,
     private val refreshTokenRepository: RefreshTokenRepository,
@@ -46,6 +48,7 @@ class DeleteAccountService(
 
         leaveTeams(userId)
         deletePrivateChats(userId)
+        reportRepository.deleteAllPrivateByOwnerId(userId)
         notificationRepository.deleteAllByUserId(userId)
         servingAccessRepository.findAllByUserIdAndStatusOrderByCreatedAtDesc(userId, ServingAccessStatus.ACTIVE)
             .forEach { it.revoke() }
