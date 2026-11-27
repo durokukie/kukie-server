@@ -60,6 +60,9 @@ dependencies {
     implementation("software.amazon.awssdk:sqs:2.55.11")
     implementation("software.amazon.awssdk:s3:2.55.11")
 
+    // Claude API
+    implementation("com.anthropic:anthropic-java:3.3.0")
+
     // UUID
     implementation("com.github.f4b6a3:uuid-creator:6.1.1")
 

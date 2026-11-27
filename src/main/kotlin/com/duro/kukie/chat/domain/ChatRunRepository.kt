@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
+import java.time.LocalDateTime
 import java.util.UUID
 
 interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
@@ -37,6 +38,54 @@ interface ChatRunRepository : JpaRepository<ChatRun, UUID> {
         """,
     )
     fun findTurnsBySessionId(@Param("sessionId") sessionId: UUID): List<RunTurn>
+
+    @Query(
+        """
+        select new com.duro.kukie.chat.domain.RunTurn(
+            r.id, r.turnNo, r.kind, r.mode, r.status, r.inputText, r.requestedBy,
+            r.responsePayload, r.startedAt, r.finishedAt)
+        from ChatRun r
+        where r.sessionId = :sessionId and r.startedAt >= :from and r.startedAt < :to
+        order by r.turnNo
+        """,
+    )
+    fun findTurnsBySessionIdBetween(
+        @Param("sessionId") sessionId: UUID,
+        @Param("from") from: LocalDateTime,
+        @Param("to") to: LocalDateTime,
+    ): List<RunTurn>
+
+    @Query(
+        """
+        select distinct s.id from ChatRun r join ChatSession s on s.id = r.sessionId
+        where s.clusterId = :clusterId
+          and s.visibility = com.duro.kukie.chat.domain.ChatVisibility.SHARED
+          and r.kind = com.duro.kukie.chat.domain.RunKind.CHAT
+          and r.startedAt >= :from and r.startedAt < :to
+        """,
+    )
+    fun findSharedSessionIdsActiveBetween(
+        @Param("clusterId") clusterId: UUID,
+        @Param("from") from: LocalDateTime,
+        @Param("to") to: LocalDateTime,
+    ): List<UUID>
+
+    @Query(
+        """
+        select distinct s.clusterId from ChatRun r
+            join ChatSession s on s.id = r.sessionId
+            join Cluster c on c.id = s.clusterId
+        where c.teamId = :teamId
+          and s.visibility = com.duro.kukie.chat.domain.ChatVisibility.SHARED
+          and r.kind = com.duro.kukie.chat.domain.RunKind.CHAT
+          and r.startedAt >= :from and r.startedAt < :to
+        """,
+    )
+    fun findSharedClusterIdsActiveBetween(
+        @Param("teamId") teamId: UUID,
+        @Param("from") from: LocalDateTime,
+        @Param("to") to: LocalDateTime,
+    ): List<UUID>
 
     fun findTop100BySessionIdAndStatusAndAgentMessagesIsNotNullOrderByTurnNoDesc(
         sessionId: UUID,

@@ -20,7 +20,9 @@ class Notification private constructor(
     kind: NotificationKind,
     teamId: UUID?,
     teamName: String?,
-    role: TeamRole?,
+    role: TeamRole? = null,
+    reportId: UUID? = null,
+    subject: String? = null,
 ) : BaseTimeEntity() {
 
     @Id
@@ -49,6 +51,14 @@ class Notification private constructor(
     var role = role
         protected set
 
+    @Column(name = "report_id")
+    var reportId = reportId
+        protected set
+
+    @Column(length = 200)
+    var subject = subject
+        protected set
+
     @Column(name = "read_at")
     var readAt: LocalDateTime? = null
         protected set
@@ -68,6 +78,16 @@ class Notification private constructor(
             teamId = teamId,
             teamName = teamName,
             role = role,
+        )
+
+        /** 보고서 제목은 그때 값을 적는다. 보고서가 지워져도 알림은 남는다. */
+        fun weeklyReportReady(userId: UUID, teamId: UUID, teamName: String, reportId: UUID, subject: String) = Notification(
+            userId = userId,
+            kind = NotificationKind.WEEKLY_REPORT_READY,
+            teamId = teamId,
+            teamName = teamName,
+            reportId = reportId,
+            subject = subject,
         )
     }
 }

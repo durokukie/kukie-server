@@ -51,6 +51,8 @@ data class NotificationResponse(
                 notification.teamId?.let { put("teamId", it.toString()) }
                 notification.teamName?.let { put("teamName", it) }
                 notification.role?.let { put("role", it.name) }
+                notification.reportId?.let { put("reportId", it.toString()) }
+                notification.subject?.let { put("subject", it) }
             },
             createdAt = notification.createdAt,
             readAt = notification.readAt,
