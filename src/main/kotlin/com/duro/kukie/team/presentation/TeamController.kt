@@ -8,10 +8,12 @@ import com.duro.kukie.team.application.GetMyTeamsService
 import com.duro.kukie.team.application.GetTeamMembersService
 import com.duro.kukie.team.application.LeaveTeamService
 import com.duro.kukie.team.application.RemoveTeamMemberService
+import com.duro.kukie.team.application.UpdateReportScheduleService
 import com.duro.kukie.team.application.UpdateTeamMemberRoleService
 import com.duro.kukie.team.application.UpdateTeamService
 import com.duro.kukie.team.domain.TeamRole
 import com.duro.kukie.team.presentation.dto.request.CreateTeamRequest
+import com.duro.kukie.team.presentation.dto.request.UpdateReportScheduleRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamMemberRoleRequest
 import com.duro.kukie.team.presentation.dto.request.UpdateTeamRequest
 import com.duro.kukie.team.presentation.dto.response.TeamMemberResponse
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -37,6 +40,7 @@ class TeamController(
     private val getMyTeamsService: GetMyTeamsService,
     private val getTeamMembersService: GetTeamMembersService,
     private val updateTeamService: UpdateTeamService,
+    private val updateReportScheduleService: UpdateReportScheduleService,
     private val updateTeamMemberRoleService: UpdateTeamMemberRoleService,
     private val removeTeamMemberService: RemoveTeamMemberService,
     private val leaveTeamService: LeaveTeamService,
@@ -74,6 +78,16 @@ class TeamController(
         @RequestBody @Valid request: UpdateTeamRequest,
     ): ResponseEntity<TeamResponse> {
         return ResponseEntity.ok(updateTeamService(request.toCommand(teamId, userId)))
+    }
+
+    @TeamRoleRequired(TeamRole.ADMIN)
+    @PutMapping("/{teamId}/report-schedule")
+    override fun updateReportSchedule(
+        @PathVariable teamId: UUID,
+        @AuthUser userId: UUID,
+        @RequestBody @Valid request: UpdateReportScheduleRequest,
+    ): ResponseEntity<TeamResponse> {
+        return ResponseEntity.ok(updateReportScheduleService(request.toCommand(teamId, userId)))
     }
 
     @TeamRoleRequired(TeamRole.ADMIN)

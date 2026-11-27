@@ -71,7 +71,14 @@ hugging-face:
 hosting:
   state-bucket: ${HOSTING_STATE_BUCKET:}
   commands-queue-url: ${HOSTING_COMMANDS_QUEUE_URL:}
-  analysis-api-key: ${OPENAI_API_KEY:}
+
+# 배포 실패 분석과 보고서 정리에 쓰는 OpenAI 키. 비어 있으면 분석은 꺼지고 보고서는 AI 정리 없이 만든다
+openai:
+  api-key: ${OPENAI_API_KEY:}
+
+# 있으면 보고서를 OpenAI 대신 Claude 로 정리한다 (배포 실패 분석은 OpenAI 그대로)
+anthropic:
+  api-key: ${ANTHROPIC_API_KEY:}
 
 cluster:
   credential-key: ${KUKIE_CREDENTIAL_KEY}

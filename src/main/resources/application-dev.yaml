@@ -12,6 +12,10 @@ swagger:
 web-app:
   url: https://dev.durokukie.com
 
+# dev 와 로컬은 dev 전용 App 을 쓴다. prod 는 기본값 kukie-gitops
+github-app:
+  slug: kukie-gitops-dev
+
 hosting:
   github-app: kukie-hosting-dev
 

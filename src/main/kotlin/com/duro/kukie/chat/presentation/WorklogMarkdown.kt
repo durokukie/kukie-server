@@ -156,7 +156,7 @@ object WorklogMarkdown {
         appendLine(fence)
     }
 
-    private fun code(text: String): String {
+    internal fun code(text: String): String {
         val ticks = "`".repeat(longestBacktickRun(text) + 1)
         val pad = if (text.startsWith("`") || text.endsWith("`")) " " else ""
         return "$ticks$pad$text$pad$ticks"
@@ -168,7 +168,7 @@ object WorklogMarkdown {
     private fun shellWord(word: String): String =
         if (word.isNotEmpty() && word.all { it.isLetterOrDigit() || it in SAFE_CHARS }) word else "'" + word.replace("'", "'\\''") + "'"
 
-    private fun headline(request: String?): String {
+    internal fun headline(request: String?): String {
         val line = request?.lineSequence()?.firstOrNull { it.isNotBlank() }?.trim() ?: return "(요청 없음)"
         return if (line.length <= TITLE_LIMIT) line else line.take(TITLE_LIMIT) + "…"
     }

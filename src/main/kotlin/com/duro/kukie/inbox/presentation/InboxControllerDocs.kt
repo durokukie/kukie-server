@@ -11,7 +11,11 @@ import java.util.UUID
 
 interface InboxControllerDocs {
 
-    @Operation(summary = "받은 초대함 조회", description = "대기 중인 팀 초대와 내 알림을 조회합니다. 초대는 아직 처리하지 않고 만료되지 않은 것만, 알림은 읽은 것도 함께 옵니다.")
+    @Operation(
+        summary = "받은 초대함 조회",
+        description = "대기 중인 팀 초대와 내 알림을 조회합니다. 초대는 아직 처리하지 않고 만료되지 않은 것만, 알림은 읽은 것도 함께 옵니다. " +
+            "주간 보고서 알림(WEEKLY_REPORT_READY)의 payload 에는 reportId 와 subject(보고서 제목)가 실립니다.",
+    )
     fun getInbox(userId: UUID): ResponseEntity<InboxResponse>
 
     @Operation(summary = "알림 읽음 처리", description = "알림을 읽음으로 표시합니다. 자신의 알림만 처리할 수 있습니다.")

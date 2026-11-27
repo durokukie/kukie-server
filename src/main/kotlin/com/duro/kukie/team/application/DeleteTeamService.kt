@@ -5,6 +5,7 @@ import com.duro.kukie.chat.domain.ChatRunRepository
 import com.duro.kukie.chat.domain.ChatSessionRepository
 import com.duro.kukie.cluster.domain.AwsConnectionRepository
 import com.duro.kukie.cluster.domain.ClusterRepository
+import com.duro.kukie.report.domain.ReportRepository
 import com.duro.kukie.team.domain.TeamInvitationRepository
 import com.duro.kukie.team.domain.TeamMembershipRepository
 import com.duro.kukie.team.domain.TeamRepository
@@ -22,6 +23,7 @@ class DeleteTeamService(
     private val chatSessionRepository: ChatSessionRepository,
     private val chatRunRepository: ChatRunRepository,
     private val actionPlanRepository: ActionPlanRepository,
+    private val reportRepository: ReportRepository,
 ) {
 
     /** 팀 삭제는 Admin만. */
@@ -35,6 +37,7 @@ class DeleteTeamService(
         actionPlanRepository.deleteAllByTeamId(teamId)
         chatRunRepository.deleteAllByTeamId(teamId)
         chatSessionRepository.deleteAllByTeamId(teamId)
+        reportRepository.deleteAllByTeamId(teamId)
         clusterRepository.deleteAllByTeamId(teamId)
         awsConnectionRepository.deleteAllByTeamId(teamId)
         teamInvitationRepository.deleteAllByTeamId(teamId)
