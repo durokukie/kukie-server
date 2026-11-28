@@ -28,7 +28,8 @@ def prompt_of(c):
 
 def post(url, key, body):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
-                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}",
+                                          "User-Agent": "kukie-llm-eval/1.0"})  # RunPod 프록시가 Python-urllib 기본 UA 를 403 으로 막는다
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return json.load(r)
 
